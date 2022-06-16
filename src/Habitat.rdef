@@ -1,0 +1,16 @@
+resource app_signature "application/x-vnd.habitat";
+
+resource app_flags B_SINGLE_LAUNCH;
+
+resource app_version {
+	major = 0,
+	middle = 0,
+	minor = 1,
+	variety = B_APPV_DEVELOPMENT,
+	short_info = "Habitat",
+	long_info = "Habitat ©2022 Jeremy List"
+};
+
+resource file_types message {
+	"types" = "application/x-vnd.Be.URL.ssb"
+};
