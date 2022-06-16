@@ -24,7 +24,9 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
-Habitat::Habitat(void) : BApplication("application/x-vnd.habitat") {
+Habitat::Habitat(void)
+    :
+    BApplication("application/x-vnd.habitat") {
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
   BPath settings_path;
@@ -46,7 +48,8 @@ Habitat::Habitat(void) : BApplication("application/x-vnd.habitat") {
 }
 
 MainWindow::MainWindow(void)
-    : BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
-              B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {}
+    :
+    BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
+            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {}
 
 #undef B_TRANSLATION_CONTEXT
