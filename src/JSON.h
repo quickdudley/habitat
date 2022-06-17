@@ -88,6 +88,10 @@ private:
   int state2 = 0;
   int escape = 0;
   BString token;
+  BString unescaped;
+  BString rawname;
+  BString name;
+  std::vector<int> stack;
 };
 
 } // namespace JSON

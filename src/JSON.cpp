@@ -405,7 +405,8 @@ status_t Parser::nextChar(char c) {
   } else if (this->state == 1) { // Object before key/end
     if (c == '\"') {
       this->state = 3;
-      this->token = BString();
+      this->state2 = 0;
+      this->token = BString("\"");
       return B_OK;
     } else if (isspace(c)) {
       return B_OK;
@@ -416,6 +417,10 @@ status_t Parser::nextChar(char c) {
   } else if (this->state == 4) { // Before colon in object
     if (c == ':') {
       this->state = 5;
+      this->rawname = this->token;
+      this->name = this->unescaped;
+      this->token = BString();
+      this->unescaped = BString();
       return B_OK;
     } else if (isspace(c)) {
       return B_OK;
@@ -425,6 +430,65 @@ status_t Parser::nextChar(char c) {
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
+  this->token.Append(c, 1);
+  if (this->state2 == 0) {
+    if (c == '\\') {
+      this->state2 = 1;
+      this->escape = 0;
+    } else if (c == '\"') {
+      this->state = estate;
+    } else {
+      this->unescaped.Append(c, 1);
+    }
+    return B_OK;
+  } else if (this->state2 == 1) {
+  	this->state2 = 0;
+  	switch (c) {
+  	case '\"':
+  	  this->unescaped.Append(c, 1);
+  	  break;
+  	case '\\':
+  	  this->unescaped.Append(c, 1);
+  	  break;
+  	case '/':
+  	  this->unescaped.Append(c, 1);
+  	  break;
+  	case 'b':
+  	  this->unescaped.Append('\b', 1);
+  	  break;
+  	case 'f':
+  	  this->unescaped.Append('\f', 1);
+  	  break;
+  	case 'n':
+  	  this->unescaped.Append('\n', 1);
+  	  break;
+  	case 't':
+  	  this->unescaped.Append('\t', 1);
+  	  break;
+  	case 'u':
+  	  this->state2 = 2;
+  	  break;
+  	default:
+  	  return B_ILLEGAL_DATA;
+  	}
+  	return B_OK;
+  } else {
+  	int digit;
+  	if (c >= '0' && c <= '9') {
+  		digit = c - '0';
+  	} else if (c >= 'a' && c <= 'f') {
+  		digit = c - 'a' + 10;
+  	} else if (c >= 'A' && c <= 'F') {
+  		digit = c - 'A' + 10;
+  	} else {
+  		return B_ILLEGAL_DATA;
+  	}
+  	this->escape |= digit << ((this->state2 - 2) * 4);
+  	if (this->state2 == 5) {
+  	  this->state2 = 0;
+  	  // TODO: UTF-16 to UTF-8
+  	}
+  }
   return B_ILLEGAL_DATA;
 }
 
