@@ -488,7 +488,7 @@ status_t Parser::charInString(char c, int cstate, int estate) {
       this->state2 = 0;
       // TODO: UTF-16 to UTF-8
     } else {
-    	this->state2++;
+      this->state2++;
     }
   }
   return B_ILLEGAL_DATA;
