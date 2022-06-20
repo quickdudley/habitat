@@ -1,6 +1,7 @@
 #define CONNECTION_CPP
 #include "Connection.h"
 #include <Errors.h>
+#include <algorithm>
 #include <cstring>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -153,10 +154,12 @@ ssize_t BoxStream::Write(const void *buffer, size_t size) {
   }
   std::unique_ptr<unsigned char> buffer1 =
       std::unique_ptr<unsigned char>(new unsigned char[size + 34]);
+  unsigned char tmpnonce[24];
+  memcpy(tmpnonce, this->sendnonce, 24);
+  nonce_inc(tmpnonce);
   if (crypto_secretbox_easy(buffer1.get() + 18, (unsigned char *)buffer, size,
-                            this->sendnonce, this->sendkey) != 0)
+                            tmpnonce, this->sendkey) != 0)
     return B_IO_ERROR;
-  nonce_inc(this->sendnonce);
   *((unsigned short *)(buffer1.get() + 16)) = (unsigned short)size;
   if (swap_data(B_INT16_TYPE, buffer1.get() + 16, sizeof(short),
                 B_SWAP_HOST_TO_BENDIAN) != B_OK)
@@ -164,7 +167,8 @@ ssize_t BoxStream::Write(const void *buffer, size_t size) {
   if (crypto_secretbox_easy(buffer1.get(), buffer1.get() + 16, 18,
                             this->sendnonce, this->sendkey) != 0)
     return B_IO_ERROR;
-  nonce_inc(this->sendnonce);
+  nonce_inc(tmpnonce);
+  memcpy(this->sendnonce, tmpnonce, 24);
   size_t bytes_written;
   status_t result =
       this->inner->WriteExactly(buffer1.get(), size + 34, &bytes_written);
@@ -174,3 +178,45 @@ ssize_t BoxStream::Write(const void *buffer, size_t size) {
     return result;
   }
 }
+
+ssize_t BoxStream::Read(void *buffer, size_t size) {
+  size_t unread = this->rb_length - this->rb_offset;
+  if (unread == 0) {
+    unsigned char header[34];
+    unsigned char *headerMsg = header + crypto_secretbox_MACBYTES;
+    if (this->inner->ReadExactly(header, 34) != B_OK) {
+      return B_IO_ERROR;
+    }
+    if (crypto_secretbox_open_easy(headerMsg, header, 34, this->recvnonce,
+                                   this->recvkey) != 0) {
+      return B_IO_ERROR;
+    }
+    nonce_inc(this->recvnonce);
+    if (swap_data(B_INT16_TYPE, headerMsg, sizeof(short),
+                  B_SWAP_BENDIAN_TO_HOST) != B_OK) {
+      return B_IO_ERROR;
+    }
+    size_t bodyLength = (size_t) * ((short *)headerMsg);
+    this->read_buffer =
+        std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
+    memcpy(this->read_buffer.get(), headerMsg + 2, 16);
+    if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK) {
+      return B_IO_ERROR;
+    }
+    if (crypto_secretbox_open_easy(this->read_buffer.get() + 16,
+                                   this->read_buffer.get(), bodyLength + 16,
+                                   this->recvnonce, this->recvkey) != 0) {
+      return B_IO_ERROR;
+    }
+    nonce_inc(this->recvnonce);
+    unread = bodyLength;
+    this->rb_length = bodyLength + 16;
+    this->rb_offset = 16;
+  }
+  size_t readNow = std::min(unread, size);
+  memcpy(buffer, this->read_buffer.get() + this->rb_offset, readNow);
+  this->rb_offset += readNow;
+  return readNow;
+}
+
+status_t BoxStream::Flush() { return this->inner->Flush(); }

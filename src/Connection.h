@@ -27,12 +27,14 @@ public:
   BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
             unsigned char privkey[32], unsigned char seckey[32]);
   ssize_t Write(const void *buffer, size_t size);
+  ssize_t Read(void *buffer, size_t size);
+  status_t Flush();
 
 private:
   std::unique_ptr<BDataIO> inner;
   std::unique_ptr<unsigned char> read_buffer;
-  size_t rb_length;
-  size_t rb_offset;
+  size_t rb_length = 0;
+  size_t rb_offset = 0;
   unsigned char peerkey[32];
   unsigned char sendkey[32];
   unsigned char sendnonce[24];
