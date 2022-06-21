@@ -86,7 +86,8 @@ private:
   std::unique_ptr<RootSink> target;
   int state = 0;
   int state2 = 0;
-  int escape = 0;
+  int16 escape = 0;
+  int16 highsurrogate;
   BString token;
   BString unescaped;
   BString rawname;

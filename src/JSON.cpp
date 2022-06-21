@@ -435,6 +435,8 @@ status_t Parser::charInString(char c, int cstate, int estate) {
     if (c == '\\') {
       this->state2 = 1;
       this->escape = 0;
+    } else if (this->highsurrogate != 0) {
+      return B_ILLEGAL_DATA;
     } else if (c == '\"') {
       this->state = estate;
     } else {
@@ -471,6 +473,9 @@ status_t Parser::charInString(char c, int cstate, int estate) {
     default:
       return B_ILLEGAL_DATA;
     }
+    if (this->highsurrogate != 0 && this->state2 != 2) {
+      return B_ILLEGAL_DATA;
+    }
     return B_OK;
   } else {
     int digit;
@@ -486,10 +491,45 @@ status_t Parser::charInString(char c, int cstate, int estate) {
     this->escape |= digit << ((this->state2 - 2) * 4);
     if (this->state2 == 5) {
       this->state2 = 0;
-      // TODO: UTF-16 to UTF-8
+      int32 codepoint;
+      if (this->escape <= 0xD7FF || this->escape >= 0xE000) {
+        if (this->highsurrogate != 0)
+          return B_ILLEGAL_DATA;
+        codepoint = this->escape;
+        this->escape = 0;
+      } else if (this->escape >= 0xD800 && this->escape <= 0xDBFF) {
+        if (this->highsurrogate != 0)
+          return B_ILLEGAL_DATA;
+        this->highsurrogate = this->escape;
+        this->escape = 0;
+        return B_OK;
+      } else {
+        if (this->highsurrogate == 0)
+          return B_ILLEGAL_DATA;
+        codepoint = (((int32)this->highsurrogate) - 0xD800) * 0x0400 +
+                    this->escape + 0x10000;
+        this->highsurrogate = 0;
+        this->escape = 0;
+      }
+      if (codepoint < 0x0080) {
+        this->unescaped.Append((char)codepoint, 1);
+      } else if (codepoint < 0x0800) {
+        this->unescaped.Append((char)(codepoint >> 6) | 0xC0, 1);
+        this->unescaped.Append((char)(codepoint & 0x3F) | 0x80, 1);
+      } else if (codepoint < 0x10000) {
+        this->unescaped.Append((char)(codepoint >> 12) | 0xE0, 1);
+        this->unescaped.Append((char)((codepoint >> 6) & 0x3F) | 0x80, 1);
+        this->unescaped.Append((char)(codepoint & 0x3F) | 0x80, 1);
+      } else {
+        this->unescaped.Append((char)(codepoint >> 18) | 0xF0, 1);
+        this->unescaped.Append((char)((codepoint >> 12) & 0x3F) | 0x80, 1);
+        this->unescaped.Append((char)((codepoint >> 6) & 0x3F) | 0x80, 1);
+        this->unescaped.Append((char)(codepoint & 0x3F) | 0x80, 1);
+      }
     } else {
       this->state2++;
     }
+    return B_OK;
   }
   return B_ILLEGAL_DATA;
 }
