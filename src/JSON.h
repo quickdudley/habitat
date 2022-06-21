@@ -10,6 +10,7 @@ namespace JSON {
 typedef long double number;
 
 BString escapeString(BString src);
+BString stringifyNumber(number value);
 
 class NodeSink {
 public:

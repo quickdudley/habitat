@@ -34,6 +34,64 @@ BString escapeString(BString src) {
   return result;
 }
 
+BString stringifyNumber(number value) {
+  BString raw;
+  number av = std::abs(value);
+  if (std::isnan(value) || std::isinf(value)) {
+    raw = "null";
+  } else {
+    if (value < 0) {
+      raw << '-';
+    }
+    long long n = std::max(1LL, (long long)std::floor(std::log10(av)));
+    long long k = 1;
+    while (av * std::pow(10.0L, (number)k) !=
+           std::floor(av * std::pow(10.0L, (number)k))) {
+      k++;
+    }
+    long long s = av * std::pow(10.0l, (number)(k - n));
+    if (k <= n && n <= 21) {
+      raw << s;
+      raw.Append('0', (int32)(n - k));
+    } else if (0 < n && n <= 21) {
+      BString digits;
+      digits << s;
+      BString half;
+      digits.CopyInto(half, 0, n);
+      raw << half << '.';
+      digits.CopyInto(half, n, k - n);
+      raw << half;
+    } else if (-6 < n && n <= 0) {
+      raw << "0.";
+      raw.Append('0', -n);
+      raw << s;
+    } else if (k == 1) {
+      raw << s << 'e';
+      long long e = n - 1;
+      if (e < 0) {
+        raw << '-';
+      } else {
+        raw << '+';
+      }
+      raw << std::abs(e);
+    } else {
+      BString digits;
+      digits << s;
+      raw << digits[0] << '.';
+      raw << digits.String() + 1;
+      raw << 'e';
+      long long e = n - 1;
+      if (e < 0) {
+        raw << '-';
+      } else {
+        raw << '+';
+      }
+      raw << std::abs(e);
+    }
+  }
+  return raw;
+}
+
 NodeSink::~NodeSink() {}
 
 void IgnoreNode::addNumber(BString rawname, BString name, BString raw,
@@ -260,61 +318,7 @@ void RootSink::addNumber(BString rawname, BString name, BString raw,
 }
 
 void RootSink::addNumber(BString name, number value) {
-  number av = std::abs(value);
-  BString raw;
-  if (std::isnan(value) || std::isinf(value)) {
-    raw = "null";
-  } else {
-    if (value < 0) {
-      raw << '-';
-    }
-    long long n = std::max(1LL, (long long)std::floor(std::log10(av)));
-    long long k = 1;
-    while (av * std::pow(10.0L, (number)k) !=
-           std::floor(av * std::pow(10.0L, (number)k))) {
-      k++;
-    }
-    long long s = av * std::pow(10.0l, (number)(k - n));
-    if (k <= n && n <= 21) {
-      raw << s;
-      raw.Append('0', (int32)(n - k));
-    } else if (0 < n && n <= 21) {
-      BString digits;
-      digits << s;
-      BString half;
-      digits.CopyInto(half, 0, n);
-      raw << half << '.';
-      digits.CopyInto(half, n, k - n);
-      raw << half;
-    } else if (-6 < n && n <= 0) {
-      raw << "0.";
-      raw.Append('0', -n);
-      raw << s;
-    } else if (k == 1) {
-      raw << s << 'e';
-      long long e = n - 1;
-      if (e < 0) {
-        raw << '-';
-      } else {
-        raw << '+';
-      }
-      raw << std::abs(e);
-    } else {
-      BString digits;
-      digits << s;
-      raw << digits[0] << '.';
-      raw << digits.String() + 1;
-      raw << 'e';
-      long long e = n - 1;
-      if (e < 0) {
-        raw << '-';
-      } else {
-        raw << '+';
-      }
-      raw << std::abs(e);
-    }
-  }
-  this->addNumber(escapeString(name), name, raw, value);
+  this->addNumber(escapeString(name), name, stringifyNumber(value), value);
 }
 
 void RootSink::addBool(BString rawname, BString name, bool value) {
