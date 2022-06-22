@@ -2,9 +2,12 @@
 #include "Main.h"
 #include <Catalog.h>
 #include <FindDirectory.h>
+#include <LocaleRoster.h>
 #include <PropertyInfo.h>
+#include <TimeZone.h>
 #include <iostream>
 #include <sodium.h>
+#include <string>
 
 #define B_TRANSLATION_CONTEXT "MainWindow"
 
@@ -38,7 +41,13 @@ static property_info habitatProperties[] = {
 Habitat::Habitat(void)
     :
     BApplication("application/x-vnd.habitat") {
-
+  {
+    BTimeZone defaultTimeZone;
+    BLocaleRoster::Default()->GetDefaultTimeZone(&defaultTimeZone);
+    this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(
+        U_ICU_NAMESPACE::TimeZone::createTimeZone(
+            defaultTimeZone.ID().String()));
+  }
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
   BPath settings_path;
@@ -92,11 +101,20 @@ void Habitat::MessageReceived(BMessage *msg) {
     if (msg->what == B_SET_PROPERTY) {
       BString tz;
       if (msg->FindString("data", &tz) == B_OK) {
-        // TODO
-        error = B_OK;
+        U_ICU_NAMESPACE::TimeZone *utz =
+            U_ICU_NAMESPACE::TimeZone::createTimeZone(
+                U_ICU_NAMESPACE::UnicodeString::fromUTF8(tz.String()));
+        if (utz) {
+          this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(utz);
+          error = B_OK;
+        }
       }
     } else if (msg->what == B_GET_PROPERTY) {
-      reply.AddString("result", "Pacific/Auckland");
+      U_ICU_NAMESPACE::UnicodeString tzid;
+      this->tz->getID(tzid);
+      std::string tzidb;
+      tzid.toUTF8String(tzidb);
+      reply.AddString("result", tzidb.c_str());
       error = B_OK;
     }
     break;

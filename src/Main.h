@@ -24,7 +24,7 @@ public:
 private:
   MainWindow *mainWindow;
   std::unique_ptr<BDirectory> settings;
-  U_ICU_NAMESPACE::TimeZone *tz;
+  std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
 };
 
 #endif
