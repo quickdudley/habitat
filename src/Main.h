@@ -6,6 +6,7 @@
 #include <Path.h>
 #include <Window.h>
 #include <memory>
+#include <unicode/timezone.h>
 
 class MainWindow : public BWindow {
 public:
@@ -15,10 +16,15 @@ public:
 class Habitat : public BApplication {
 public:
   Habitat(void);
+  status_t GetSupportedSuites(BMessage *data);
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property);
+  void MessageReceived(BMessage *msg);
 
 private:
   MainWindow *mainWindow;
   std::unique_ptr<BDirectory> settings;
+  U_ICU_NAMESPACE::TimeZone *tz;
 };
 
 #endif

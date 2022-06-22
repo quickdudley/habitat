@@ -5,14 +5,9 @@ A Secure Scuttlebutt client for Haiku.
 ## Installing Dependencies
 
 - Libsodium: `pkgman install devel:libsodium`
+- ICU: `pkgman install icu70_devel`
 
 ## Building
-
-Unfortunately pijul has dependencies which do not build on Haiku at present, so
-you will need to use another operating system to obtain the source code, etc.
-
-Once you have the source code on a BeFS volume mounted in Haiku the build
-procedure is as follows
 
 ```
 cd habitat
