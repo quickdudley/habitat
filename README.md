@@ -2,6 +2,8 @@
 
 A Secure Scuttlebutt client for Haiku.
 
+![Habitat icon](./Habitat-icon.svg)
+
 ## Installing Dependencies
 
 - Libsodium: `pkgman install devel:libsodium`
