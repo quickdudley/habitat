@@ -84,6 +84,7 @@ public:
 private:
   status_t charInString(char c, int cstate, int estate);
   status_t charInEsc(char c, int cstate, int estate);
+  status_t charInBool(const char *t, bool v, char c, int cstate, int estate);
   std::unique_ptr<RootSink> target;
   int state = 0;
   int state2 = 0;

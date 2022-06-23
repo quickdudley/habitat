@@ -429,8 +429,52 @@ status_t Parser::nextChar(char c) {
     } else if (isspace(c)) {
       return B_OK;
     }
+  } else if (this->state == 5) { // After colon in object
+    if (isspace(c)) {
+      return B_OK;
+    } else if (c == '{') {
+      this->state = 1;
+      this->target->beginObject(this->rawname, this->name);
+      return B_OK;
+    } else if (c == '[') {
+      this->state = 2;
+      this->target->beginArray(this->rawname, this->name);
+      return B_OK;
+    } else if (c == '\"') {
+      this->state = 6;
+      return B_OK;
+    } else if (c == 't') {
+      this->state = 7;
+      this->state2 = 1;
+      return B_OK;
+    } else if (c == 'f') {
+      this->state = 8;
+      this->state2 = 1;
+      return B_OK;
+    }
+  } else if (this->state == 6) { // In string value
+    return this->charInString(c, 6, /* TODO: next state */ 0);
+  } else if (this->state == 7) { // "true"
+    return this->charInBool("true", true, c, 7, /* TODO: next state */ 0);
+  } else if (this->state == 8) { // "false"
+    return this->charInBool("false", false, c, 8, /* TODO: next state */ 0);
   }
   return B_ILLEGAL_DATA;
+}
+
+status_t Parser::charInBool(const char *t, bool value, char c, int cstate,
+                            int estate) {
+  if (c == t[this->state2]) {
+    this->state2++;
+    if (t[this->state2] == 0) {
+      this->target->addBool(this->rawname, this->name, value);
+      this->state = estate;
+      this->state2 = 0;
+    }
+    return B_OK;
+  } else {
+    return B_ILLEGAL_DATA;
+  }
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
