@@ -83,8 +83,10 @@ public:
 
 private:
   status_t charInString(char c, int cstate, int estate);
+  status_t charInNumber(bool neg, char c, int cstate, int estate);
   status_t charInEsc(char c, int cstate, int estate);
   status_t charInBool(const char *t, bool v, char c, int cstate, int estate);
+  status_t charInNull(char c, int cstate, int estate);
   std::unique_ptr<RootSink> target;
   int state = 0;
   int state2 = 0;
@@ -95,6 +97,7 @@ private:
   BString rawname;
   BString name;
   std::vector<int> stack;
+  long long n = 0, k = 0, s = 0;
 };
 
 } // namespace JSON

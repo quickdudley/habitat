@@ -399,10 +399,12 @@ status_t Parser::nextChar(char c) {
   if (this->state == 0) { // Beginning of document
     if (c == '{') {
       this->state = 1;
+      this->stack.push_back(12);
       this->target->beginObject(BString());
       return B_OK;
     } else if (c == '[') {
       this->state = 2;
+      this->stack.push_back(13);
       this->target->beginArray(BString());
       return B_OK;
     }
@@ -415,7 +417,6 @@ status_t Parser::nextChar(char c) {
     } else if (isspace(c)) {
       return B_OK;
     }
-  } else if (this->state == 2) { // Array before entry/end
   } else if (this->state == 3) { // In object key
     return this->charInString(c, 3, 4);
   } else if (this->state == 4) { // Before colon in object
@@ -429,15 +430,17 @@ status_t Parser::nextChar(char c) {
     } else if (isspace(c)) {
       return B_OK;
     }
-  } else if (this->state == 5) { // After colon in object
+  } else if (this->state == 2 || this->state == 5) { // Before value
     if (isspace(c)) {
       return B_OK;
     } else if (c == '{') {
       this->state = 1;
+      this->stack.push_back(12);
       this->target->beginObject(this->rawname, this->name);
       return B_OK;
     } else if (c == '[') {
       this->state = 2;
+      this->stack.push_back(13);
       this->target->beginArray(this->rawname, this->name);
       return B_OK;
     } else if (c == '\"') {
@@ -451,13 +454,78 @@ status_t Parser::nextChar(char c) {
       this->state = 8;
       this->state2 = 1;
       return B_OK;
+    } else if (c == 'n') {
+      this->state = 9;
+      this->state2 = 1;
+      return B_OK;
+    } else if (c >= '0' && c <= '9') {
+      this->state = 10;
+      this->s = c - '0';
+      this->n = 1;
+      this->k = 1;
+      this->state2 = 0;
+      return B_OK;
+    } else if (c == '-') {
+      this->state = 11;
+      this->s = 0;
+      this->n = 0;
+      this->k = 0;
+      this->state2 = 0;
+      return B_OK;
     }
   } else if (this->state == 6) { // In string value
-    return this->charInString(c, 6, /* TODO: next state */ 0);
+    status_t err = this->charInString(c, 6, this->stack.back());
+    if (err == B_OK && this->state != 6) {
+      this->target->addString(this->rawname, this->name, this->token,
+                              this->unescaped);
+      this->rawname = BString();
+      this->name = BString();
+      this->token = BString();
+      this->unescaped = BString();
+    }
+    return err;
   } else if (this->state == 7) { // "true"
-    return this->charInBool("true", true, c, 7, /* TODO: next state */ 0);
+    return this->charInBool("true", true, c, 7, this->stack.back());
   } else if (this->state == 8) { // "false"
-    return this->charInBool("false", false, c, 8, /* TODO: next state */ 0);
+    return this->charInBool("false", false, c, 8, this->stack.back());
+  } else if (this->state == 9) { // "null"
+    return this->charInNull(c, 9, this->stack.back());
+  } else if (this->state == 10) { // number
+  } else if (this->state == 11) { // negative number
+  } else if (this->state == 12) { // Object before comma or end
+    if (c == ',') {
+      this->state = 1;
+      return B_OK;
+    } else if (c == '}') {
+      this->stack.pop_back();
+      if (this->stack.empty()) {
+        this->state = 14;
+      } else {
+        this->state = this->stack.back();
+      }
+      return B_OK;
+    } else if (isspace(c)) {
+      return B_OK;
+    }
+  } else if (this->state == 13) { // Array before comma or end
+    if (c == ',') {
+      this->state = 2;
+      return B_OK;
+    } else if (c == ']') {
+      this->stack.pop_back();
+      if (this->stack.empty()) {
+        this->state = 14;
+      } else {
+        this->state = this->stack.back();
+      }
+      return B_OK;
+    } else if (isspace(c)) {
+      return B_OK;
+    }
+  } else if (this->state == 14) { // After end of root object
+    if (isspace(c)) {
+      return B_OK;
+    }
   }
   return B_ILLEGAL_DATA;
 }
@@ -467,14 +535,37 @@ status_t Parser::charInBool(const char *t, bool value, char c, int cstate,
   if (c == t[this->state2]) {
     this->state2++;
     if (t[this->state2] == 0) {
-      this->target->addBool(this->rawname, this->name, value);
       this->state = estate;
       this->state2 = 0;
+      this->rawname = BString();
+      this->name = BString();
+      this->target->addBool(this->rawname, this->name, value);
     }
     return B_OK;
   } else {
     return B_ILLEGAL_DATA;
   }
+}
+
+status_t Parser::charInNull(char c, int cstate, int estate) {
+  if (c == "null"[this->state2]) {
+    if (this->state2 >= 3) {
+      this->state = estate;
+      this->state2 = 0;
+      this->rawname = BString();
+      this->name = BString();
+      this->target->addNull(this->rawname, this->name);
+    } else {
+      this->state2++;
+    }
+    return B_OK;
+  } else {
+    return B_ILLEGAL_DATA;
+  }
+}
+
+status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
+  return B_ILLEGAL_DATA;
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
