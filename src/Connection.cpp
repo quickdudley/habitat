@@ -17,6 +17,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
                      unsigned char srvkey[32]) {
   this->inner = std::move(inner);
   memcpy(this->peerkey, netkey, 32);
+  // Section 1: Client Hello
   unsigned char e_pubkey[32];
   unsigned char e_seckey[32];
   if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
@@ -32,6 +33,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
     memcpy(buf + 32, e_pubkey, 32);
     if (this->inner->WriteExactly(buf, 64, NULL) != B_OK)
       throw HANDSHAKE_HANGUP;
+    // Section 2: Server hello
     if (this->inner->ReadExactly(buf, 64, NULL) != B_OK)
       throw HANDSHAKE_HANGUP;
     if (crypto_auth_verify(buf, buf + 32, 32, netkey) != 0)
@@ -49,6 +51,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
     if (crypto_scalarmult(secret2, e_seckey, remote_curve) < 0)
       throw SECRET_FAILED;
   }
+  // Section 3: Client authenticate
   unsigned char detached_signature_a[32];
   {
     unsigned char sgnmsg[64 + crypto_hash_sha256_BYTES];
@@ -88,6 +91,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
     if (crypto_scalarmult(secret3, curvified, server_e_key) != 0)
       throw SECRET_FAILED;
   }
+  // Section 4: Server Accept
   {
     unsigned char secretbox[80];
     if (this->inner->ReadExactly(secretbox, 80, NULL) != B_OK)
@@ -123,17 +127,52 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
                                     srvkey) != 0)
       throw SECRET_FAILED;
   }
-  {
-    unsigned char sig[32];
-    if (crypto_auth(sig, server_e_key, 32, netkey) != 0)
-      throw SECRET_FAILED;
-  }
 }
 
 // Server side of handshake (will receive client public key)
 BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
-                     unsigned char privkey[32], unsigned char seckey[32]) {
+                     unsigned char seckey[32], unsigned char pubkey[32]) {
   this->inner = std::move(inner);
+  unsigned char client_e_key[32];
+  // Section 1: Client hello
+  {
+    unsigned char buf[64];
+    if (this->inner->ReadExactly(buf, 64, NULL) != B_OK)
+      throw HANDSHAKE_HANGUP;
+    if (crypto_auth_verify(buf + 32, buf, 32, netkey) != 0)
+      throw WRONG_NETKEY;
+    memcpy(client_e_key, buf + 32, 32);
+  }
+  // Section 2: Server hello
+  unsigned char e_pubkey[32];
+  unsigned char e_seckey[32];
+  if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
+    throw KEYGEN_FAIL;
+  {
+    unsigned char buf[64];
+    memcpy(buf + 32, e_pubkey, 32);
+    if (crypto_auth(buf, e_pubkey, 32, netkey) != 0)
+      throw HMAC_FAIL;
+    if (this->inner->WriteExactly(buf, 64, NULL) != B_OK)
+      throw HANDSHAKE_HANGUP;
+  }
+  unsigned char secret1[32]; // Shared secret ab
+  unsigned char secret2[32]; // Shared secret aB
+  {
+    if (crypto_scalarmult(secret1, e_seckey, client_e_key) < 0)
+      throw SECRET_FAILED;
+    unsigned char remote_curve[32];
+    if (crypto_sign_ed25519_sk_to_curve25519(remote_curve, seckey) < 0)
+      throw SECRET_FAILED;
+    if (crypto_scalarmult(secret2, remote_curve, client_e_key) < 0)
+      throw SECRET_FAILED;
+  }
+  // Section 3: Client authenticate
+  {
+    unsigned char buf[112];
+    if (this->inner->ReadExactly(buf, 112, NULL) != B_OK)
+      throw HANDSHAKE_HANGUP;
+  }
 }
 
 static void nonce_inc(unsigned char *nonce) {
