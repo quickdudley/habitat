@@ -97,7 +97,7 @@ private:
   BString rawname;
   BString name;
   std::vector<int> stack;
-  long long n = 0, k = 0, s = 0;
+  long long n = 0, k = 0, s = 0, e = 0, z = 0;
 };
 
 } // namespace JSON

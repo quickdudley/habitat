@@ -490,8 +490,9 @@ status_t Parser::nextChar(char c) {
     return this->charInBool("false", false, c, 8, this->stack.back());
   } else if (this->state == 9) { // "null"
     return this->charInNull(c, 9, this->stack.back());
-  } else if (this->state == 10) { // number
-  } else if (this->state == 11) { // negative number
+  } else if (this->state == 10 || this->state == 11) { // number
+    return this->charInNumber(this->state == 11, c, this->state,
+                              this->stack.back());
   } else if (this->state == 12) { // Object before comma or end
     if (c == ',') {
       this->state = 1;
@@ -565,7 +566,74 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
 }
 
 status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
-  return B_ILLEGAL_DATA;
+  this->token.Append(c, 1);
+  if (c == 0) {
+    if (this->state2 <= 1) {
+      this->z++;
+    } else {
+      this->e *= 10;
+      if (this->state2 == 2) {
+        this->state2 = 3;
+      }
+    }
+    return B_OK;
+  } else if (c >= '1' && c <= '9') {
+    if (this->state2 <= 1) {
+      this->s *= 10 ^ (this->z + 1);
+      this->s += c - '0';
+      if (this->state2 == 1) {
+        this->k += this->z + 1;
+      }
+      this->n += this->z + 1;
+      this->z = 0;
+    } else {
+      this->e = this->e * 10 + (c - '0');
+      if (this->state2 == 2) {
+        this->state2 = 3;
+      }
+    }
+    return B_OK;
+  } else if (c == '.') {
+    if (this->state2 == 0) {
+      this->s *= 10 ^ this->z;
+      this->n += this->z;
+      this->z = 0;
+      this->state = 1;
+      return B_OK;
+    } else {
+      return B_ILLEGAL_DATA;
+    }
+  } else if (c == 'e' || c == 'E') {
+    if (this->state2 <= 1) {
+      this->state2 = 2;
+      return B_OK;
+    } else {
+      return B_ILLEGAL_DATA;
+    }
+  } else if (c == '+' && this->state2 == 2) {
+    this->state2 = 3;
+    return B_OK;
+  } else if (c == '-' && this->state2 == 2) {
+    this->state2 = 4;
+    return B_OK;
+  } else {
+    this->state = estate;
+    number p10 = n - k + (this->state2 == 4 ? e : -e);
+    this->token.Truncate(this->token.Length() - 1);
+    this->target->addNumber(this->rawname, this->name, this->token,
+                            s * std::pow(10, p10));
+    this->rawname = "";
+    this->name = "";
+    this->token = "";
+    this->n = 0;
+    this->k = 0;
+    this->s = 0;
+    this->e = 0;
+    this->z = 0;
+    this->state2 = 0;
+    this->state = estate;
+    return this->nextChar(c);
+  }
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
