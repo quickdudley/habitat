@@ -27,4 +27,8 @@ private:
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
 };
 
+#ifndef MAIN_CPP
+extern Habitat *app;
+#endif
+
 #endif

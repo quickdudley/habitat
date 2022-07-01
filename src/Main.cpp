@@ -1,5 +1,6 @@
 #define MAIN_CPP
 #include "Main.h"
+#include "Secret.h"
 #include <Catalog.h>
 #include <FindDirectory.h>
 #include <LocaleRoster.h>
@@ -16,8 +17,17 @@ Habitat *app;
 int main(int argc, const char **args) {
   int exit_status = 0;
   if (sodium_init() == -1) {
-    std::cerr << B_TRANSLATE("Failed to initialize libsodium") << '\n';
+    std::cerr << B_TRANSLATE("Failed to initialize libsodium") << std::endl;
     return -1;
+  }
+  Ed25519Secret secret;
+  secret.generate();
+  {
+    BString secretJson;
+    JSON::RootSink sink(std::unique_ptr<JSON::NodeSink>(
+        new JSON::SerializerStart(&secretJson)));
+    secret.write(&sink);
+    std::cout << secretJson.String() << std::endl;
   }
   try {
     app = new Habitat();

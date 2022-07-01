@@ -47,8 +47,8 @@ static inline char encode1(unsigned char byte, Variant variant) {
   }
 }
 
-std::unique_ptr<char> encode(size_t *outlen, unsigned char *raw, size_t inlen,
-                             Variant variant) {
+std::unique_ptr<char> encode(size_t *outlen, const unsigned char *raw,
+                             size_t inlen, Variant variant) {
   *outlen = (inlen / 3 + (inlen % 3 == 0 ? 0 : 1)) * 4;
   std::unique_ptr<char> result = std::unique_ptr<char>(new char[*outlen]);
   size_t w = 0;
@@ -80,7 +80,8 @@ std::unique_ptr<char> encode(size_t *outlen, unsigned char *raw, size_t inlen,
   return result;
 }
 
-std::unique_ptr<unsigned char> decode(size_t *outlen, char *b64, size_t inlen) {
+std::unique_ptr<unsigned char> decode(size_t *outlen, const char *b64,
+                                      size_t inlen) {
   int padding = 0;
   for (size_t i = inlen - 1; i >= 0; i--) {
     if (b64[i] == '=')
