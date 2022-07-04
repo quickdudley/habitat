@@ -28,7 +28,6 @@ BString escapeString(BString src) {
     } else {
       result << c;
     }
-    i++;
   }
   result << '\"';
   return result;
@@ -235,6 +234,7 @@ void ObjectSerializer::property(BString rawname) {
   } else {
     this->nonempty = true;
   }
+  this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
   this->target->Append(rawname);
   this->target->Append(": ");
