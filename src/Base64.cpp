@@ -47,41 +47,32 @@ static inline char encode1(unsigned char byte, Variant variant) {
   }
 }
 
-std::unique_ptr<char> encode(size_t *outlen, const unsigned char *raw,
-                             size_t inlen, Variant variant) {
-  *outlen = (inlen / 3 + (inlen % 3 == 0 ? 0 : 1)) * 4;
-  std::unique_ptr<char> result = std::unique_ptr<char>(new char[*outlen]);
-  size_t w = 0;
+BString encode(const unsigned char *raw, size_t inlen, Variant variant) {
+  size_t outlen = (inlen / 3 + (inlen % 3 == 0 ? 0 : 1)) * 4;
+  BString result;
   unsigned char partial = 0;
   for (size_t r = 0; r < inlen; r++) {
     unsigned char byte = raw[r];
     switch (r % 3) {
     case 0:
-      result.get()[w] = encode1(byte >> 2, variant);
-      w++;
+      result.Append(encode1(byte >> 2, variant), 1);
       partial = (byte << 4) & 0x7F;
       break;
     case 1:
-      result.get()[w] = encode1((byte >> 4) | partial, variant);
-      w++;
+      result.Append(encode1((byte >> 4) | partial, variant), 1);
       partial = (byte << 2) & 0x7F;
       break;
     case 2:
-      result.get()[w] = encode1((byte >> 6) | partial, variant);
-      w++;
-      result.get()[w] = encode1(byte & 0x7F, variant);
-      w++;
+      result.Append(encode1((byte >> 6) | partial, variant), 1);
+      result.Append(encode1(byte & 0x7F, variant), 1);
       break;
     }
   }
-  for (; w < *outlen; w++) {
-    result.get()[w] = '=';
-  }
+  result.Append('=', outlen - result.Length());
   return result;
 }
 
-std::unique_ptr<unsigned char> decode(size_t *outlen, const char *b64,
-                                      size_t inlen) {
+std::vector<unsigned char> decode(const char *b64, size_t inlen) {
   int padding = 0;
   for (size_t i = inlen - 1; i >= 0; i--) {
     if (b64[i] == '=')
@@ -89,41 +80,39 @@ std::unique_ptr<unsigned char> decode(size_t *outlen, const char *b64,
     if (isBase64(b64[i]))
       break;
   }
-  *outlen = inlen * 3 / 4 - padding;
-  size_t w = 0, trunc = 0;
-  std::unique_ptr<unsigned char> result =
-      std::unique_ptr<unsigned char>(new unsigned char[*outlen]);
-  for (size_t r = 0; r < inlen && w < *outlen; r++) {
+  size_t outlen = inlen * 3 / 4 - padding;
+  std::vector<unsigned char> result;
+  result.reserve(outlen);
+  unsigned char partial = 0;
+  for (size_t r = 0, c = 0; r < inlen; r++) {
     try {
-      if (b64[r] == '=')
-        break;
-      unsigned char point = decode1(b64[r]);
-      switch ((r - trunc) % 4) {
-      case 0:
-        result.get()[w] |= point << 2;
-        break;
-      case 1:
-        result.get()[w] |= point >> 4;
-        w++;
-        if (w < *outlen)
-          result.get()[w] = point << 4;
-        break;
-      case 2:
-        result.get()[w] |= point >> 2;
-        w++;
-        if (w < *outlen)
-          result.get()[w] = point << 6;
-        break;
-      case 3:
-        result.get()[w] |= point;
-        w++;
+      if (b64[r] == '=') {
         break;
       }
-    } catch (Error &err) {
-      trunc++;
+      unsigned char local = decode1(b64[r]);
+      switch (c) {
+      case 0:
+        partial = local << 2;
+        break;
+      case 1:
+        partial |= local >> 4;
+        result.push_back(partial);
+        partial = local << 4;
+        break;
+      case 2:
+        partial |= local >> 2;
+        result.push_back(partial);
+        partial = local << 6;
+        break;
+      case 3:
+        partial |= local;
+        result.push_back(partial);
+        break;
+      }
+      c = (c + 1) % 4;
+    } catch (Error e) {
     }
   }
-  *outlen = (inlen - trunc) * 3 / 4 - padding;
   return result;
 }
 } // namespace base64
