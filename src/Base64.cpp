@@ -29,9 +29,9 @@ static inline char encode1(unsigned char byte, Variant variant) {
   if (byte <= 25) {
     return byte + 'A';
   } else if (byte <= 51) {
-    return byte + 'a';
+    return byte - 26 + 'a';
   } else if (byte <= 61) {
-    return byte + '0';
+    return byte - 52 + '0';
   } else if (byte == 62) {
     if (variant == STANDARD) {
       return '+';
@@ -51,22 +51,26 @@ BString encode(const unsigned char *raw, size_t inlen, Variant variant) {
   size_t outlen = (inlen / 3 + (inlen % 3 == 0 ? 0 : 1)) * 4;
   BString result;
   unsigned char partial = 0;
-  for (size_t r = 0; r < inlen; r++) {
+  size_t r;
+  for (r = 0; r < inlen; r++) {
     unsigned char byte = raw[r];
     switch (r % 3) {
     case 0:
       result.Append(encode1(byte >> 2, variant), 1);
-      partial = (byte << 4) & 0x7F;
+      partial = (byte << 4) & 0x3F;
       break;
     case 1:
       result.Append(encode1((byte >> 4) | partial, variant), 1);
-      partial = (byte << 2) & 0x7F;
+      partial = (byte << 2) & 0x3F;
       break;
     case 2:
       result.Append(encode1((byte >> 6) | partial, variant), 1);
-      result.Append(encode1(byte & 0x7F, variant), 1);
+      result.Append(encode1(byte & 0x3f, variant), 1);
       break;
     }
+  }
+  if (r % 3 != 0) {
+    result.Append(encode1(partial, variant), 1);
   }
   result.Append('=', outlen - result.Length());
   return result;
