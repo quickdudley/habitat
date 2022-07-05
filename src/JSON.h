@@ -82,7 +82,7 @@ private:
   int state = 0;
   int state2 = 0;
   int16 escape = 0;
-  int16 highsurrogate;
+  int16 highsurrogate = 0;
   BString token;
   BString unescaped;
   BString rawname;
