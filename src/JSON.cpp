@@ -93,21 +93,21 @@ BString stringifyNumber(number value) {
 
 NodeSink::~NodeSink() {}
 
-void IgnoreNode::addNumber(BString rawname, BString name, BString raw,
-                           number value) {}
+void NodeSink::addNumber(BString rawname, BString name, BString raw,
+                         number value) {}
 
-void IgnoreNode::addBool(BString rawname, BString name, bool value) {}
+void NodeSink::addBool(BString rawname, BString name, bool value) {}
 
-void IgnoreNode::addNull(BString rawname, BString name) {}
+void NodeSink::addNull(BString rawname, BString name) {}
 
-void IgnoreNode::addString(BString rawname, BString name, BString raw,
-                           BString value) {}
+void NodeSink::addString(BString rawname, BString name, BString raw,
+                         BString value) {}
 
-std::unique_ptr<NodeSink> IgnoreNode::addObject(BString rawname, BString name) {
+std::unique_ptr<NodeSink> NodeSink::addObject(BString rawname, BString name) {
   return std::unique_ptr<NodeSink>(new IgnoreNode);
 }
 
-std::unique_ptr<NodeSink> IgnoreNode::addArray(BString rawname, BString name) {
+std::unique_ptr<NodeSink> NodeSink::addArray(BString rawname, BString name) {
   return std::unique_ptr<NodeSink>(new IgnoreNode);
 }
 

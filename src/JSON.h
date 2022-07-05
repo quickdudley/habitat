@@ -16,25 +16,16 @@ class NodeSink {
 public:
   virtual ~NodeSink();
   virtual void addNumber(BString rawname, BString name, BString raw,
-                         number value) = 0;
-  virtual void addBool(BString rawname, BString name, bool value) = 0;
-  virtual void addNull(BString rawname, BString name) = 0;
+                         number value);
+  virtual void addBool(BString rawname, BString name, bool value);
+  virtual void addNull(BString rawname, BString name);
   virtual void addString(BString rawname, BString name, BString raw,
-                         BString value) = 0;
-  virtual std::unique_ptr<NodeSink> addObject(BString rawname,
-                                              BString name) = 0;
-  virtual std::unique_ptr<NodeSink> addArray(BString rawname, BString name) = 0;
+                         BString value);
+  virtual std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
+  virtual std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
 };
 
-class IgnoreNode : public NodeSink {
-public:
-  void addNumber(BString rawname, BString name, BString raw, number value);
-  void addBool(BString rawname, BString name, bool value);
-  void addNull(BString rawname, BString name);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
-  std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
-};
+typedef NodeSink IgnoreNode;
 
 class SerializerStart : public NodeSink {
 public:
