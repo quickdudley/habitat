@@ -1,4 +1,3 @@
-#define MAIN_CPP
 #include "Main.h"
 #include "Secret.h"
 #include <Catalog.h>

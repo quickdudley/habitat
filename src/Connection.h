@@ -5,9 +5,7 @@
 #include <memory>
 #include <sodium.h>
 
-#ifndef CONNECTION_CPP
-extern const char SSB_NETWORK_ID[32];
-#endif
+extern const unsigned char SSB_NETWORK_ID[32];
 
 enum HandshakeError {
   KEYGEN_FAIL,

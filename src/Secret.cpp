@@ -1,5 +1,3 @@
-#define SECRET_CPP
-
 #include "Secret.h"
 #include "Base64.h"
 

@@ -1,4 +1,3 @@
-#define BASE64_CPP
 #include "Base64.h"
 
 namespace base64 {

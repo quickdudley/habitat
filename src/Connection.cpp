@@ -1,4 +1,3 @@
-#define CONNECTION_CPP
 #include "Connection.h"
 #include <Errors.h>
 #include <algorithm>
