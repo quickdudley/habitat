@@ -22,6 +22,16 @@ void Ed25519Secret::write(JSON::RootSink *target) {
   target->closeNode();
 }
 
+BString Ed25519Secret::getCypherkey() {
+  BString result("@");
+  result.Append(base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES,
+                               base64::STANDARD));
+  result.Append(".ed25519");
+  return result;
+}
+
+namespace JSON {
+
 SecretNode::SecretNode(Ed25519Secret *target)
     :
     target(target) {}
@@ -42,8 +52,13 @@ void SecretNode::addString(BString rawname, BString name, BString raw,
   return;
 interesting:
   BString b64(value);
-  value.RemoveLast(".ed25519");
+  b64.RemoveLast(".ed25519");
   std::vector<unsigned char> decoded =
       base64::decode(b64.String(), b64.Length());
   memcpy(target, &decoded[0], std::min(decoded.size(), size));
 }
+
+std::unique_ptr<NodeSink> SecretNode::addObject(BString rawname, BString name) {
+  return std::unique_ptr<NodeSink>(new SecretNode(this->target));
+}
+} // namespace JSON

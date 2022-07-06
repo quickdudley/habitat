@@ -36,6 +36,12 @@ static property_info habitatProperties[] = {
      "The time zone used for date and time operations",
      0,
      {B_STRING_TYPE}},
+    {"Cypherkey",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "The SSB identifier for this copy of Habitat",
+     0,
+     {B_STRING_TYPE}},
     {0}};
 
 Habitat::Habitat(void)
@@ -77,7 +83,7 @@ Habitat::Habitat(void)
       BFile secretFile(&secret, B_READ_ONLY);
       char buffer[1024];
       JSON::Parser parser(
-          std::unique_ptr<JSON::NodeSink>(new SecretNode(&this->myId)));
+          std::unique_ptr<JSON::NodeSink>(new JSON::SecretNode(&this->myId)));
       ssize_t readBytes;
       while (readBytes = secretFile.Read(buffer, 1024), readBytes > 0) {
         for (ssize_t i = 0; i < readBytes; i++) {
@@ -155,6 +161,10 @@ void Habitat::MessageReceived(BMessage *msg) {
       reply.AddString("result", tzidb.c_str());
       error = B_OK;
     }
+    break;
+  case 1: // Cypherkey
+    reply.AddString("result", this->myId.getCypherkey());
+    error = B_OK;
     break;
   default:
     return BApplication::MessageReceived(msg);
