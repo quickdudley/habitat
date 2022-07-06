@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "Secret.h"
 #include <Application.h>
 #include <Directory.h>
 #include <Path.h>
@@ -25,6 +26,7 @@ private:
   MainWindow *mainWindow;
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
+  Ed25519Secret myId;
 };
 
 extern Habitat *app;

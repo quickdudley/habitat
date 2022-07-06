@@ -1,6 +1,6 @@
 #include "Main.h"
-#include "Secret.h"
 #include <Catalog.h>
+#include <File.h>
 #include <FindDirectory.h>
 #include <LocaleRoster.h>
 #include <PropertyInfo.h>
@@ -18,15 +18,6 @@ int main(int argc, const char **args) {
   if (sodium_init() == -1) {
     std::cerr << B_TRANSLATE("Failed to initialize libsodium") << std::endl;
     return -1;
-  }
-  Ed25519Secret secret;
-  secret.generate();
-  {
-    BString secretJson;
-    JSON::RootSink sink(std::unique_ptr<JSON::NodeSink>(
-        new JSON::SerializerStart(&secretJson)));
-    secret.write(&sink);
-    std::cout << secretJson.String() << std::endl;
   }
   try {
     app = new Habitat();
@@ -50,6 +41,7 @@ static property_info habitatProperties[] = {
 Habitat::Habitat(void)
     :
     BApplication("application/x-vnd.habitat") {
+  // Set timezone
   {
     BTimeZone defaultTimeZone;
     BLocaleRoster::Default()->GetDefaultTimeZone(&defaultTimeZone);
@@ -57,24 +49,61 @@ Habitat::Habitat(void)
         U_ICU_NAMESPACE::TimeZone::createTimeZone(
             defaultTimeZone.ID().String()));
   }
+
+  {
+    // Create settings directory
+    BPath settings_path;
+    find_directory(B_USER_SETTINGS_DIRECTORY, &settings_path, true);
+    BDirectory settings_parent = BDirectory(settings_path.Path());
+    BDirectory settings;
+    status_t status = settings_parent.CreateDirectory("Habitat", &settings);
+    if (status == B_FILE_EXISTS) {
+      BEntry entry;
+      status = settings_parent.FindEntry("Habitat", &entry, true);
+      if (status != B_OK)
+        throw status;
+      this->settings = std::unique_ptr<BDirectory>(new BDirectory(&entry));
+    } else if (status == B_OK) {
+      this->settings = std::unique_ptr<BDirectory>(new BDirectory(settings));
+    } else {
+      throw status;
+    }
+    // Load secret if it exists
+    BEntry secret;
+    status = this->settings->FindEntry("secret", &secret, true);
+    if (status == B_OK) {
+      BPath path;
+      secret.GetPath(&path);
+      BFile secretFile(&secret, B_READ_ONLY);
+      char buffer[1024];
+      JSON::Parser parser(
+          std::unique_ptr<JSON::NodeSink>(new SecretNode(&this->myId)));
+      ssize_t readBytes;
+      while (readBytes = secretFile.Read(buffer, 1024), readBytes > 0) {
+        for (ssize_t i = 0; i < readBytes; i++) {
+          parser.nextChar(buffer[i]);
+        }
+      }
+    } else if (B_ENTRY_NOT_FOUND) {
+      // Generate new secret
+      BFile secretFile;
+      status = this->settings->CreateFile("secret", &secretFile, true);
+      if (status != B_OK)
+        throw status;
+      this->myId.generate();
+      BString secretJson;
+      JSON::RootSink sink(std::unique_ptr<JSON::NodeSink>(
+          new JSON::SerializerStart(&secretJson)));
+      this->myId.write(&sink);
+      secretFile.WriteExactly(secretJson.String(), secretJson.Length(), NULL);
+      secretFile.Sync();
+    } else {
+      throw status;
+    }
+  }
+  // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
-  BPath settings_path;
-  find_directory(B_USER_SETTINGS_DIRECTORY, &settings_path, true);
-  BDirectory settings_parent = BDirectory(settings_path.Path());
-  BDirectory settings;
-  status_t status = settings_parent.CreateDirectory("Habitat", &settings);
-  if (status == B_FILE_EXISTS) {
-    BEntry entry;
-    status = settings_parent.FindEntry("Habitat", &entry, false);
-    if (status != B_OK)
-      throw status;
-    this->settings = std::unique_ptr<BDirectory>(new BDirectory(&entry));
-  } else if (status == B_OK) {
-    this->settings = std::unique_ptr<BDirectory>(new BDirectory(settings));
-  } else {
-    throw status;
-  }
 }
 
 status_t Habitat::GetSupportedSuites(BMessage *data) {
