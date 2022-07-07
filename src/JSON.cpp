@@ -449,6 +449,8 @@ status_t Parser::nextChar(char c) {
       return B_OK;
     } else if (c == '\"') {
       this->state = 6;
+      this->state2 = 0;
+      this->token = BString("\"");
       return B_OK;
     } else if (c == 't') {
       this->state = 7;
@@ -464,15 +466,16 @@ status_t Parser::nextChar(char c) {
       return B_OK;
     } else if (c >= '0' && c <= '9') {
       this->state = 10;
+      this->token = BString();
+      this->token.Append(c, 1);
       this->s = c - '0';
-      this->n = 1;
-      this->k = 1;
+      this->k = 0;
       this->state2 = 0;
       return B_OK;
     } else if (c == '-') {
       this->state = 11;
+      this->token = BString("-");
       this->s = 0;
-      this->n = 0;
       this->k = 0;
       this->state2 = 0;
       return B_OK;
@@ -542,9 +545,9 @@ status_t Parser::charInBool(const char *t, bool value, char c, int cstate,
     if (t[this->state2] == 0) {
       this->state = estate;
       this->state2 = 0;
+      this->target->addBool(this->rawname, this->name, value);
       this->rawname = BString();
       this->name = BString();
-      this->target->addBool(this->rawname, this->name, value);
     }
     return B_OK;
   } else {
@@ -557,9 +560,9 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
     if (this->state2 >= 3) {
       this->state = estate;
       this->state2 = 0;
+      this->target->addNull(this->rawname, this->name);
       this->rawname = BString();
       this->name = BString();
-      this->target->addNull(this->rawname, this->name);
     } else {
       this->state2++;
     }
@@ -569,9 +572,23 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
   }
 }
 
+template <typename T> static T raise(T base, unsigned int p) {
+  T r = 1;
+  while (true) {
+    if (p % 2 == 1) {
+      r *= base;
+    }
+    p /= 2;
+    if (p == 0) {
+      return r;
+    }
+    base *= base;
+  }
+}
+
 status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   this->token.Append(c, 1);
-  if (c == 0) {
+  if (c == '0') {
     if (this->state2 <= 1) {
       this->z++;
     } else {
@@ -583,12 +600,11 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     return B_OK;
   } else if (c >= '1' && c <= '9') {
     if (this->state2 <= 1) {
-      this->s *= 10 ^ (this->z + 1);
+      this->s *= raise(10, (this->z + 1));
       this->s += c - '0';
       if (this->state2 == 1) {
         this->k += this->z + 1;
       }
-      this->n += this->z + 1;
       this->z = 0;
     } else {
       this->e = this->e * 10 + (c - '0');
@@ -599,10 +615,7 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     return B_OK;
   } else if (c == '.') {
     if (this->state2 == 0) {
-      this->s *= 10 ^ this->z;
-      this->n += this->z;
-      this->z = 0;
-      this->state = 1;
+      this->state2 = 1;
       return B_OK;
     } else {
       return B_ILLEGAL_DATA;
@@ -622,14 +635,13 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     return B_OK;
   } else {
     this->state = estate;
-    number p10 = n - k + (this->state2 == 4 ? e : -e);
+    number p10 = (this->state2 == 4 ? this->e : -this->e) - this->k;
     this->token.Truncate(this->token.Length() - 1);
     this->target->addNumber(this->rawname, this->name, this->token,
                             s * std::pow(10, p10));
     this->rawname = "";
     this->name = "";
     this->token = "";
-    this->n = 0;
     this->k = 0;
     this->s = 0;
     this->e = 0;
