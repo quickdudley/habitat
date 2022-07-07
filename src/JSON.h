@@ -7,7 +7,7 @@
 
 namespace JSON {
 
-typedef long double number;
+typedef double number;
 
 BString escapeString(BString src);
 BString stringifyNumber(number value);
@@ -47,7 +47,7 @@ public:
   RootSink(NodeSink *rootConsumer);
   virtual ~RootSink();
   void addNumber(BString rawname, BString name, BString raw, number value);
-  void addNumber(BString name, long double value);
+  void addNumber(BString name, number value);
   void addBool(BString rawname, BString name, bool value);
   void addBool(BString name, bool value);
   void addNull(BString rawname, BString name);

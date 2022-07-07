@@ -42,13 +42,17 @@ BString stringifyNumber(number value) {
     if (value < 0) {
       raw << '-';
     }
-    long long n = std::max(1LL, (long long)std::floor(std::log10(av)));
-    long long k = 1;
-    while (av * std::pow(10.0L, (number)k) !=
-           std::floor(av * std::pow(10.0L, (number)k))) {
+    int32 k = 0;
+    int32 n = ((int32)std::floor(std::log10(av))) + 1;
+    long long s;
+    int32 wd = std::floor(std::log10(av));
+    do {
       k++;
-    }
-    long long s = av * std::pow(10.0l, (number)(k - n));
+      s = std::round(av / std::pow((number)10, (number)(n - k)));
+      if (k > 40) {
+        *((int *)0) = 5;
+      }
+    } while ((number)s * std::pow((number)10, (number)(n - k)) != av);
     if (k <= n && n <= 21) {
       raw << s;
       raw.Append('0', (int32)(n - k));
