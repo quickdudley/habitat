@@ -1,6 +1,7 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
+#include "Secret.h"
 #include <DataIO.h>
 #include <memory>
 #include <sodium.h>
@@ -19,11 +20,10 @@ class BoxStream : public BDataIO {
 public:
   // Client side of handshake (server public key known)
   BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
-            unsigned char privkey[32], unsigned char seckey[32],
-            unsigned char srvkey[32]);
+            Ed25519Secret *myId, unsigned char srvkey[32]);
   // Server side of handshake (will receive client public key)
   BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
-            unsigned char seckey[32], unsigned char pubkey[32]);
+            Ed25519Secret *myId);
   ssize_t Write(const void *buffer, size_t size);
   ssize_t Read(void *buffer, size_t size);
   status_t Flush();
