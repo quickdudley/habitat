@@ -268,6 +268,15 @@ static void nonce_inc(unsigned char *nonce) {
   }
 }
 
+BoxStream::~BoxStream() {
+  unsigned char header[crypto_secretbox_MACBYTES + 18];
+  memset(header + crypto_secretbox_MACBYTES, 0, 18);
+  nonce_inc(this->sendnonce);
+  if (crypto_secretbox_easy(header, header + crypto_secretbox_MACBYTES, 18,
+                            this->sendnonce, this->sendkey) == 0)
+    this->inner->WriteExactly(header, crypto_secretbox_MACBYTES + 18, NULL);
+}
+
 ssize_t BoxStream::Write(const void *buffer, size_t size) {
   if (size > 4096) {
     size = 4096;

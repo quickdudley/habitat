@@ -24,6 +24,8 @@ public:
   // Server side of handshake (will receive client public key)
   BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
             Ed25519Secret *myId);
+  // Goodbye
+  ~BoxStream();
   ssize_t Write(const void *buffer, size_t size);
   ssize_t Read(void *buffer, size_t size);
   status_t Flush();
