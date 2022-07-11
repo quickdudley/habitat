@@ -9,20 +9,20 @@ namespace JSON {
 
 typedef double number;
 
-BString escapeString(BString src);
+BString escapeString(BString &src);
 BString stringifyNumber(number value);
 
 class NodeSink {
 public:
   virtual ~NodeSink();
-  virtual void addNumber(BString rawname, BString name, BString raw,
+  virtual void addNumber(BString &rawname, BString &name, BString &raw,
                          number value);
-  virtual void addBool(BString rawname, BString name, bool value);
-  virtual void addNull(BString rawname, BString name);
-  virtual void addString(BString rawname, BString name, BString raw,
-                         BString value);
-  virtual std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
-  virtual std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
+  virtual void addBool(BString &rawname, BString &name, bool value);
+  virtual void addNull(BString &rawname, BString &name);
+  virtual void addString(BString &rawname, BString &name, BString &raw,
+                         BString &value);
+  virtual std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  virtual std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
 };
 
 typedef NodeSink IgnoreNode;
@@ -30,12 +30,12 @@ typedef NodeSink IgnoreNode;
 class SerializerStart : public NodeSink {
 public:
   SerializerStart(BString *target);
-  void addNumber(BString rawname, BString name, BString raw, number value);
-  void addBool(BString rawname, BString name, bool value);
-  void addNull(BString rawname, BString name);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
-  std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
 
 private:
   BString *target;
@@ -46,18 +46,18 @@ public:
   RootSink(std::unique_ptr<NodeSink> rootConsumer);
   RootSink(NodeSink *rootConsumer);
   virtual ~RootSink();
-  void addNumber(BString rawname, BString name, BString raw, number value);
-  void addNumber(BString name, number value);
-  void addBool(BString rawname, BString name, bool value);
-  void addBool(BString name, bool value);
-  void addNull(BString rawname, BString name);
-  void addNull(BString name);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  void addString(BString name, BString value);
-  void beginObject(BString rawname, BString name);
-  void beginObject(BString name);
-  void beginArray(BString rawname, BString name);
-  void beginArray(BString name);
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addNumber(BString &name, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addBool(BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addNull(BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  void addString(BString &name, BString &value);
+  void beginObject(BString &rawname, BString &name);
+  void beginObject(BString &name);
+  void beginArray(BString &rawname, BString &name);
+  void beginArray(BString &name);
   void closeNode();
 
 private:

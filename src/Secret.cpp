@@ -6,19 +6,26 @@ int Ed25519Secret::generate() {
 }
 
 void Ed25519Secret::write(JSON::RootSink *target) {
-  target->beginObject(BString());
-  target->addString(BString("curve"), BString("ed25519"));
+  BString key;
+  BString value;
+  target->beginObject(key);
+  key = "curve";
+  value = "ed25519";
+  target->addString(key, value);
+  key = "public";
   BString pubkey = base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES,
                                   base64::STANDARD);
   pubkey.Append(".ed25519");
-  target->addString("public", pubkey);
-  BString value = base64::encode(this->secret, crypto_sign_SECRETKEYBYTES,
-                                 base64::STANDARD);
+  target->addString(key, pubkey);
+  key = "private";
+  value = base64::encode(this->secret, crypto_sign_SECRETKEYBYTES,
+                         base64::STANDARD);
   value.Append(".ed25519");
-  target->addString("private", value);
+  target->addString(key, value);
   value.SetTo("@");
   value.Append(pubkey);
-  target->addString("id", value);
+  key = "id";
+  target->addString(key, value);
   target->closeNode();
 }
 
@@ -36,8 +43,8 @@ SecretNode::SecretNode(Ed25519Secret *target)
     :
     target(target) {}
 
-void SecretNode::addString(BString rawname, BString name, BString raw,
-                           BString value) {
+void SecretNode::addString(BString &rawname, BString &name, BString &raw,
+                           BString &value) {
   unsigned char *target;
   size_t size;
   if (name == "public") {
@@ -58,7 +65,8 @@ interesting:
   memcpy(target, &decoded[0], std::min(decoded.size(), size));
 }
 
-std::unique_ptr<NodeSink> SecretNode::addObject(BString rawname, BString name) {
+std::unique_ptr<NodeSink> SecretNode::addObject(BString &rawname,
+                                                BString &name) {
   return std::unique_ptr<NodeSink>(new SecretNode(this->target));
 }
 } // namespace JSON

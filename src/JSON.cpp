@@ -5,7 +5,7 @@
 
 namespace JSON {
 
-BString escapeString(BString src) {
+BString escapeString(BString &src) {
   BString result("\"");
   for (int i = 0; i < src.Length(); i++) {
     char c = src[i];
@@ -97,41 +97,41 @@ BString stringifyNumber(number value) {
 
 NodeSink::~NodeSink() {}
 
-void NodeSink::addNumber(BString rawname, BString name, BString raw,
+void NodeSink::addNumber(BString &rawname, BString &name, BString &raw,
                          number value) {}
 
-void NodeSink::addBool(BString rawname, BString name, bool value) {}
+void NodeSink::addBool(BString &rawname, BString &name, bool value) {}
 
-void NodeSink::addNull(BString rawname, BString name) {}
+void NodeSink::addNull(BString &rawname, BString &name) {}
 
-void NodeSink::addString(BString rawname, BString name, BString raw,
-                         BString value) {}
+void NodeSink::addString(BString &rawname, BString &name, BString &raw,
+                         BString &value) {}
 
-std::unique_ptr<NodeSink> NodeSink::addObject(BString rawname, BString name) {
+std::unique_ptr<NodeSink> NodeSink::addObject(BString &rawname, BString &name) {
   return std::unique_ptr<NodeSink>(new IgnoreNode);
 }
 
-std::unique_ptr<NodeSink> NodeSink::addArray(BString rawname, BString name) {
+std::unique_ptr<NodeSink> NodeSink::addArray(BString &rawname, BString &name) {
   return std::unique_ptr<NodeSink>(new IgnoreNode);
 }
 
 SerializerStart::SerializerStart(BString *target) { this->target = target; }
 
-void SerializerStart::addNumber(BString rawname, BString name, BString raw,
+void SerializerStart::addNumber(BString &rawname, BString &name, BString &raw,
                                 number value) {
   this->target->Append(raw);
 }
 
-void SerializerStart::addBool(BString rawname, BString name, bool value) {
+void SerializerStart::addBool(BString &rawname, BString &name, bool value) {
   this->target->Append(value ? "true" : "false");
 }
 
-void SerializerStart::addNull(BString rawname, BString name) {
+void SerializerStart::addNull(BString &rawname, BString &name) {
   this->target->Append("null");
 }
 
-void SerializerStart::addString(BString rawname, BString name, BString raw,
-                                BString value) {
+void SerializerStart::addString(BString &rawname, BString &name, BString &raw,
+                                BString &value) {
   this->target->Append(raw);
 }
 
@@ -139,15 +139,15 @@ class ObjectSerializer : public NodeSink {
 public:
   ObjectSerializer(BString *target, int indent);
   ~ObjectSerializer();
-  void addNumber(BString rawname, BString name, BString raw, number value);
-  void addBool(BString rawname, BString name, bool value);
-  void addNull(BString rawname, BString name);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
-  std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
 
 private:
-  void property(BString name);
+  void property(BString &name);
   BString *target;
   int indent;
   bool nonempty;
@@ -157,12 +157,12 @@ class ArraySerializer : public NodeSink {
 public:
   ArraySerializer(BString *target, int indent);
   ~ArraySerializer();
-  void addNumber(BString rawname, BString name, BString raw, number value);
-  void addBool(BString rawname, BString name, bool value);
-  void addNull(BString rawname, BString name);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
-  std::unique_ptr<NodeSink> addArray(BString rawname, BString name);
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
 
 private:
   void item();
@@ -171,13 +171,13 @@ private:
   bool nonempty;
 };
 
-std::unique_ptr<NodeSink> SerializerStart::addObject(BString rawname,
-                                                     BString name) {
+std::unique_ptr<NodeSink> SerializerStart::addObject(BString &rawname,
+                                                     BString &name) {
   return std::unique_ptr<NodeSink>(new ObjectSerializer(this->target, 2));
 }
 
-std::unique_ptr<NodeSink> SerializerStart::addArray(BString rawname,
-                                                    BString name) {
+std::unique_ptr<NodeSink> SerializerStart::addArray(BString &rawname,
+                                                    BString &name) {
   return std::unique_ptr<NodeSink>(new ArraySerializer(this->target, 2));
 }
 
@@ -196,43 +196,43 @@ ObjectSerializer::~ObjectSerializer() {
   this->target->Append("}");
 }
 
-void ObjectSerializer::addNumber(BString rawname, BString name, BString raw,
+void ObjectSerializer::addNumber(BString &rawname, BString &name, BString &raw,
                                  number value) {
   this->property(rawname);
   this->target->Append(raw);
 }
 
-void ObjectSerializer::addBool(BString rawname, BString name, bool value) {
+void ObjectSerializer::addBool(BString &rawname, BString &name, bool value) {
   this->property(rawname);
   this->target->Append(value ? "true" : "false");
 }
 
-void ObjectSerializer::addNull(BString rawname, BString name) {
+void ObjectSerializer::addNull(BString &rawname, BString &name) {
   this->property(rawname);
   this->target->Append("null");
 }
 
-void ObjectSerializer::addString(BString rawname, BString name, BString raw,
-                                 BString value) {
+void ObjectSerializer::addString(BString &rawname, BString &name, BString &raw,
+                                 BString &value) {
   this->property(rawname);
   this->target->Append(raw);
 }
 
-std::unique_ptr<NodeSink> ObjectSerializer::addObject(BString rawname,
-                                                      BString name) {
+std::unique_ptr<NodeSink> ObjectSerializer::addObject(BString &rawname,
+                                                      BString &name) {
   this->property(rawname);
   return std::unique_ptr<NodeSink>(
       new ObjectSerializer(this->target, this->indent + 2));
 }
 
-std::unique_ptr<NodeSink> ObjectSerializer::addArray(BString rawname,
-                                                     BString name) {
+std::unique_ptr<NodeSink> ObjectSerializer::addArray(BString &rawname,
+                                                     BString &name) {
   this->property(rawname);
   return std::unique_ptr<NodeSink>(
       new ArraySerializer(this->target, this->indent + 2));
 }
 
-void ObjectSerializer::property(BString rawname) {
+void ObjectSerializer::property(BString &rawname) {
   if (this->nonempty) {
     this->target->Append(",");
   } else {
@@ -259,37 +259,37 @@ ArraySerializer::~ArraySerializer() {
   this->target->Append("]");
 }
 
-void ArraySerializer::addNumber(BString rawname, BString name, BString raw,
+void ArraySerializer::addNumber(BString &rawname, BString &name, BString &raw,
                                 number value) {
   this->item();
   this->target->Append(raw);
 }
 
-void ArraySerializer::addBool(BString rawname, BString name, bool value) {
+void ArraySerializer::addBool(BString &rawname, BString &name, bool value) {
   this->item();
   this->target->Append(value ? "true" : "false");
 }
 
-void ArraySerializer::addNull(BString rawname, BString name) {
+void ArraySerializer::addNull(BString &rawname, BString &name) {
   this->item();
   this->target->Append("null");
 }
 
-void ArraySerializer::addString(BString rawname, BString name, BString raw,
-                                BString value) {
+void ArraySerializer::addString(BString &rawname, BString &name, BString &raw,
+                                BString &value) {
   this->item();
   this->target->Append(raw);
 }
 
-std::unique_ptr<NodeSink> ArraySerializer::addObject(BString rawname,
-                                                     BString name) {
+std::unique_ptr<NodeSink> ArraySerializer::addObject(BString &rawname,
+                                                     BString &name) {
   this->item();
   return std::unique_ptr<NodeSink>(
       new ObjectSerializer(this->target, this->indent + 2));
 }
 
-std::unique_ptr<NodeSink> ArraySerializer::addArray(BString rawname,
-                                                    BString name) {
+std::unique_ptr<NodeSink> ArraySerializer::addArray(BString &rawname,
+                                                    BString &name) {
   this->item();
   return std::unique_ptr<NodeSink>(
       new ArraySerializer(this->target, this->indent + 2));
@@ -314,66 +314,74 @@ RootSink::RootSink(NodeSink *rootConsumer) {
 
 RootSink::~RootSink() {}
 
-void RootSink::addNumber(BString rawname, BString name, BString raw,
+void RootSink::addNumber(BString &rawname, BString &name, BString &raw,
                          number value) {
   if (this->stack.size() > 0) {
     this->stack.back()->addNumber(rawname, name, raw, value);
   }
 }
 
-void RootSink::addNumber(BString name, number value) {
-  this->addNumber(escapeString(name), name, stringifyNumber(value), value);
+void RootSink::addNumber(BString &name, number value) {
+  BString rawname = escapeString(name);
+  BString raw = stringifyNumber(value);
+  this->addNumber(rawname, name, raw, value);
 }
 
-void RootSink::addBool(BString rawname, BString name, bool value) {
+void RootSink::addBool(BString &rawname, BString &name, bool value) {
   if (this->stack.size() > 0) {
     this->stack.back()->addBool(rawname, name, value);
   }
 }
 
-void RootSink::addBool(BString name, bool value) {
-  this->addBool(escapeString(name), name, value);
+void RootSink::addBool(BString &name, bool value) {
+  BString rawname = escapeString(name);
+  this->addBool(rawname, name, value);
 }
 
-void RootSink::addNull(BString rawname, BString name) {
+void RootSink::addNull(BString &rawname, BString &name) {
   if (this->stack.size() > 0) {
     this->stack.back()->addNull(rawname, name);
   }
 }
 
-void RootSink::addNull(BString name) {
-  this->addNull(escapeString(name), name);
+void RootSink::addNull(BString &name) {
+  BString rawname = escapeString(name);
+  this->addNull(rawname, name);
 }
 
-void RootSink::addString(BString rawname, BString name, BString raw,
-                         BString value) {
+void RootSink::addString(BString &rawname, BString &name, BString &raw,
+                         BString &value) {
   if (this->stack.size() > 0) {
     this->stack.back()->addString(rawname, name, raw, value);
   }
 }
 
-void RootSink::addString(BString name, BString value) {
-  this->addString(escapeString(name), name, escapeString(value), value);
+void RootSink::addString(BString &name, BString &value) {
+  BString rawname = escapeString(name);
+  BString raw = escapeString(value);
+  this->addString(rawname, name, raw, value);
 }
 
-void RootSink::beginObject(BString rawname, BString name) {
+void RootSink::beginObject(BString &rawname, BString &name) {
   if (this->stack.size() > 0) {
     this->stack.push_back(this->stack.back()->addObject(rawname, name));
   }
 }
 
-void RootSink::beginObject(BString name) {
-  this->beginObject(escapeString(name), name);
+void RootSink::beginObject(BString &name) {
+  BString rawname = escapeString(name);
+  this->beginObject(rawname, name);
 }
 
-void RootSink::beginArray(BString rawname, BString name) {
+void RootSink::beginArray(BString &rawname, BString &name) {
   if (this->stack.size() > 0) {
     this->stack.push_back(this->stack.back()->addArray(rawname, name));
   }
 }
 
-void RootSink::beginArray(BString name) {
-  this->beginArray(escapeString(name), name);
+void RootSink::beginArray(BString &name) {
+  BString rawname = escapeString(name);
+  this->beginArray(rawname, name);
 }
 
 void RootSink::closeNode() {
@@ -402,14 +410,16 @@ Parser::Parser(NodeSink *target) {
 status_t Parser::nextChar(char c) {
   if (this->state == 0) { // Beginning of document
     if (c == '{') {
+      BString blank;
       this->state = 1;
       this->stack.push_back(12);
-      this->target->beginObject(BString());
+      this->target->beginObject(blank);
       return B_OK;
     } else if (c == '[') {
+      BString blank;
       this->state = 2;
       this->stack.push_back(13);
-      this->target->beginArray(BString());
+      this->target->beginArray(blank);
       return B_OK;
     }
   } else if (this->state == 1) { // Object before key/end

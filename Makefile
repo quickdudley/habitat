@@ -33,6 +33,7 @@ APP_MIME_SIG = application/x-vnd.habitat
 #	Also note that spaces in folder names do not work well with this Makefile.
 SRCS = src/Base64.cpp \
 	src/JSON.cpp \
+	src/BJSON.cpp \
 	src/Connection.cpp \
 	src/Secret.cpp \
 	src/Main.cpp

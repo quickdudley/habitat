@@ -16,8 +16,8 @@ namespace JSON {
 class SecretNode : public NodeSink {
 public:
   SecretNode(Ed25519Secret *target);
-  void addString(BString rawname, BString name, BString raw, BString value);
-  std::unique_ptr<NodeSink> addObject(BString rawname, BString name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
 
 private:
   Ed25519Secret *target;
