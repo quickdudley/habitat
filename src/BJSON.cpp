@@ -1,6 +1,24 @@
 #include "BJSON.h"
 
 namespace JSON {
+
+void fromBMessage(RootSink *target, BMessage *source) {
+  char *attrname;
+  type_code attrtype;
+  int32 index = 0;
+  while (source->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
+    switch (attrtype) {
+    case 'NULL':
+      target->addNull(attrname);
+      break;
+    case B_BOOL_TYPE:
+      target->addBool(attrname, source->GetBool(attrname, 0, false));
+      break;
+    }
+    index++;
+  }
+}
+
 class BMessageObjectChild : public BMessageObjectDocSink {
 public:
   BMessageObjectChild(BMessage *parent, BString &key);

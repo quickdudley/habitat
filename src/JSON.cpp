@@ -327,6 +327,11 @@ void RootSink::addNumber(BString &name, number value) {
   this->addNumber(rawname, name, raw, value);
 }
 
+void RootSink::addNumber(const char *name, number value) {
+  BString strName(name);
+  this->addNumber(strName, value);
+}
+
 void RootSink::addBool(BString &rawname, BString &name, bool value) {
   if (this->stack.size() > 0) {
     this->stack.back()->addBool(rawname, name, value);
@@ -338,6 +343,11 @@ void RootSink::addBool(BString &name, bool value) {
   this->addBool(rawname, name, value);
 }
 
+void RootSink::addBool(const char *name, bool value) {
+  BString strName(name);
+  this->addBool(name, value);
+}
+
 void RootSink::addNull(BString &rawname, BString &name) {
   if (this->stack.size() > 0) {
     this->stack.back()->addNull(rawname, name);
@@ -347,6 +357,11 @@ void RootSink::addNull(BString &rawname, BString &name) {
 void RootSink::addNull(BString &name) {
   BString rawname = escapeString(name);
   this->addNull(rawname, name);
+}
+
+void RootSink::addNull(const char *name) {
+  BString strName(name);
+  this->addNull(strName);
 }
 
 void RootSink::addString(BString &rawname, BString &name, BString &raw,

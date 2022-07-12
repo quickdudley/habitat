@@ -48,10 +48,13 @@ public:
   virtual ~RootSink();
   void addNumber(BString &rawname, BString &name, BString &raw, number value);
   void addNumber(BString &name, number value);
+  void addNumber(const char *name, number value);
   void addBool(BString &rawname, BString &name, bool value);
   void addBool(BString &name, bool value);
+  void addBool(const char *name, bool value);
   void addNull(BString &rawname, BString &name);
   void addNull(BString &name);
+  void addNull(const char *name);
   void addString(BString &rawname, BString &name, BString &raw, BString &value);
   void addString(BString &name, BString &value);
   void beginObject(BString &rawname, BString &name);
