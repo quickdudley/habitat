@@ -2,19 +2,37 @@
 
 namespace JSON {
 
+void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
+                      type_code attrtype) {
+  switch (attrtype) {
+  case 'NULL':
+    target->addNull(attrname);
+    break;
+  case B_BOOL_TYPE:
+    target->addBool(attrname, source->GetBool(attrname.String(), 0, false));
+    break;
+  case B_CHAR_TYPE: {
+    char *data;
+    ssize_t size;
+    if (source->FindData(attrname.String(), B_CHAR_TYPE, (const void **)&data,
+                         &size) == B_OK) {
+      BString c;
+      c.Append(data[0], 1);
+      target->addString(attrname, c);
+    }
+  } break;
+  case B_DOUBLE_TYPE:
+    target->addNumber(attrname, source->GetDouble(attrname.String(), 0.0));
+    break;
+  }
+}
+
 void fromBMessage(RootSink *target, BMessage *source) {
   char *attrname;
   type_code attrtype;
   int32 index = 0;
   while (source->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
-    switch (attrtype) {
-    case 'NULL':
-      target->addNull(attrname);
-      break;
-    case B_BOOL_TYPE:
-      target->addBool(attrname, source->GetBool(attrname, 0, false));
-      break;
-    }
+
     index++;
   }
 }
