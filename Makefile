@@ -36,6 +36,7 @@ SRCS = src/Base64.cpp \
 	src/BJSON.cpp \
 	src/Connection.cpp \
 	src/Secret.cpp \
+	src/Indices.cpp \
 	src/Main.cpp
 
 #	Specify the resource definition files to use. Full or relative paths can be
