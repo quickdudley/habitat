@@ -11,15 +11,17 @@ const unsigned char SSB_NETWORK_ID[32] = {
     0xac, 0x23, 0x08, 0x39, 0xb7, 0x55, 0x84, 0x5a, 0x9f, 0xfb};
 
 // Client side of handshake (server public key known)
-BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
-                     Ed25519Secret *myId, unsigned char srvkey[32]) {
+BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
+                     unsigned char netkey[crypto_auth_KEYBYTES],
+                     Ed25519Secret *myId,
+                     unsigned char srvkey[crypto_sign_PUBLICKEYBYTES]) {
   unsigned char *seckey = myId->secret;
   unsigned char *pubkey = myId->pubkey;
   this->inner = std::move(inner);
-  memcpy(this->peerkey, netkey, 32);
+  memcpy(this->peerkey, srvkey, crypto_sign_PUBLICKEYBYTES);
   // Section 1: Client Hello
-  unsigned char e_pubkey[32];
-  unsigned char e_seckey[32];
+  unsigned char e_pubkey[crypto_box_PUBLICKEYBYTES];
+  unsigned char e_seckey[crypto_box_SECRETKEYBYTES];
   if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
     throw KEYGEN_FAIL;
   unsigned char server_e_key[32];
@@ -130,7 +132,8 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
 }
 
 // Server side of handshake (will receive client public key)
-BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
+BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
+                     unsigned char netkey[crypto_auth_KEYBYTES],
                      Ed25519Secret *myId) {
   unsigned char *seckey = myId->secret;
   unsigned char *pubkey = myId->pubkey;
@@ -218,9 +221,9 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
   }
   // Section 4: Server Accept
   {
-    unsigned char seed[32 + crypto_sign_BYTES + crypto_sign_PUBLICKEYBYTES +
-                       crypto_hash_sha256_BYTES];
-    memcpy(seed, netkey, 32);
+    unsigned char seed[crypto_auth_KEYBYTES + crypto_sign_BYTES +
+                       crypto_sign_PUBLICKEYBYTES + crypto_hash_sha256_BYTES];
+    memcpy(seed, netkey, crypto_auth_KEYBYTES);
     memcpy(seed + 32, detached_signature_a, crypto_sign_BYTES);
     memcpy(seed + 32 + crypto_sign_BYTES, this->peerkey,
            crypto_sign_PUBLICKEYBYTES);
