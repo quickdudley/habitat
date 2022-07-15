@@ -135,37 +135,40 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
   unsigned char *seckey = myId->secret;
   unsigned char *pubkey = myId->pubkey;
   this->inner = std::move(inner);
-  unsigned char client_e_key[32];
+  unsigned char client_e_key[crypto_box_PUBLICKEYBYTES];
   // Section 1: Client hello
+#define BUFFER_LENGTH (crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES)
   {
-    unsigned char buf[64];
-    if (this->inner->ReadExactly(buf, 64, NULL) != B_OK)
+    unsigned char buf[BUFFER_LENGTH];
+    if (this->inner->ReadExactly(buf, BUFFER_LENGTH, NULL) != B_OK)
       throw HANDSHAKE_HANGUP;
-    if (crypto_auth_verify(buf + 32, buf, 32, netkey) != 0)
+    if (crypto_auth_verify(buf, buf + crypto_auth_BYTES,
+                           crypto_box_PUBLICKEYBYTES, netkey) != 0)
       throw WRONG_NETKEY;
-    memcpy(client_e_key, buf + 32, 32);
+    memcpy(client_e_key, buf + crypto_auth_BYTES, crypto_box_PUBLICKEYBYTES);
     memcpy(this->sendnonce, buf, crypto_secretbox_NONCEBYTES);
   }
   // Section 2: Server hello
-  unsigned char e_pubkey[32];
-  unsigned char e_seckey[32];
+  unsigned char e_pubkey[crypto_box_PUBLICKEYBYTES];
+  unsigned char e_seckey[crypto_box_SECRETKEYBYTES];
   if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
     throw KEYGEN_FAIL;
   {
-    unsigned char buf[64];
-    memcpy(buf + 32, e_pubkey, 32);
-    if (crypto_auth(buf, e_pubkey, 32, netkey) != 0)
+    unsigned char buf[BUFFER_LENGTH];
+    memcpy(buf + crypto_auth_BYTES, e_pubkey, crypto_box_PUBLICKEYBYTES);
+    if (crypto_auth(buf, e_pubkey, crypto_box_PUBLICKEYBYTES, netkey) != 0)
       throw HMAC_FAIL;
-    if (this->inner->WriteExactly(buf, 64, NULL) != B_OK)
+    if (this->inner->WriteExactly(buf, BUFFER_LENGTH, NULL) != B_OK)
       throw HANDSHAKE_HANGUP;
     memcpy(this->sendnonce, buf, crypto_secretbox_NONCEBYTES);
   }
+#undef BUFFER_LENGTH
   unsigned char secret1[crypto_scalarmult_BYTES]; // Shared secret ab
   unsigned char secret2[crypto_scalarmult_BYTES]; // Shared secret aB
   {
     if (crypto_scalarmult(secret1, e_seckey, client_e_key) < 0)
       throw SECRET_FAILED;
-    unsigned char remote_curve[32];
+    unsigned char remote_curve[crypto_scalarmult_curve25519_BYTES];
     if (crypto_sign_ed25519_sk_to_curve25519(remote_curve, seckey) < 0)
       throw SECRET_FAILED;
     if (crypto_scalarmult(secret2, remote_curve, client_e_key) < 0)
@@ -182,28 +185,36 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner, unsigned char netkey[32],
     if (this->inner->ReadExactly(buf, 112, NULL) != B_OK)
       throw HANDSHAKE_HANGUP;
     memset(nonce, 0, crypto_secretbox_NONCEBYTES);
-    memcpy(keyparts, netkey, 32);
-    memcpy(keyparts + 32, secret1, 32);
-    memcpy(keyparts + 64, secret2, 32);
+    memcpy(keyparts, netkey, crypto_auth_KEYBYTES);
+    memcpy(keyparts + crypto_auth_KEYBYTES, secret1, crypto_scalarmult_BYTES);
+#define OFFSET_2 (crypto_auth_KEYBYTES + crypto_scalarmult_BYTES)
+    memcpy(keyparts + OFFSET_2, secret2, crypto_scalarmult_BYTES);
     if (crypto_hash_sha256(key, keyparts, sizeof(keyparts)) != 0)
       throw SECRET_FAILED;
+#undef OFFSET_2
     if (crypto_secretbox_open_easy(buf + crypto_secretbox_MACBYTES, buf, 112,
                                    nonce, key) != 0)
       throw SECRET_FAILED;
-    memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES, 32);
-    memcpy(keyparts + 32, pubkey, 32);
-    if (crypto_hash_sha256(keyparts + 64, secret1, sizeof(secret1)) != 0)
+    memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES,
+           crypto_auth_KEYBYTES);
+    memcpy(keyparts + crypto_auth_KEYBYTES, pubkey, crypto_sign_PUBLICKEYBYTES);
+#define OFFSET_2 (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES)
+    if (crypto_hash_sha256(keyparts + OFFSET_2, secret1, sizeof(secret1)) != 0)
       throw SECRET_FAILED;
+#undef OFFSET_2
+#define MSGLEN                                                                 \
+  (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES + crypto_hash_sha256_BYTES)
     if (crypto_sign_verify_detached(buf + crypto_secretbox_MACBYTES, keyparts,
-                                    32 + crypto_scalarmult_BYTES * 2,
-                                    this->peerkey) != 0)
+                                    MSGLEN, this->peerkey) != 0)
       throw SECRET_FAILED;
+#undef MSGLEN
     if (crypto_sign_ed25519_pk_to_curve25519(key, this->peerkey) != 0)
       throw SECRET_FAILED;
     if (crypto_scalarmult(secret3, e_seckey, key) != 0)
       throw SECRET_FAILED;
     memcpy(detached_signature_a, buf + crypto_secretbox_MACBYTES,
            crypto_sign_BYTES);
+#undef OFFSET_2
   }
   // Section 4: Server Accept
   {
