@@ -1,6 +1,31 @@
 #include "BJSON.h"
+#include <limits>
+#include <set>
 
 namespace JSON {
+
+bool wasArray(BMessage *msg) {
+  std::set<int> collected;
+  char *attrname;
+  type_code attrtype;
+  int32 index = 0;
+  while (msg->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
+    int built = 0;
+    for (int i = 0; attrname[i] != 0; i++) {
+      if (attrname[i] >= '0' && attrname[i] <= '9') {
+        built = built * 10 + (attrname[i] - '0');
+      } else {
+        return false;
+      }
+    }
+    collected.insert(built);
+  }
+  for (int i = 0; i < collected.size(); i++) {
+    if (collected.count(i) != 1)
+      return false;
+  }
+  return true;
+}
 
 void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
                       type_code attrtype) {
@@ -27,12 +52,13 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
   }
 }
 
-void fromBMessage(RootSink *target, BMessage *source) {
+void fromBMessageObject(RootSink *target, BMessage *source) {
   char *attrname;
   type_code attrtype;
   int32 index = 0;
   while (source->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
-
+    BString name(attrname);
+    fromBMessageData(target, source, name, attrtype);
     index++;
   }
 }

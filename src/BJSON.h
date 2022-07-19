@@ -3,6 +3,8 @@
 
 namespace JSON {
 void fromBMessage(RootSink *target, BMessage *source);
+void fromBMessageArray(RootSink *target, BMessage *source);
+void fromBMessageObject(RootSink *target, BMessage *source);
 
 class BMessageDocSink : public NodeSink {
 public:
