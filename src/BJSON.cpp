@@ -1,4 +1,5 @@
 #include "BJSON.h"
+#include <File.h>
 #include <limits>
 #include <set>
 
@@ -29,6 +30,8 @@ bool wasArray(BMessage *msg) {
 
 void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
                       type_code attrtype) {
+  if (attrname == "specifiers" || attrname == "refs")
+    return;
   switch (attrtype) {
   case 'NULL':
     target->addNull(attrname);
@@ -45,6 +48,26 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
       c.Append(data[0], 1);
       target->addString(attrname, c);
     }
+  } break;
+  case B_REF_TYPE: {
+    entry_ref ref;
+    if (source->FindRef(attrname.String(), &ref) != B_OK)
+      return;
+    BFile text(&ref, B_READ_ONLY);
+    // TODO: handle JSON files differently
+    BString value;
+    char buffer[1025];
+    ssize_t length;
+    while (true) {
+      length = text.Read(buffer, 1024);
+      if (length > 0) {
+        buffer[length] = 0;
+        value.Append(buffer);
+      } else {
+        break;
+      }
+    }
+    target->addString(attrname, value);
   } break;
   case B_DOUBLE_TYPE:
     target->addNumber(attrname, source->GetDouble(attrname.String(), 0.0));
@@ -156,8 +179,6 @@ BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
     :
     target(target),
     counter(0) {}
-
-// here
 
 void BMessageArrayDocSink::addNumber(BString &rawname, BString &name,
                                      BString &raw, number value) {
