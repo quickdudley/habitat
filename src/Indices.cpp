@@ -24,7 +24,7 @@ struct IndexDirDeleter {
 #define HABITAT_INDEX_COUNT sizeof(requiredIndices) / sizeof(RequiredIndex)
 
 void ensureIndices(const char *path) {
-  bool exists[HABITAT_INDEX_COUNT];
+  bool exists[HABITAT_INDEX_COUNT] = {false};
   dev_t device = dev_for_path(path);
   std::unique_ptr<DIR, IndexDirDeleter> indices =
       std::unique_ptr<DIR, IndexDirDeleter>(fs_open_index_dir(device));
@@ -48,6 +48,12 @@ void ensureIndices(const char *path) {
     for (int i = 0; i < HABITAT_INDEX_COUNT; i++) {
       if (strcmp(requiredIndices[i].name, index->d_name) == 0)
         exists[i] = true;
+    }
+  }
+  for (int i = 0; i < sizeof(requiredIndices) / sizeof(RequiredIndex); i++) {
+    if (!exists[i]) {
+      fs_create_index(device, requiredIndices[i].name, requiredIndices[i].type,
+                      0);
     }
   }
 }

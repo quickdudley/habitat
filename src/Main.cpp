@@ -1,4 +1,5 @@
 #include "Main.h"
+#include "Indices.h"
 #include <Catalog.h>
 #include <File.h>
 #include <FindDirectory.h>
@@ -74,6 +75,8 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
+    // Create indices
+    ensureIndices(settings_path.Path());
     // Load secret if it exists
     BEntry secret;
     status = this->settings->FindEntry("secret", &secret, true);
