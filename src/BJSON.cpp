@@ -33,9 +33,6 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
   if (attrname == "specifiers" || attrname == "refs")
     return;
   switch (attrtype) {
-  case 'NULL':
-    target->addNull(attrname);
-    break;
   case B_BOOL_TYPE:
     target->addBool(attrname, source->GetBool(attrname.String(), 0, false));
     break;
@@ -49,6 +46,28 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
       target->addString(attrname, c);
     }
   } break;
+  case B_DOUBLE_TYPE:
+    target->addNumber(attrname, source->GetDouble(attrname.String(), 0.0));
+    break;
+  case B_FLOAT_TYPE:
+    target->addNumber(attrname, source->GetFloat(attrname.String(), 0.0));
+    break;
+  case B_MESSAGE_TYPE: {
+    BMessage value;
+    if (source->FindMessage(attrname, &value) == B_OK) {
+      if (wasArray(&value)) {
+        target->beginArray(attrname);
+        fromBMessageArray(target, &value);
+      } else {
+        target->beginObject(attrname);
+        fromBMessageObject(target, &value);
+      }
+      target->closeNode();
+    }
+  } break;
+  case 'NULL':
+    target->addNull(attrname);
+    break;
   case B_REF_TYPE: {
     entry_ref ref;
     if (source->FindRef(attrname.String(), &ref) != B_OK)
@@ -69,9 +88,10 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
     }
     target->addString(attrname, value);
   } break;
-  case B_DOUBLE_TYPE:
-    target->addNumber(attrname, source->GetDouble(attrname.String(), 0.0));
-    break;
+  case B_STRING_TYPE: {
+    BString value(source->GetString(attrname.String(), ""));
+    target->addString(attrname, value);
+  } break;
   }
 }
 
@@ -83,6 +103,17 @@ void fromBMessageObject(RootSink *target, BMessage *source) {
     BString name(attrname);
     fromBMessageData(target, source, name, attrtype);
     index++;
+  }
+}
+
+void fromBMessageArray(RootSink *target, BMessage *source) {
+  for (int32 index = 0;; index++) {
+    BString key;
+    key << index;
+    type_code attrtype;
+    if (source->GetInfo(key.String(), &attrtype) == B_OK) {
+      fromBMessageData(target, source, key, attrtype);
+    }
   }
 }
 
