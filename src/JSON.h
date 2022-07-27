@@ -41,6 +41,21 @@ private:
   BString *target;
 };
 
+class Splitter : public NodeSink {
+public:
+  Splitter(std::unique_ptr<NodeSink> a, std::unique_ptr<NodeSink> b);
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+
+private:
+  std::unique_ptr<NodeSink> a;
+  std::unique_ptr<NodeSink> b;
+};
+
 class RootSink {
 public:
   RootSink(std::unique_ptr<NodeSink> rootConsumer);

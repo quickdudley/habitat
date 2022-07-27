@@ -304,6 +304,43 @@ void ArraySerializer::item() {
   this->target->Append(' ', this->indent);
 }
 
+Splitter::Splitter(std::unique_ptr<NodeSink> a, std::unique_ptr<NodeSink> b) {
+  this->a = std::move(a);
+  this->b = std::move(b);
+}
+
+void Splitter::addNumber(BString &rawname, BString &name, BString &raw,
+                         number value) {
+  this->a->addNumber(rawname, name, raw, value);
+  this->b->addNumber(rawname, name, raw, value);
+}
+
+void Splitter::addBool(BString &rawname, BString &name, bool value) {
+  this->a->addBool(rawname, name, value);
+  this->b->addBool(rawname, name, value);
+}
+
+void Splitter::addNull(BString &rawname, BString &name) {
+  this->a->addNull(rawname, name);
+  this->b->addNull(rawname, name);
+}
+
+void Splitter::addString(BString &rawname, BString &name, BString &raw,
+                         BString &value) {
+  this->a->addString(rawname, name, raw, value);
+  this->a->addString(rawname, name, raw, value);
+}
+
+std::unique_ptr<NodeSink> Splitter::addObject(BString &rawname, BString &name) {
+  return std::unique_ptr<NodeSink>(new Splitter(
+      this->a->addObject(rawname, name), this->b->addObject(rawname, name)));
+}
+
+std::unique_ptr<NodeSink> Splitter::addArray(BString &rawname, BString &name) {
+  return std::unique_ptr<NodeSink>(new Splitter(
+      this->a->addArray(rawname, name), this->b->addArray(rawname, name)));
+}
+
 RootSink::RootSink(std::unique_ptr<NodeSink> rootConsumer) {
   this->stack.push_back(std::move(rootConsumer));
 }
