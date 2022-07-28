@@ -106,6 +106,13 @@ void fromBMessageObject(RootSink *target, BMessage *source) {
   }
 }
 
+void fromBMessage(RootSink *target, BMessage *source) {
+  if (wasArray(source))
+    fromBMessageArray(target, source);
+  else
+    fromBMessageObject(target, source);
+}
+
 void fromBMessageArray(RootSink *target, BMessage *source) {
   for (int32 index = 0;; index++) {
     BString key;

@@ -24,6 +24,23 @@ private:
   unsigned char key[crypto_sign_SECRETKEYBYTES];
   BString body;
 };
+
+class Hash : public NodeSink {
+public:
+  Hash(unsigned char target[crypto_hash_sha256_BYTES]);
+  ~Hash();
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+
+private:
+  BString body;
+  unsigned char *target;
+  std::unique_ptr<NodeSink> inner;
+};
 } // namespace JSON
 
 #endif // SIGNJSON_H

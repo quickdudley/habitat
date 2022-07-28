@@ -32,13 +32,15 @@ APP_MIME_SIG = application/x-vnd.habitat
 #	same name (source.c or source.cpp) are included from different directories.
 #	Also note that spaces in folder names do not work well with this Makefile.
 SRCS = src/Base64.cpp \
-	src/JSON.cpp \
 	src/BJSON.cpp \
 	src/Connection.cpp \
+	src/Indices.cpp \
+	src/JSON.cpp \
+	src/Main.cpp \
 	src/Secret.cpp \
 	src/SignJSON.cpp \
-	src/Indices.cpp \
-	src/Main.cpp
+	src/Post.cpp
+
 
 #	Specify the resource definition files to use. Full or relative paths can be
 #	used.

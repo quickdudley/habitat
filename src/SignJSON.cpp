@@ -65,4 +65,42 @@ std::unique_ptr<NodeSink> SignObject::addArray(BString &rawname,
       new Splitter(this->object->addArray(rawname, name),
                    this->target->addArray(rawname, name)));
 }
+
+Hash::Hash(unsigned char target[crypto_hash_sha256_BYTES])
+    :
+    target(target) {
+  this->inner = std::unique_ptr<NodeSink>(new SerializerStart(&this->body));
+}
+
+Hash::~Hash() {
+  this->inner.reset();
+  crypto_hash_sha256(this->target, (unsigned char *)this->body.String(),
+                     this->body.Length());
+}
+
+void Hash::addNumber(BString &rawname, BString &name, BString &raw,
+                     number value) {
+  this->inner->addNumber(rawname, name, raw, value);
+}
+
+void Hash::addBool(BString &rawname, BString &name, bool value) {
+  this->inner->addBool(rawname, name, value);
+}
+
+void Hash::addNull(BString &rawname, BString &name) {
+  this->inner->addNull(rawname, name);
+}
+
+void Hash::addString(BString &rawname, BString &name, BString &raw,
+                     BString &value) {
+  this->inner->addString(rawname, name, raw, value);
+}
+
+std::unique_ptr<NodeSink> Hash::addObject(BString &rawname, BString &name) {
+  return this->inner->addObject(rawname, name);
+}
+
+std::unique_ptr<NodeSink> Hash::addArray(BString &rawname, BString &name) {
+  return this->inner->addArray(rawname, name);
+}
 } // namespace JSON

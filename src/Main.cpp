@@ -75,6 +75,17 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
+    // Create posts directory
+    status = this->settings->CreateDirectory("posts", this->postDir.get());
+    if (status == B_FILE_EXISTS) {
+      BEntry entry;
+      status = this->settings->FindEntry("posts", &entry, true);
+      if (status != B_OK)
+        throw status;
+      this->postDir = std::unique_ptr<BDirectory>(new BDirectory(&entry));
+    } else if (status != B_OK) {
+      throw status;
+    }
     // Create indices
     ensureIndices(settings_path.Path());
     // Load secret if it exists
@@ -110,6 +121,8 @@ Habitat::Habitat(void)
       throw status;
     }
   }
+  // Create main feed looper
+  this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
@@ -174,6 +187,12 @@ void Habitat::MessageReceived(BMessage *msg) {
   }
   reply.AddInt32("error", error);
   msg->SendReply(&reply);
+}
+
+thread_id Habitat::Run() {
+  thread_id r = this->ownFeed->Run();
+  BApplication::Run();
+  return r;
 }
 
 MainWindow::MainWindow(void)
