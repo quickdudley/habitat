@@ -1,7 +1,9 @@
 #include "Post.h"
 #include "BJSON.h"
 #include "Base64.h"
+#include "SignJSON.h"
 #include <File.h>
+#include <Query.h>
 #include <cstring>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
@@ -11,14 +13,6 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   result.Append(body);
   result.Append(".sha256");
   return result;
-}
-
-SSBFeed::SSBFeed(BDirectory store,
-                 unsigned char key[crypto_sign_PUBLICKEYBYTES])
-    :
-    BLooper(),
-    store(store) {
-  memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -36,40 +30,49 @@ static inline status_t eitherNumber(int64 *result, BMessage *source,
   }
 }
 
-status_t SSBFeed::save(BMessage *message,
-                       unsigned char hash[crypto_hash_sha256_BYTES]) {
+SSBFeed::SSBFeed(BDirectory store,
+                 unsigned char key[crypto_sign_PUBLICKEYBYTES])
+    :
+    BLooper(),
+    store(store) {
+  memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
+}
+
+SSBFeed::~SSBFeed() {}
+
+status_t SSBFeed::save(BMessage *message) {
   status_t status;
+  unsigned char msgHash[crypto_hash_sha256_BYTES];
+  {
+    JSON::RootSink rootSink(
+        std::unique_ptr<JSON::NodeSink>(new JSON::Hash(msgHash)));
+    JSON::fromBMessage(&rootSink, message);
+  }
   BFile sink;
   BString filename =
-      base64::encode(hash, crypto_hash_sha256_BYTES, base64::URL);
+      base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
   if ((status = this->store.CreateFile(filename.String(), &sink, false)) !=
       B_OK)
     return status;
-  BString body;
-  {
-    JSON::RootSink rootSink(
-        std::unique_ptr<JSON::NodeSink>(new JSON::SerializerStart(&body)));
-    JSON::fromBMessage(&rootSink, message);
-  }
-  if ((status = sink.WriteExactly(body.String(), body.Length())) != B_OK)
+
+  if ((status = message->Flatten(&sink)) != B_OK)
     return status;
-  BString attrString = messageCypherkey(hash);
+  BString attrString = messageCypherkey(msgHash);
   if ((status = sink.WriteAttrString("HABITAT:cypherkey", &attrString)) != B_OK)
     return status;
-  BMessage value;
-  if ((status = message->FindMessage("value", &value)) != B_OK)
+  attrString.SetTo("@");
+  attrString.Append(base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES,
+                                   base64::STANDARD));
+  attrString.Append(".ed25519");
+  if ((status = sink.WriteAttrString("HABITAT:author", &attrString)) != B_OK)
     return status;
-  if (value.FindString("author", &attrString) == B_OK) {
-    if ((status = sink.WriteAttrString("HABITAT:author", &attrString)) != B_OK)
-      return status;
-  }
   int64 attrNum;
-  if (eitherNumber(&attrNum, &value, "sequence") == B_OK) {
+  if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
     if ((status = sink.WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
                                  sizeof(int64))) != B_OK)
       return status;
   }
-  if (eitherNumber(&attrNum, &value, "timestamp") == B_OK) {
+  if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
     if ((status = sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
                                  sizeof(int64))) != B_OK)
       return status;

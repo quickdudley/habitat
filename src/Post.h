@@ -10,10 +10,10 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
 class SSBFeed : public BLooper {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
+  ~SSBFeed();
 
 protected:
-  status_t save(BMessage *message,
-                unsigned char hash[crypto_hash_sha256_BYTES]);
+  status_t save(BMessage *message);
   BDirectory store;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   long long lastSequence = -1;
