@@ -11,6 +11,7 @@ class SSBFeed : public BLooper {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
+  BString cypherkey();
 
 protected:
   status_t save(BMessage *message);
