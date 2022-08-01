@@ -17,7 +17,7 @@ public:
   BString cypherkey();
 
 protected:
-  status_t save(BMessage *message);
+  status_t save(BMessage *message, BMessage *reply);
   BDirectory store;
   BVolume volume;
   BQuery updateQuery;

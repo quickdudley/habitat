@@ -5,7 +5,6 @@
 #include <File.h>
 #include <Path.h>
 #include <cstring>
-#include <fs_info.h>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");
@@ -38,13 +37,7 @@ SSBFeed::SSBFeed(BDirectory store,
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
   BQuery query;
-  {
-    BEntry entry(&store, ".");
-    BPath path;
-    status_t status = entry.GetPath(&path);
-    dev_t device = dev_for_path(path.Path());
-    this->volume.SetTo(device);
-  }
+  this->store.GetVolume(&this->volume);
   query.SetVolume(&this->volume);
   query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
@@ -102,7 +95,7 @@ BString SSBFeed::cypherkey() {
   return result;
 }
 
-status_t SSBFeed::save(BMessage *message) {
+status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
@@ -122,6 +115,12 @@ status_t SSBFeed::save(BMessage *message) {
   BString attrString = messageCypherkey(msgHash);
   if ((status = sink.WriteAttrString("HABITAT:cypherkey", &attrString)) != B_OK)
     return status;
+  BMessage result;
+  entry_ref ref;
+  BEntry entry(&this->store, filename.String());
+  entry.GetRef(&ref);
+  result.AddRef("ref", &ref);
+  result.AddString("cypherkey", attrString);
   attrString = this->cypherkey();
   if ((status = sink.WriteAttrString("HABITAT:author", &attrString)) != B_OK)
     return status;
@@ -135,6 +134,9 @@ status_t SSBFeed::save(BMessage *message) {
     if ((status = sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
                                  sizeof(int64))) != B_OK)
       return status;
+  }
+  if (reply != NULL) {
+    reply->AddMessage("result", &result);
   }
   return B_OK;
 }
