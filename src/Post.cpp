@@ -4,8 +4,6 @@
 #include "SignJSON.h"
 #include <File.h>
 #include <Path.h>
-#include <Query.h>
-#include <Volume.h>
 #include <cstring>
 #include <fs_info.h>
 
@@ -39,16 +37,15 @@ SSBFeed::SSBFeed(BDirectory store,
     BLooper(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
-  BVolume volume;
   BQuery query;
   {
     BEntry entry(&store, ".");
     BPath path;
     status_t status = entry.GetPath(&path);
     dev_t device = dev_for_path(path.Path());
-    volume.SetTo(device);
+    this->volume.SetTo(device);
   }
-  query.SetVolume(&volume);
+  query.SetVolume(&this->volume);
   query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
   query.PushString(attrValue.String());
@@ -79,6 +76,23 @@ SSBFeed::SSBFeed(BDirectory store,
 }
 
 SSBFeed::~SSBFeed() {}
+
+thread_id SSBFeed::Run() {
+  this->updateMessenger = BMessenger(this);
+  thread_id result = BLooper::Run();
+  this->updateQuery.SetVolume(&this->volume);
+  this->updateQuery.PushAttr("HABITAT:author");
+  BString attrValue = this->cypherkey();
+  this->updateQuery.PushString(attrValue.String());
+  this->updateQuery.PushOp(B_EQ);
+  this->updateQuery.PushAttr("HABITAT:sequence");
+  this->updateQuery.PushInt32(this->lastSequence);
+  this->updateQuery.PushOp(B_GT);
+  this->updateQuery.PushOp(B_AND);
+  this->updateQuery.SetTarget(this->updateMessenger);
+  this->updateQuery.Fetch();
+  return result;
+}
 
 BString SSBFeed::cypherkey() {
   BString result("@");
