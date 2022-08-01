@@ -15,6 +15,7 @@ public:
   ~SSBFeed();
   thread_id Run();
   BString cypherkey();
+  BString previousLink();
 
 protected:
   status_t save(BMessage *message, BMessage *reply);
@@ -30,6 +31,7 @@ protected:
 class OwnFeed : public SSBFeed {
 public:
   OwnFeed(BDirectory store, Ed25519Secret *secret);
+  status_t create(BMessage *message, BMessage *reply);
 
 private:
   unsigned char seckey[crypto_sign_SECRETKEYBYTES];

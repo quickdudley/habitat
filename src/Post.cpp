@@ -5,6 +5,7 @@
 #include <File.h>
 #include <Path.h>
 #include <cstring>
+#include <ctime>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");
@@ -95,6 +96,14 @@ BString SSBFeed::cypherkey() {
   return result;
 }
 
+BString SSBFeed::previousLink() {
+  BString result("%");
+  result.Append(base64::encode(this->lastHash, crypto_hash_sha256_BYTES,
+                               base64::STANDARD));
+  result.Append(".sha256");
+  return result;
+}
+
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
@@ -130,6 +139,8 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
                                  sizeof(int64))) != B_OK)
       return status;
   }
+  memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
+  this->lastSequence = attrNum;
   if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
     if ((status = sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
                                  sizeof(int64))) != B_OK)
@@ -145,4 +156,55 @@ OwnFeed::OwnFeed(BDirectory store, Ed25519Secret *secret)
     :
     SSBFeed(store, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
+}
+
+status_t OwnFeed::create(BMessage *message, BMessage *reply) {
+  class SignRoot : public JSON::NodeSink {
+  public:
+    SignRoot(BMessage *target, unsigned char key[crypto_sign_SECRETKEYBYTES])
+        :
+        target(target),
+        key(key) {}
+    std::unique_ptr<JSON::NodeSink> addObject(BString &rawname, BString *name) {
+      return std::unique_ptr<JSON::NodeSink>(new JSON::SignObject(
+          std::unique_ptr<JSON::NodeSink>(
+              new JSON::BMessageObjectDocSink(this->target)),
+          this->key));
+    }
+
+  private:
+    BMessage *target;
+    unsigned char *key;
+  };
+  BMessage full;
+  {
+    JSON::RootSink rootSink(
+        std::unique_ptr<JSON::NodeSink>(new SignRoot(&full, this->seckey)));
+    BString key;
+    rootSink.beginObject(key);
+    key.SetTo("previous");
+    BString value;
+    if (this->lastSequence >= 0) {
+      value = this->previousLink();
+      rootSink.addString(key, value);
+    } else {
+      rootSink.addNull(key);
+    }
+    key.SetTo("author");
+    value = this->cypherkey();
+    rootSink.addString(key, value);
+    key.SetTo("sequence");
+    rootSink.addNumber(key, (JSON::number)(++this->lastSequence));
+    key.SetTo("timestamp");
+    rootSink.addNumber(key, (JSON::number)std::time(NULL));
+    key.SetTo("hash");
+    value.SetTo("sha256");
+    rootSink.addString(key, value);
+    key.SetTo("content");
+    rootSink.beginObject(key);
+    JSON::fromBMessage(&rootSink, message);
+    rootSink.closeNode();
+    rootSink.closeNode();
+  }
+  return this->save(&full, reply);
 }
