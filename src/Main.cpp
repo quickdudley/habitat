@@ -30,19 +30,27 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
+enum { kTimeZone, kCypherkey, kCreatePost };
+
 static property_info habitatProperties[] = {
     {"Timezone",
      {B_GET_PROPERTY, B_SET_PROPERTY, 0},
      {B_DIRECT_SPECIFIER, 0},
      "The time zone used for date and time operations",
-     0,
+     kTimeZone,
      {B_STRING_TYPE}},
     {"Cypherkey",
      {B_GET_PROPERTY, 0},
      {B_DIRECT_SPECIFIER, 0},
      "The SSB identifier for this copy of Habitat",
-     0,
+     kCypherkey,
      {B_STRING_TYPE}},
+    {"Post",
+     {B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "Create a post on our own feed",
+     kCreatePost,
+     {}},
     {0}};
 
 Habitat::Habitat(void)
@@ -139,8 +147,15 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
   BPropertyInfo propertyInfo(habitatProperties);
-  if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
-    return this;
+  uint32 match;
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
+      0) {
+    if (match == kCreatePost) {
+      BMessenger(this->ownFeed).SendMessage(msg);
+      return NULL;
+    } else
+      return this;
+  }
   return BApplication::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
@@ -153,11 +168,13 @@ void Habitat::MessageReceived(BMessage *msg) {
   BMessage specifier;
   int32 what;
   const char *property;
+  uint32 match;
   if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
     return BApplication::MessageReceived(msg);
   BPropertyInfo propertyInfo(habitatProperties);
-  switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
-  case 0: // Timezone
+  propertyInfo.FindMatch(msg, index, &specifier, what, property, &match);
+  switch (match) {
+  case kTimeZone:
     if (msg->what == B_SET_PROPERTY) {
       BString tz;
       if (msg->FindString("data", &tz) == B_OK) {
@@ -178,7 +195,7 @@ void Habitat::MessageReceived(BMessage *msg) {
       error = B_OK;
     }
     break;
-  case 1: // Cypherkey
+  case kCypherkey: // Cypherkey
     reply.AddString("result", this->myId.getCypherkey());
     error = B_OK;
     break;

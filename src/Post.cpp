@@ -7,6 +7,7 @@
 #include <PropertyInfo.h>
 #include <cstring>
 #include <ctime>
+#include <iostream>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");
@@ -89,17 +90,51 @@ thread_id SSBFeed::Run() {
   return result;
 }
 
-static property_info ssbFeedProperties[] = {{0}};
+static property_info ssbFeedProperties[] = {{"Cypherkey",
+                                             {B_GET_PROPERTY, 0},
+                                             {B_DIRECT_SPECIFIER, 0},
+                                             "The SSB identifier for this feed",
+                                             0,
+                                             {B_STRING_TYPE}},
+                                            {0}};
 
 status_t SSBFeed::GetSupportedSuites(BMessage *data) {
+  data->AddString("suites", "suite/x-vnd.habitat-ssb-feed");
+  BPropertyInfo propertyInfo(ssbFeedProperties);
+  data->AddFlat("messages", &propertyInfo);
   return BLooper::GetSupportedSuites(data);
 }
 
-void SSBFeed::MessageReceived(BMessage *msg) { BLooper::MessageReceived(msg); }
+void SSBFeed::MessageReceived(BMessage *msg) {
+  if (!msg->HasSpecifiers())
+    return BLooper::MessageReceived(msg);
+  BMessage reply(B_REPLY);
+  status_t error = B_ERROR;
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
+    return BLooper::MessageReceived(msg);
+  BPropertyInfo propertyInfo(ssbFeedProperties);
+  switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
+  case 0: // Cypherkey
+    reply.AddString("result", this->cypherkey());
+    error = B_OK;
+    break;
+  default:
+    return BLooper::MessageReceived(msg);
+  }
+  reply.AddInt32("error", error);
+  msg->SendReply(&reply);
+}
 
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
+  BPropertyInfo propertyInfo(ssbFeedProperties);
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
+    return this;
   return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
@@ -133,7 +168,6 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   if ((status = this->store.CreateFile(filename.String(), &sink, false)) !=
       B_OK)
     return status;
-
   if ((status = message->Flatten(&sink)) != B_OK)
     return status;
   BString attrString = messageCypherkey(msgHash);
@@ -173,17 +207,50 @@ OwnFeed::OwnFeed(BDirectory store, Ed25519Secret *secret)
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 
-static property_info ownFeedProperties[] = {{0}};
+static property_info ownFeedProperties[] = {{"Post",
+                                             {B_CREATE_PROPERTY, 0},
+                                             {B_DIRECT_SPECIFIER, 0},
+                                             "Create a post on our own feed",
+                                             0,
+                                             {B_MESSAGE_TYPE}},
+                                            {0}};
 
 status_t OwnFeed::GetSupportedSuites(BMessage *data) {
+  data->AddString("suites", "suite/x-vnd.habitat-own-feed");
+  BPropertyInfo propertyInfo(ownFeedProperties);
+  data->AddFlat("messages", &propertyInfo);
   return SSBFeed::GetSupportedSuites(data);
 }
 
-void OwnFeed::MessageReceived(BMessage *msg) { SSBFeed::MessageReceived(msg); }
+void OwnFeed::MessageReceived(BMessage *msg) {
+  if (!msg->HasSpecifiers())
+    return BLooper::MessageReceived(msg);
+  BMessage reply(B_REPLY);
+  status_t error = B_ERROR;
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
+    return SSBFeed::MessageReceived(msg);
+  BPropertyInfo propertyInfo(ownFeedProperties);
+  switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
+  case 0: // Create post
+    error = this->create(msg, &reply);
+    break;
+  default:
+    return SSBFeed::MessageReceived(msg);
+  }
+  reply.AddInt32("error", error);
+  msg->SendReply(&reply);
+}
 
 BHandler *OwnFeed::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
+  BPropertyInfo propertyInfo(ownFeedProperties);
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
+    return this;
   return SSBFeed::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
