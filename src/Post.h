@@ -16,6 +16,10 @@ public:
   thread_id Run();
   BString cypherkey();
   BString previousLink();
+  status_t GetSupportedSuites(BMessage *data);
+  void MessageReceived(BMessage *msg);
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property);
 
 protected:
   status_t save(BMessage *message, BMessage *reply);
@@ -31,6 +35,10 @@ protected:
 class OwnFeed : public SSBFeed {
 public:
   OwnFeed(BDirectory store, Ed25519Secret *secret);
+  status_t GetSupportedSuites(BMessage *data);
+  void MessageReceived(BMessage *msg);
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property);
   status_t create(BMessage *message, BMessage *reply);
 
 private:

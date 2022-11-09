@@ -4,6 +4,7 @@
 #include "SignJSON.h"
 #include <File.h>
 #include <Path.h>
+#include <PropertyInfo.h>
 #include <cstring>
 #include <ctime>
 
@@ -88,6 +89,20 @@ thread_id SSBFeed::Run() {
   return result;
 }
 
+static property_info ssbFeedProperties[] = {{0}};
+
+status_t SSBFeed::GetSupportedSuites(BMessage *data) {
+  return BLooper::GetSupportedSuites(data);
+}
+
+void SSBFeed::MessageReceived(BMessage *msg) { BLooper::MessageReceived(msg); }
+
+BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
+                                    BMessage *specifier, int32 what,
+                                    const char *property) {
+  return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
+}
+
 BString SSBFeed::cypherkey() {
   BString result("@");
   result.Append(base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES,
@@ -156,6 +171,20 @@ OwnFeed::OwnFeed(BDirectory store, Ed25519Secret *secret)
     :
     SSBFeed(store, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
+}
+
+static property_info ownFeedProperties[] = {{0}};
+
+status_t OwnFeed::GetSupportedSuites(BMessage *data) {
+  return SSBFeed::GetSupportedSuites(data);
+}
+
+void OwnFeed::MessageReceived(BMessage *msg) { SSBFeed::MessageReceived(msg); }
+
+BHandler *OwnFeed::ResolveSpecifier(BMessage *msg, int32 index,
+                                    BMessage *specifier, int32 what,
+                                    const char *property) {
+  return SSBFeed::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
 status_t OwnFeed::create(BMessage *message, BMessage *reply) {

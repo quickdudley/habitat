@@ -52,6 +52,9 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
   case B_FLOAT_TYPE:
     target->addNumber(attrname, source->GetFloat(attrname.String(), 0.0));
     break;
+  case B_INT64_TYPE:
+    target->addNumber(attrname, source->GetInt64(attrname.String(), 0.0));
+    break;
   case B_MESSAGE_TYPE: {
     BMessage value;
     if (source->FindMessage(attrname, &value) == B_OK) {
