@@ -261,7 +261,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
         :
         target(target),
         key(key) {}
-    std::unique_ptr<JSON::NodeSink> addObject(BString &rawname, BString *name) {
+    std::unique_ptr<JSON::NodeSink> addObject(BString &rawname, BString &name) {
       return std::unique_ptr<JSON::NodeSink>(new JSON::SignObject(
           std::unique_ptr<JSON::NodeSink>(
               new JSON::BMessageObjectDocSink(this->target)),
@@ -302,5 +302,6 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     rootSink.closeNode();
     rootSink.closeNode();
   }
+  full.PrintToStream();
   return this->save(&full, reply);
 }

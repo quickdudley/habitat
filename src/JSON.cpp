@@ -328,7 +328,7 @@ void Splitter::addNull(BString &rawname, BString &name) {
 void Splitter::addString(BString &rawname, BString &name, BString &raw,
                          BString &value) {
   this->a->addString(rawname, name, raw, value);
-  this->a->addString(rawname, name, raw, value);
+  this->b->addString(rawname, name, raw, value);
 }
 
 std::unique_ptr<NodeSink> Splitter::addObject(BString &rawname, BString &name) {

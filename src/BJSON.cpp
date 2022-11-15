@@ -21,6 +21,8 @@ bool wasArray(BMessage *msg) {
     }
     collected.insert(built);
   }
+  if (collected.size() == 0)
+    return false;
   for (int i = 0; i < collected.size(); i++) {
     if (collected.count(i) != 1)
       return false;
@@ -123,6 +125,8 @@ void fromBMessageArray(RootSink *target, BMessage *source) {
     type_code attrtype;
     if (source->GetInfo(key.String(), &attrtype) == B_OK) {
       fromBMessageData(target, source, key, attrtype);
+    } else {
+      break;
     }
   }
 }
@@ -198,7 +202,8 @@ void BMessageObjectDocSink::addBool(BString &rawname, BString &name,
 }
 
 void BMessageObjectDocSink::addNull(BString &rawname, BString &name) {
-  this->target->AddData(name.String(), 'NULL', NULL, 0);
+  char pad = 0;
+  this->target->AddData(name.String(), 'NULL', &pad, 1);
 }
 
 void BMessageObjectDocSink::addString(BString &rawname, BString &name,
@@ -232,7 +237,8 @@ void BMessageArrayDocSink::addBool(BString &rawname, BString &name,
 }
 
 void BMessageArrayDocSink::addNull(BString &rawname, BString &name) {
-  this->target->AddData(this->key().String(), 'NULL', NULL, 0);
+  char pad = 0;
+  this->target->AddData(this->key().String(), 'NULL', &pad, 1);
 }
 
 void BMessageArrayDocSink::addString(BString &rawname, BString &name,
