@@ -46,6 +46,7 @@ SSBFeed::SSBFeed(BDirectory store,
   BString attrValue = this->cypherkey();
   query.PushString(attrValue.String());
   query.PushOp(B_EQ);
+  this->updateMessenger = BMessenger(this);
   if (query.Fetch() == B_OK) {
     entry_ref ref;
     while (query.GetNextRef(&ref) == B_OK) {
@@ -74,8 +75,10 @@ SSBFeed::SSBFeed(BDirectory store,
 SSBFeed::~SSBFeed() {}
 
 thread_id SSBFeed::Run() {
-  this->updateMessenger = BMessenger(this);
+  this->updateMessenger = BMessenger(NULL, this);
   thread_id result = BLooper::Run();
+  // I don't seem to receive any updates via live query; will just leave it
+  // for now and try again later.
   this->updateQuery.SetVolume(&this->volume);
   this->updateQuery.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
@@ -87,6 +90,9 @@ thread_id SSBFeed::Run() {
   this->updateQuery.PushOp(B_AND);
   this->updateQuery.SetTarget(this->updateMessenger);
   this->updateQuery.Fetch();
+  BEntry entry;
+  for (; this->updateQuery.GetNextEntry(&entry) == B_OK;)
+    ;
   return result;
 }
 
@@ -106,8 +112,10 @@ status_t SSBFeed::GetSupportedSuites(BMessage *data) {
 }
 
 void SSBFeed::MessageReceived(BMessage *msg) {
-  if (!msg->HasSpecifiers())
+  if (!msg->HasSpecifiers()) {
+    msg->PrintToStream();
     return BLooper::MessageReceived(msg);
+  }
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
   int32 index;
@@ -132,6 +140,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
+  msg->PrintToStream();
   BPropertyInfo propertyInfo(ssbFeedProperties);
   if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
     return this;
@@ -184,16 +193,16 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     return status;
   int64 attrNum;
   if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
-    if ((status = sink.WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
-                                 sizeof(int64))) != B_OK)
-      return status;
+    if (sink.WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
+                       sizeof(int64)) != sizeof(int64))
+      return B_IO_ERROR;
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   this->lastSequence = attrNum;
   if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
-    if ((status = sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
-                                 sizeof(int64))) != B_OK)
-      return status;
+    if (sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
+                       sizeof(int64)) != sizeof(int64))
+      return B_IO_ERROR;
   }
   if (reply != NULL) {
     reply->AddMessage("result", &result);
@@ -224,7 +233,7 @@ status_t OwnFeed::GetSupportedSuites(BMessage *data) {
 
 void OwnFeed::MessageReceived(BMessage *msg) {
   if (!msg->HasSpecifiers())
-    return BLooper::MessageReceived(msg);
+    return SSBFeed::MessageReceived(msg);
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
   int32 index;
