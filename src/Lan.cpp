@@ -7,7 +7,9 @@ static BString
 generatePayload(BNetworkAddress *addr,
                 unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]) {
   BString result("net:");
-  result.Append(addr->ToString(true));
+  result += addr->ToString(false);
+  result += ':';
+  result << addr->Port();
   result += "~shs:";
   result.Append(
       base64::encode(pubkey, crypto_sign_PUBLICKEYBYTES, base64::STANDARD));
@@ -39,8 +41,8 @@ int broadcastLoop(void *vargs) {
         if (interface.GetAddressAt(i, address) != B_OK)
           break;
         BNetworkAddress myAddress = address.Address();
-        if (myAddress.ToString(false).Length() > 0) {
-          myAddress.SetPort(args->ssbPort);
+        myAddress.SetPort(args->ssbPort);
+        if (!myAddress.IsEmpty() && myAddress != BNetworkAddress("::1", 8008)) {
           BNetworkAddress broadcastAddress = address.Broadcast();
           BString payload = generatePayload(&myAddress, args->pubkey);
           broadcastAddress.SetPort(8008);
