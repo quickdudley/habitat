@@ -4,12 +4,10 @@
 #include <NetworkRoster.h>
 
 static BString
-generatePayload(BNetworkAddress *addr, uint16 ssbPort,
+generatePayload(BNetworkAddress *addr,
                 unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]) {
   BString result("net:");
-  result.Append(addr->ToString(false));
-  result += ':';
-  result << (int)ssbPort;
+  result.Append(addr->ToString(true));
   result += "~shs:";
   result.Append(
       base64::encode(pubkey, crypto_sign_PUBLICKEYBYTES, base64::STANDARD));
@@ -41,12 +39,14 @@ int broadcastLoop(void *vargs) {
         if (interface.GetAddressAt(i, address) != B_OK)
           break;
         BNetworkAddress myAddress = address.Address();
-        BNetworkAddress broadcastAddress = address.Broadcast();
-        BString payload =
-            generatePayload(&myAddress, args->ssbPort, args->pubkey);
-        broadcastAddress.SetPort(8008);
-        args->socket.SendTo(broadcastAddress, payload.String(),
-                            (size_t)payload.Length());
+        if (myAddress.ToString(false).Length() > 0) {
+          myAddress.SetPort(args->ssbPort);
+          BNetworkAddress broadcastAddress = address.Broadcast();
+          BString payload = generatePayload(&myAddress, args->pubkey);
+          broadcastAddress.SetPort(8008);
+          args->socket.SendTo(broadcastAddress, payload.String(),
+                              (size_t)payload.Length());
+        }
       }
     }
     bigtime_t finishTimestamp = system_time();
