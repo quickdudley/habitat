@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "Lan.h"
 #include "Post.h"
 #include "Secret.h"
 #include <Application.h>
@@ -23,6 +24,7 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property);
   thread_id Run();
+  void Quit();
 
 private:
   MainWindow *mainWindow;
@@ -31,6 +33,8 @@ private:
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
   Ed25519Secret myId;
+  BroadcastLoopArguments broadcastArgs;
+  thread_id broadcastThreadId;
 };
 
 extern Habitat *app;

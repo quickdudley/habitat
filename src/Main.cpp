@@ -208,8 +208,23 @@ void Habitat::MessageReceived(BMessage *msg) {
 
 thread_id Habitat::Run() {
   thread_id r = this->ownFeed->Run();
+  this->broadcastArgs.ssbPort = 8008; // TODO make dynimic
+  memcpy(this->broadcastArgs.pubkey, this->myId.pubkey,
+         crypto_sign_PUBLICKEYBYTES);
+  {
+    BNetworkAddress local;
+    local.SetToWildcard(AF_INET, 8008);
+    this->broadcastArgs.socket.Bind(local);
+    this->broadcastArgs.socket.SetBroadcast(true);
+  }
+  this->broadcastThreadId = runBroadcastThread(&(this->broadcastArgs));
   BApplication::Run();
   return r;
+}
+
+void Habitat::Quit() {
+  send_data(this->broadcastThreadId, 'QUIT', NULL, 0);
+  BApplication::Quit();
 }
 
 MainWindow::MainWindow(void)
