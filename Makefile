@@ -40,10 +40,10 @@ SRCS = \
 	 src/Indices.cpp  \
 	 src/JSON.cpp  \
 	 src/Main.cpp  \
+	 src/MUXRPC.cpp \
 	 src/Post.cpp  \
 	 src/Secret.cpp  \
 	 src/SignJSON.cpp  \
-
 
 
 #	Specify the resource definition files to use. Full or relative paths can be

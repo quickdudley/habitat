@@ -56,10 +56,10 @@ thread_id SSBListener::run() {
 void SSBListener::halt() {
   int skt = this->listenSocket->Socket();
   if (skt > 0) {
-  	shutdown(skt, SHUT_RDWR);
+    shutdown(skt, SHUT_RDWR);
   }
   if (this->task > 0) {
-  	send_data(this->task, 'STOP', NULL, 0);
+    send_data(this->task, 'STOP', NULL, 0);
   }
 }
 
