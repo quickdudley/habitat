@@ -2,6 +2,7 @@
 #define MAIN_H
 
 #include "Lan.h"
+#include "Listener.h"
 #include "Post.h"
 #include "Secret.h"
 #include <Application.h>
@@ -32,6 +33,7 @@ private:
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
+  std::unique_ptr<SSBListener> ipListener;
   Ed25519Secret myId;
   BroadcastLoopArguments broadcastArgs;
   thread_id broadcastThreadId;

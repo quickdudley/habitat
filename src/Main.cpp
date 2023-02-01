@@ -214,7 +214,7 @@ thread_id Habitat::Run() {
   {
     BNetworkAddress local;
     local.SetToWildcard(AF_INET, 8008);
-    this->broadcastArgs.socket.Bind(local);
+    this->broadcastArgs.socket.Bind(local, true);
     this->broadcastArgs.socket.SetBroadcast(true);
   }
   this->broadcastThreadId = runBroadcastThread(&(this->broadcastArgs));
