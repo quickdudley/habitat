@@ -77,7 +77,7 @@ RSRCS = \
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 LIBS = be network bnetapi localestub sodium $(STDCPPLIBS) \
-	:libicui18n.so.70 :libicuuc.so.70
+	icui18n icuuc icudata
 
 #	Specify additional paths to directories following the standard libXXX.so
 #	or libXXX.a naming scheme. You can specify full paths or paths relative
@@ -124,13 +124,13 @@ SYMBOLS :=
 
 #	Includes debug information, which allows the binary to be debugged easily.
 #	If set to "TRUE", debug info will be created.
-DEBUGGER :=
+DEBUGGER := TRUE
 
 #	Specify any additional compiler flags to be used.
-COMPILER_FLAGS = -g
+COMPILER_FLAGS =
 
 #	Specify any additional linker flags to be used.
-LINKER_FLAGS =
+LINKER_FLAGS = `pkg-config --libs icu-i18n icu-uc`
 
 #	Specify the version of this binary. Example:
 #		-app 3 4 0 d 0 -short 340 -long "340 "`echo -n -e '\302\251'`"1999 GNU GPL"
