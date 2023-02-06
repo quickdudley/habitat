@@ -8,9 +8,9 @@
 namespace muxrpc {
 
 struct header {
-  unsigned char flags;
   uint32 bodyLength;
-  uint32 requestNumber;
+  int32 requestNumber;
+  unsigned char flags;
 };
 
 class Connection {

@@ -16,7 +16,7 @@ status_t Connection::populateHeader(header *out) {
     return last_error;
   }
   out->flags = buffer[0];
-  if ((last_error = swap_data(B_INT32_TYPE, buffer + 1, sizeof(uint32),
+  if ((last_error = swap_data(B_UINT32_TYPE, buffer + 1, sizeof(uint32),
                               B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
     return last_error;
   }
