@@ -41,6 +41,26 @@ private:
   unsigned char *target;
   std::unique_ptr<NodeSink> inner;
 };
+
+class VerifySignature : public NodeSink {
+public:
+  VerifySignature(bool *target);
+  ~VerifySignature();
+  void addNumber(BString &rawname, BString &name, BString &raw, number value);
+  void addBool(BString &rawname, BString &name, bool value);
+  void addNull(BString &rawname, BString &name);
+  void addString(BString &rawname, BString &name, BString &raw, BString &value);
+  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+
+private:
+  BString body;
+  bool *target;
+  std::unique_ptr<NodeSink> inner;
+  unsigned char author[crypto_sign_PUBLICKEYBYTES];
+  unsigned char signature[crypto_sign_BYTES];
+};
+
 } // namespace JSON
 
 #endif // SIGNJSON_H
