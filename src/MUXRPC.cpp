@@ -4,8 +4,12 @@
 
 namespace muxrpc {
 
-Connection::Connection(std::unique_ptr<BDataIO> inner, unsigned char peer[32]) {
+Connection::Connection(
+    std::unique_ptr<BDataIO> inner,
+    std::map<std::vector<BString>, std::unique_ptr<Endpoint>> *endpoints,
+    unsigned char peer[32]) {
   this->inner = std::move(inner);
+  this->endpoints = endpoints;
   memcpy(this->peer, peer, crypto_sign_PUBLICKEYBYTES);
 }
 
@@ -26,6 +30,21 @@ status_t Connection::populateHeader(Header *out) {
     return last_error;
   }
   memcpy(&(out->requestNumber), buffer + 5, sizeof(uint32));
+  return B_OK;
+}
+
+status_t Connection::readOne() {
+  Header header;
+  this->populateHeader(&header);
+  //	switch (header.bodyType()) {
+  //		case BodyType::BINARY:
+  //		break;
+  //		case BodyType::UTF8_STRING:
+  //		break;
+  //		case BodyType::JSON:
+  //		break;
+  //	}
+
   return B_OK;
 }
 
