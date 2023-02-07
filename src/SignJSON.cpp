@@ -103,4 +103,59 @@ std::unique_ptr<NodeSink> Hash::addObject(BString &rawname, BString &name) {
 std::unique_ptr<NodeSink> Hash::addArray(BString &rawname, BString &name) {
   return this->inner->addArray(rawname, name);
 }
+
+VerifySignature::VerifySignature(bool *target)
+    :
+    target(target) {
+  this->inner = std::unique_ptr<NodeSink>(new SerializerStart(&this->body));
+}
+
+VerifySignature::~VerifySignature() {
+  this->inner.reset();
+  *this->target = crypto_sign_verify_detached(
+                      this->signature, (unsigned char *)this->body.String(),
+                      this->body.Length(), this->author) == 0;
+}
+
+void VerifySignature::addNumber(BString &rawname, BString &name, BString &raw,
+                                number value) {
+  this->inner->addNumber(rawname, name, raw, value);
+}
+
+void VerifySignature::addBool(BString &rawname, BString &name, bool value) {
+  this->inner->addBool(rawname, name, value);
+}
+
+void VerifySignature::addNull(BString &rawname, BString &name) {
+  this->inner->addNull(rawname, name);
+}
+
+void VerifySignature::addString(BString &rawname, BString &name, BString &raw,
+                                BString &value) {
+  BString suffix;
+  BString stuff;
+  if (name == "author" && value[0] == '@' && value.EndsWith(".ed25519")) {
+    value.CopyInto(stuff, 1, value.Length() - 9);
+    std::vector<unsigned char> buffer =
+        base64::decode(stuff.String(), stuff.Length());
+    memcpy(this->author, buffer.data(), buffer.size());
+  } else if (name == "signature" && value.EndsWith(".sig.ed25519")) {
+    value.CopyInto(stuff, 1, value.Length() - 12);
+    std::vector<unsigned char> buffer =
+        base64::decode(stuff.String(), stuff.Length());
+    memcpy(this->signature, buffer.data(), buffer.size());
+  } else {
+    this->inner->addString(rawname, name, raw, value);
+  }
+}
+
+std::unique_ptr<NodeSink> VerifySignature::addObject(BString &rawname,
+                                                     BString &name) {
+  return inner->addObject(rawname, name);
+}
+
+std::unique_ptr<NodeSink> VerifySignature::addArray(BString &rawname,
+                                                    BString &name) {
+  return inner->addArray(rawname, name);
+}
 } // namespace JSON
