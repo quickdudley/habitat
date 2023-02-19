@@ -4,13 +4,17 @@
 
 namespace muxrpc {
 
-Connection::Connection(
-    std::unique_ptr<BDataIO> inner,
-    std::map<std::vector<BString>, std::unique_ptr<Endpoint>> *endpoints,
-    unsigned char peer[32]) {
-  this->inner = std::move(inner);
-  this->endpoints = endpoints;
-  memcpy(this->peer, peer, crypto_sign_PUBLICKEYBYTES);
+MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+                          std::vector<BString> name, RequestType type) {
+  if (name == this->name) {
+    if (type == this->expectedType) {
+      return MethodMatch::MATCH;
+    } else {
+      return MethodMatch::WRONG_TYPE;
+    }
+  } else {
+    return MethodMatch::NO_MATCH;
+  }
 }
 
 status_t Connection::populateHeader(Header *out) {
@@ -44,7 +48,18 @@ status_t Connection::readOne() {
   //		case BodyType::JSON:
   //		break;
   //	}
-
+  if (auto search = this->ongoing.find(header.requestNumber);
+      search != this->ongoing.end()) {
+    // TODO: handle reply or stream continuation
+    // construct message
+    // send to search.second
+  } else {
+    switch (header.bodyType()) {
+    case BodyType::JSON:
+      // TODO: Method::check, Method::call
+      break;
+    }
+  }
   return B_OK;
 }
 

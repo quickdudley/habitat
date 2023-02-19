@@ -2,6 +2,9 @@
 #define MUXRPC_H
 
 #include <DataIO.h>
+#include <Looper.h>
+#include <Message.h>
+#include <Messenger.h>
 #include <String.h>
 #include <map>
 #include <memory>
@@ -27,23 +30,40 @@ struct Header {
   void setStream(bool value);
 };
 
-class Endpoint {};
+enum struct RequestType {
+  MISSING,
+  SOURCE,
+  DUPLEX,
+  ASYNC,
+  UNKNOWN,
+};
 
-class Stream {};
+enum struct MethodMatch {
+  NO_MATCH,
+  WRONG_TYPE,
+  MATCH,
+};
 
-class Connection {
+class Method {
 public:
-  Connection(
-      std::unique_ptr<BDataIO> inner,
-      std::map<std::vector<BString>, std::unique_ptr<Endpoint>> *endpoints,
-      unsigned char peer[32]);
+  virtual MethodMatch check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+                            std::vector<BString> name, RequestType type);
+  virtual status_t call(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+                        RequestType type, BMessage *args,
+                        BMessenger replyTo) = 0;
 
+private:
+  std::vector<BString> name;
+  RequestType expectedType;
+};
+
+class Connection : BLooper {
+public:
 private:
   status_t populateHeader(Header *out);
   status_t readOne();
-  std::map<std::vector<BString>, std::unique_ptr<Endpoint>> *endpoints;
-  std::map<int32, std::unique_ptr<Stream>> ongoing;
   std::unique_ptr<BDataIO> inner;
+  std::map<int32, BMessenger> ongoing;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
 };
