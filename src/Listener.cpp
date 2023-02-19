@@ -60,6 +60,8 @@ void SSBListener::halt() {
   }
   if (this->task > 0) {
     send_data(this->task, 'STOP', NULL, 0);
+    status_t exitValue;
+    wait_for_thread(this->task, &exitValue);
   }
 }
 

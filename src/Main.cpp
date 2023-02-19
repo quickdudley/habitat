@@ -224,6 +224,8 @@ thread_id Habitat::Run() {
 
 void Habitat::Quit() {
   send_data(this->broadcastThreadId, 'QUIT', NULL, 0);
+  status_t exitValue;
+  wait_for_thread(this->broadcastThreadId, &exitValue);
   BApplication::Quit();
 }
 
