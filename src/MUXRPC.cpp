@@ -17,6 +17,13 @@ MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
   }
 }
 
+Sender::Sender(Connection *conn, int32 requestNumber)
+    :
+    conn(conn),
+    requestNumber(requestNumber) {}
+
+void Sender::MessageReceived(BMessage *msg) {}
+
 status_t Connection::populateHeader(Header *out) {
   unsigned char buffer[9];
   status_t last_error;
@@ -24,16 +31,16 @@ status_t Connection::populateHeader(Header *out) {
     return last_error;
   }
   out->flags = buffer[0];
-  if ((last_error = swap_data(B_UINT32_TYPE, buffer + 1, sizeof(uint32),
-                              B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
-    return last_error;
-  }
-  memcpy(&(out->bodyLength), buffer + 5, sizeof(uint32));
-  if ((last_error = swap_data(B_INT32_TYPE, buffer + 5, sizeof(uint32),
+  memcpy(&(out->bodyLength), buffer + 1, sizeof(uint32));
+  if ((last_error = swap_data(B_UINT32_TYPE, &out->bodyLength, sizeof(uint32),
                               B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
     return last_error;
   }
   memcpy(&(out->requestNumber), buffer + 5, sizeof(uint32));
+  if ((last_error = swap_data(B_INT32_TYPE, &out->requestNumber, sizeof(uint32),
+                              B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
+    return last_error;
+  }
   return B_OK;
 }
 
@@ -48,15 +55,18 @@ status_t Connection::readOne() {
   //		case BodyType::JSON:
   //		break;
   //	}
-  if (auto search = this->ongoing.find(header.requestNumber);
-      search != this->ongoing.end()) {
+  if (auto search = this->inboundOngoing.find(header.requestNumber);
+      search != this->inboundOngoing.end()) {
     // TODO: handle reply or stream continuation
     // construct message
-    // send to search.second
+    // send to search->second
   } else {
     switch (header.bodyType()) {
     case BodyType::JSON:
       // TODO: Method::check, Method::call
+      break;
+    default:
+      // TODO: send error back
       break;
     }
   }
@@ -87,5 +97,23 @@ void Header::setStream(bool value) {
   } else {
     this->flags &= ~8;
   }
+}
+
+status_t Header::writeToBuffer(unsigned char *buffer) {
+  status_t last_error;
+  uint32 bodyLength(this->bodyLength);
+  int32 requestNumber(this->requestNumber);
+  *buffer = this->flags;
+  if ((last_error = swap_data(B_UINT32_TYPE, &bodyLength, sizeof(uint32),
+                              B_SWAP_HOST_TO_BENDIAN)) != B_OK) {
+    return last_error;
+  }
+  memcpy(buffer + 1, &bodyLength, sizeof(int32));
+  if ((last_error = swap_data(B_INT32_TYPE, &requestNumber, sizeof(int32),
+                              B_SWAP_HOST_TO_BENDIAN)) != B_OK) {
+    return last_error;
+  }
+  memcpy(buffer + 5, &requestNumber, sizeof(uint32));
+  return B_OK;
 }
 }; // namespace muxrpc

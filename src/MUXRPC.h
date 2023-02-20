@@ -28,6 +28,7 @@ struct Header {
   void setBodyType(BodyType value);
   void setEndOrError(bool value);
   void setStream(bool value);
+  status_t writeToBuffer(unsigned char *buffer);
 };
 
 enum struct RequestType {
@@ -57,13 +58,27 @@ private:
   RequestType expectedType;
 };
 
-class Connection : BLooper {
+class Connection;
+
+class Sender : public BHandler {
+public:
+  Sender(Connection *conn, int32 requestNumber);
+  void MessageReceived(BMessage *msg);
+
+private:
+  Connection *conn;
+  int32 requestNumber;
+};
+
+class Connection : public BLooper {
 public:
 private:
   status_t populateHeader(Header *out);
   status_t readOne();
   std::unique_ptr<BDataIO> inner;
-  std::map<int32, BMessenger> ongoing;
+  std::map<int32, BMessenger> inboundOngoing;
+  std::map<int32, Sender> outboundOngoing;
+  std::vector<Method *> *handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
 };
