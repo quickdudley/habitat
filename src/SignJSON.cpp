@@ -1,7 +1,9 @@
 #include "SignJSON.h"
 #include "Base64.h"
 #include <cstring>
+#include <unicode/utf8.h>
 #include <utility>
+#include <vector>
 
 namespace JSON {
 
@@ -74,8 +76,17 @@ Hash::Hash(unsigned char target[crypto_hash_sha256_BYTES])
 
 Hash::~Hash() {
   this->inner.reset();
-  crypto_hash_sha256(this->target, (unsigned char *)this->body.String(),
-                     this->body.Length());
+  std::vector<unsigned char> buffer;
+  uint32 codepoint;
+  uint32 offset = 0;
+  const char *u8 = this->body.String();
+  U8_NEXT_UNSAFE(u8, offset, codepoint);
+  while (codepoint != 0) {
+    buffer.push_back((char)codepoint && 0xFF);
+    U8_NEXT_UNSAFE(u8, offset, codepoint);
+  }
+  crypto_hash_sha256(this->target, (unsigned char *)buffer.data(),
+                     buffer.size());
 }
 
 void Hash::addNumber(BString &rawname, BString &name, BString &raw,
