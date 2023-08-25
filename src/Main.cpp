@@ -130,7 +130,9 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
+  this->databaseLooper = new BLooper("Habitat message database");
   this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
+  this->databaseLooper->AddHandler(this->ownFeed);
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
@@ -207,7 +209,7 @@ void Habitat::MessageReceived(BMessage *msg) {
 }
 
 thread_id Habitat::Run() {
-  thread_id r = this->ownFeed->Run();
+  thread_id r = this->databaseLooper->Run();
   this->broadcastArgs.ssbPort = 8008; // TODO make dynimic
   memcpy(this->broadcastArgs.pubkey, this->myId.pubkey,
          crypto_sign_PUBLICKEYBYTES);

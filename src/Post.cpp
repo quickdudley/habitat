@@ -36,7 +36,7 @@ static inline status_t eitherNumber(int64 *result, BMessage *source,
 SSBFeed::SSBFeed(BDirectory store,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
-    BLooper(),
+    BHandler(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
   BQuery query;
@@ -74,9 +74,8 @@ SSBFeed::SSBFeed(BDirectory store,
 
 SSBFeed::~SSBFeed() {}
 
-thread_id SSBFeed::Run() {
-  this->updateMessenger = BMessenger(NULL, this);
-  thread_id result = BLooper::Run();
+void SSBFeed::start() {
+  this->updateMessenger = BMessenger(this);
   // I don't seem to receive any updates via live query; will just leave it
   // for now and try again later.
   this->updateQuery.SetVolume(&this->volume);
@@ -93,7 +92,6 @@ thread_id SSBFeed::Run() {
   BEntry entry;
   for (; this->updateQuery.GetNextEntry(&entry) == B_OK;)
     ;
-  return result;
 }
 
 static property_info ssbFeedProperties[] = {{"Cypherkey",
@@ -108,13 +106,13 @@ status_t SSBFeed::GetSupportedSuites(BMessage *data) {
   data->AddString("suites", "suite/x-vnd.habitat-ssb-feed");
   BPropertyInfo propertyInfo(ssbFeedProperties);
   data->AddFlat("messages", &propertyInfo);
-  return BLooper::GetSupportedSuites(data);
+  return BHandler::GetSupportedSuites(data);
 }
 
 void SSBFeed::MessageReceived(BMessage *msg) {
   if (!msg->HasSpecifiers()) {
     msg->PrintToStream();
-    return BLooper::MessageReceived(msg);
+    return BHandler::MessageReceived(msg);
   }
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
@@ -123,7 +121,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
   int32 what;
   const char *property;
   if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
-    return BLooper::MessageReceived(msg);
+    return BHandler::MessageReceived(msg);
   BPropertyInfo propertyInfo(ssbFeedProperties);
   switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
   case 0: // Cypherkey
@@ -131,7 +129,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     error = B_OK;
     break;
   default:
-    return BLooper::MessageReceived(msg);
+    return BHandler::MessageReceived(msg);
   }
   reply.AddInt32("error", error);
   msg->SendReply(&reply);
@@ -144,7 +142,7 @@ BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
   BPropertyInfo propertyInfo(ssbFeedProperties);
   if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
     return this;
-  return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
+  return BHandler::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
 BString SSBFeed::cypherkey() {

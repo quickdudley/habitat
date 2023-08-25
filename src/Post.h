@@ -9,11 +9,11 @@
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
 
-class SSBFeed : public BLooper {
+class SSBFeed : public BHandler {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
-  thread_id Run();
+  void start();
   BString cypherkey();
   BString previousLink();
   status_t GetSupportedSuites(BMessage *data);
