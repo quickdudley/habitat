@@ -6,8 +6,21 @@
 #include <Looper.h>
 #include <Query.h>
 #include <Volume.h>
+#include <queue>
+#include <vector>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
+
+namespace post_private_ {
+struct FeedShuntEntry {
+  int64 sequence;
+  entry_ref ref;
+};
+
+struct FeedBuildComparator {
+  bool operator()(const FeedShuntEntry &l, const FeedShuntEntry &r);
+};
+} // namespace post_private_
 
 class SSBFeed : public BHandler {
 public:
@@ -23,6 +36,10 @@ public:
 
 protected:
   status_t save(BMessage *message, BMessage *reply);
+  std::priority_queue<post_private_::FeedShuntEntry,
+                      std::vector<post_private_::FeedShuntEntry>,
+                      post_private_::FeedBuildComparator>
+      pending;
   BDirectory store;
   BVolume volume;
   BQuery updateQuery;

@@ -33,6 +33,11 @@ static inline status_t eitherNumber(int64 *result, BMessage *source,
   }
 }
 
+bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
+                                                    const FeedShuntEntry &r) {
+  return l.sequence > r.sequence;
+}
+
 SSBFeed::SSBFeed(BDirectory store,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
@@ -56,10 +61,17 @@ SSBFeed::SSBFeed(BDirectory store,
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
                     sizeof(int64));
       if (sequence > this->lastSequence) {
-        this->lastSequence = sequence;
+        this->pending.push({sequence, ref});
+      }
+      while (!this->pending.empty() &&
+             this->pending.top().sequence == this->lastSequence + 1) {
+        BEntry processingEntry(&this->pending.top().ref);
+        BNode processingNode(&processingEntry);
         BString cypherkey;
-        node.ReadAttrString("HABITAT:cypherkey", &cypherkey);
+        processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
+        this->pending.pop();
         BString b64;
+        // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
         for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++) {
           b64.Append(cypherkey[i], 1);
         }
