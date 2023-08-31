@@ -6,6 +6,7 @@
 namespace JSON {
 
 bool wasArray(BMessage *msg) {
+  if (msg->what == 'JSAR')
   std::set<int> collected;
   char *attrname;
   type_code attrtype;
@@ -149,7 +150,7 @@ public:
 
 private:
   BMessage *parent;
-  BMessage target;
+  BMessage target('JSAR');
   BString key;
 };
 
@@ -224,7 +225,9 @@ std::unique_ptr<NodeSink> BMessageObjectDocSink::addArray(BString &rawname,
 BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
     :
     target(target),
-    counter(0) {}
+    counter(0) {
+  target->what = 'JSAR';
+}
 
 void BMessageArrayDocSink::addNumber(BString &rawname, BString &name,
                                      BString &raw, number value) {
