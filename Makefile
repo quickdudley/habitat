@@ -45,6 +45,9 @@ SRCS = \
 	 src/Secret.cpp  \
 	 src/SignJSON.cpp  \
 
+TESTABLE_SRCS = src/JSON.cpp
+TEST_SRCS = $(wildcard tests/*Spec.cpp)
+
 
 #	Specify the resource definition files to use. Full or relative paths can be
 #	used.
@@ -124,7 +127,7 @@ SYMBOLS :=
 
 #	Includes debug information, which allows the binary to be debugged easily.
 #	If set to "TRUE", debug info will be created.
-DEBUGGER := TRUE
+DEBUGGER :=
 
 #	Specify any additional compiler flags to be used.
 COMPILER_FLAGS =
@@ -161,6 +164,8 @@ LDFLAGS += -Xlinker -soname=_APP_
 OBJ_DIR := generated/objects
 TARGET_DIR := generated/distro
 TARGET := $(TARGET_DIR)/$(NAME)
+TEST_DIR := generated/test
+TEST_TARGET := $(TEST_DIR)/test-habitat
 
 # Psuedo-function for converting a list of source files in SRCS variable to a
 # corresponding list of object files in $(OBJ_DIR)/xxx.o. The "function" strips
@@ -172,13 +177,29 @@ define SRCS_LIST_TO_OBJS
 	$(basename $(notdir $(file))))))
 endef
 
+define TESTABLE_LIST_TO_OBJS
+	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(TESTABLE_SRCS), \
+	$(basename $(notdir $(file))))))
+endef
+
+define TEST_LIST_TO_OBJS
+	$(addprefix $(TEST_DIR)/, $(addsuffix .o, $(foreach file, $(TEST_SRCS), \
+	$(basename $(notdir $(file))))))
+endef
+
 define SRCS_LIST_TO_DEPENDS
 	$(addprefix $(OBJ_DIR)/, $(addsuffix .d, $(foreach file, $(SRCS), \
 	$(basename $(notdir $(file))))))
 endef
 
+define TEST_LIST_TO_DEPENDS
+	$(addprefix $(TEST_DIR)/, $(addsuffix .d, $(foreach file, $(TEST_SRCS), \
+	$(basename $(notdir $(file))))))
+endef
+
 OBJS = $(SRCS_LIST_TO_OBJS)
-DEPENDS = $(SRCS_LIST_TO_DEPENDS)
+TEST_OBJS = $(TEST_LIST_TO_OBJS) $(TESTABLE_LIST_TO_OBJS)
+DEPENDS = $(SRCS_LIST_TO_DEPENDS) $(TEST_LIST_TO_DEPENDS)
 
 # Create a unique list of paths to our sourcefiles and resources.
 SRC_PATHS += $(sort $(foreach file, $(SRCS) $(RSRCS) $(RDEFS), $(dir $(file))))
@@ -235,12 +256,17 @@ CFLAGS += $(COMPILER_FLAGS)
 # Add the additional linkflags to LDFLAGS
 LDFLAGS += $(LINKER_FLAGS)
 
+TEST_LDFLAGS := $(LINK_PATHS) $(LINK_LIBS) $(shell pkg-config --libs catch2) \
+	-lCatch2Main -lCatch2
+
 # Use the archiving tools to create an an archive if we're building a static
 # library, otherwise use the linker.
 ifeq ($(strip $(TYPE)), STATIC)
 	BUILD_LINE = ar -cru "$(TARGET)" $(OBJS)
+	TEST_BUILD_LINE = ar -cru "$(TEST_TARGET)" $(TEST_OBJS)
 else
 	BUILD_LINE = $(LD) -o "$@" $(OBJS) $(LDFLAGS)
+	TEST_BUILD_LINE = $(LD) -o "$@" $(TEST_OBJS) $(TEST_LDFLAGS)
 endif
 
 # Pseudo-function for converting a list of resource definition files in RDEFS
@@ -284,9 +310,17 @@ $(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(OBJS) $(RSRCS) $(CATKEYS)
 	$(MIMESET) -f "$@"
 	for lc in $(LOCALES); do linkcatkeys -o $(TARGET) -s $(APP_MIME_SIG) -tr -l $$lc $(CATKEYS_DIR)/$$lc.catkeys; done
 
+$(TEST_TARGET): $(OBJ_DIR) $(TEST_DIR) $(TEST_OBJS)
+	echo $(TEST_OBJS)
+	$(TEST_BUILD_LINE)
+
 # Create OBJ_DIR if it doesn't exist.
 $(OBJ_DIR)::
 	@[ -d $(OBJ_DIR) ] || mkdir $(OBJ_DIR) >/dev/null 2>&1
+
+# Create TEST_DIR if it doesn't exist.
+$(TEST_DIR)::
+	@[ -d $(TEST_DIR) ] || mkdir $(TEST_DIR) >/dev/null 2>&1
 
 $(TARGET_DIR)::
 	@[ -d $(TARGET_DIR) ] || mkdir $(TARGET_DIR) >/dev/null 2>&1
@@ -302,6 +336,9 @@ $(OBJ_DIR)/%.d : %.c
 $(OBJ_DIR)/%.d : %.cpp
 	mkdir -p $(OBJ_DIR); \
 	mkdepend $(LOC_INCLUDES) -p .cpp:$(OBJ_DIR)/%n.o -m -f "$@" $<
+$(TEST_DIR)/%.d : tests/%.cpp
+	mkdir -p $(TEST_DIR); \
+	mkdepend $(LOC_INCLUDES) -p .cpp:$(TEST_DIR)/%n.o -m -f "$@" $<
 $(OBJ_DIR)/%.d : %.cp
 	mkdir -p $(OBJ_DIR); \
 	mkdepend $(LOC_INCLUDES) -p .cp:$(OBJ_DIR)/%n.o -m -f "$@" $<
@@ -320,16 +357,22 @@ $(OBJ_DIR)/%.d : %.CC
 $(OBJ_DIR)/%.d : %.CPP
 	mkdir -p $(OBJ_DIR); \
 	mkdepend $(LOC_INCLUDES) -p .CPP:$(OBJ_DIR)/%n.o -m -f "$@" $<
+$(TEST_DIR)/%.d : %.CPP
+	mkdir -p $(OBJ_DIR); \
+	mkdepend $(LOC_INCLUDES) -p .CPP:$(OBJ_DIR)/%n.o -m -f "$@" $<
 $(OBJ_DIR)/%.d : %.CXX
 	mkdir -p $(OBJ_DIR); \
 	mkdepend $(LOC_INCLUDES) -p .CXX:$(OBJ_DIR)/%n.o -m -f "$@" $<
 
 -include $(DEPENDS)
+TEST_CFLAGS := $(shell pkg-config --cflags catch2)
 # Rules to make the object files.
 $(OBJ_DIR)/%.o : %.c
 	$(CC) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
 $(OBJ_DIR)/%.o : %.cpp
 	$(C++) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
+$(TEST_DIR)/%.o : tests/%.cpp
+	$(C++) -c $< $(INCLUDES) $(CFLAGS) $(TEST_CFLAGS) -o "$@"
 $(OBJ_DIR)/%.o : %.cp
 	$(CC) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
 $(OBJ_DIR)/%.o : %.cc
@@ -342,6 +385,8 @@ $(OBJ_DIR)/%.o : %.CC
 	$(C++) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
 $(OBJ_DIR)/%.o : %.CPP
 	$(C++) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
+$(TEST_DIR)/%.o : tests/%.CPP
+	$(C++) -c $< $(INCLUDES) $(CFLAGS) $(TEST_CFLAGS) -o "$@"
 $(OBJ_DIR)/%.o : %.CXX
 	$(C++) -c $< $(INCLUDES) $(CFLAGS) -o "$@"
 
@@ -357,6 +402,10 @@ $(OBJ_DIR)/$(NAME).pre : $(SRCS)
 
 $(CATKEYS_DIR)/en.catkeys : $(CATKEYS_DIR) $(OBJ_DIR)/$(NAME).pre
 	collectcatkeys -s $(APP_MIME_SIG) $(OBJ_DIR)/$(NAME).pre -o $(CATKEYS_DIR)/en.catkeys
+
+.PHONY: test
+test: $(TEST_TARGET)
+	./$(TEST_TARGET)
 
 # The generic "clean" command. (Deletes everything in the object folder.)
 .PHONY: clean
