@@ -21,12 +21,12 @@ TEST_CASE( "Produces the same hash as Manyverse", "[JSON::Hash]" ) {
   outer.AddMessage("content", &content);
   outer.AddString("signature", "H9U8Q2HbePwtNhEPOI1SLLRH99uQf9dQqTA3JqWJAGSM/nC/zIJFkJZ8MjgFev/We/rR/0g4jafdjX7oHu9fDw==.sig.ed25519");
   unsigned char rawHash[crypto_hash_sha256_BYTES];
-  std::unique_ptr<JSON::NodeSink> hashSink(new JSON::Hash(rawHash));
-  JSON::RootSink rootSink(hashSink);
-  JSON::fromBMessage(&rootSink, &outer);
+  {
+    JSON::RootSink rootSink(new JSON::Hash(rawHash));
+    JSON::fromBMessage(&rootSink, &outer);
+  }
   BString hash("%");
-  hash.Append(base64::encode(rawhash, crypto_hash_sha256_BYTES, base64::STANDARD));
+  hash.Append(base64::encode(rawHash, crypto_hash_sha256_BYTES, base64::STANDARD));
   hash.Append(".sha256");
   REQUIRE( hash == "%JFOLfCUuZz0AFMvo0iN0J3/cWV0nRF6aDKrRS6Bxz8c=.sha256" );
 }
-

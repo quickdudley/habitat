@@ -45,7 +45,11 @@ SRCS = \
 	 src/Secret.cpp  \
 	 src/SignJSON.cpp  \
 
-TESTABLE_SRCS = src/JSON.cpp
+TESTABLE_SRCS = \
+	 src/Base64.cpp \
+	 src/BJSON.cpp \
+	 src/JSON.cpp \
+	 src/SignJSON.cpp
 TEST_SRCS = $(wildcard tests/*Spec.cpp)
 
 

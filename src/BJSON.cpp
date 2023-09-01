@@ -6,7 +6,7 @@
 namespace JSON {
 
 bool wasArray(BMessage *msg) {
-  if (msg->what == 'JSAR')
+  if (msg->what == 'JSAR') return true;
   std::set<int> collected;
   char *attrname;
   type_code attrtype;
@@ -150,7 +150,7 @@ public:
 
 private:
   BMessage *parent;
-  BMessage target('JSAR');
+  BMessage target;
   BString key;
 };
 
@@ -168,10 +168,12 @@ BMessageArrayChild::BMessageArrayChild(BMessage *parent, BString &key)
     :
     BMessageObjectDocSink(&target),
     parent(parent),
-    key(key) {}
+    key(key) {
+  this->target.what = 'JSAR';
+}
 
 BMessageArrayChild::~BMessageArrayChild() {
-  parent->AddMessage(this->key.String(), &this->target);
+  parent->AddMessage(this->key.String(), &(this->target));
 }
 
 BMessageDocSink::BMessageDocSink(BMessage *target)
