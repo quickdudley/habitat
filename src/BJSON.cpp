@@ -6,7 +6,8 @@
 namespace JSON {
 
 bool wasArray(BMessage *msg) {
-  if (msg->what == 'JSAR') return true;
+  if (msg->what == 'JSAR')
+    return true;
   std::set<int> collected;
   char *attrname;
   type_code attrtype;

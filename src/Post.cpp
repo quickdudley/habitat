@@ -7,7 +7,6 @@
 #include <PropertyInfo.h>
 #include <cstring>
 #include <ctime>
-#include <iostream>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");

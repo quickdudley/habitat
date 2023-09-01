@@ -23,10 +23,15 @@ TEST_CASE( "Produces the same hash as Manyverse", "[JSON::Hash]" ) {
   unsigned char rawHash[crypto_hash_sha256_BYTES];
   {
     JSON::RootSink rootSink(new JSON::Hash(rawHash));
+    BString blank;
+    rootSink.beginObject(blank);
     JSON::fromBMessage(&rootSink, &outer);
+    rootSink.closeNode();
   }
   BString hash("%");
   hash.Append(base64::encode(rawHash, crypto_hash_sha256_BYTES, base64::STANDARD));
   hash.Append(".sha256");
   REQUIRE( hash == "%JFOLfCUuZz0AFMvo0iN0J3/cWV0nRF6aDKrRS6Bxz8c=.sha256" );
 }
+
+

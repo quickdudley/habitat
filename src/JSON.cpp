@@ -21,7 +21,7 @@ BString escapeString(BString &src) {
       result << "\\r";
     } else if (c == 0x0B) {
       result << "\\t";
-    } else if (c < 0x20) {
+    } else if (c > 0 && c < 0x20) {
       BString addenum;
       addenum.SetToFormat("\\u%04x", (int)c);
       result << addenum;

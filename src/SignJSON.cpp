@@ -83,7 +83,7 @@ Hash::~Hash() {
   U8_NEXT_UNSAFE(u8, offset, codepoint);
   while (codepoint != 0) {
     if (codepoint >= 0x10000) {
-      buffer.push_back((char)((codepoint >> 10) & 0xFF));
+      buffer.push_back((char)(((codepoint & 0xFFFF) >> 10) & 0xFF));
     }
     buffer.push_back((char)(codepoint & 0xFF));
     U8_NEXT_UNSAFE(u8, offset, codepoint);
