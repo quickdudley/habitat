@@ -3,7 +3,8 @@
 #include "SignJSON.h"
 #include <catch2/catch_all.hpp>
 
-TEST_CASE("Produces the same hash as Manyverse", "[JSON::Hash]") {
+TEST_CASE("Correctly handles test message",
+          "[JSON::Hash, JSON::VerifySignature]") {
   BMessage outer;
   outer.AddString("previous",
                   "%fkYNze1TmuWuQvpdowh7f+BR7nlrE8k3dVc3F1+21Nc=.sha256");
@@ -30,17 +31,30 @@ TEST_CASE("Produces the same hash as Manyverse", "[JSON::Hash]") {
   outer.AddString("signature",
                   "H9U8Q2HbePwtNhEPOI1SLLRH99uQf9dQqTA3JqWJAGSM/nC/"
                   "zIJFkJZ8MjgFev/We/rR/0g4jafdjX7oHu9fDw==.sig.ed25519");
-  unsigned char rawHash[crypto_hash_sha256_BYTES];
-  {
-    JSON::RootSink rootSink(new JSON::Hash(rawHash));
-    BString blank;
-    rootSink.beginObject(blank);
-    JSON::fromBMessage(&rootSink, &outer);
-    rootSink.closeNode();
+  SECTION("Same message ID as in Manyverse") {
+    unsigned char rawHash[crypto_hash_sha256_BYTES];
+    {
+      JSON::RootSink rootSink(new JSON::Hash(rawHash));
+      BString blank;
+      rootSink.beginObject(blank);
+      JSON::fromBMessage(&rootSink, &outer);
+      rootSink.closeNode();
+    }
+    BString hash("%");
+    hash.Append(
+        base64::encode(rawHash, crypto_hash_sha256_BYTES, base64::STANDARD));
+    hash.Append(".sha256");
+    REQUIRE(hash == "%JFOLfCUuZz0AFMvo0iN0J3/cWV0nRF6aDKrRS6Bxz8c=.sha256");
   }
-  BString hash("%");
-  hash.Append(
-      base64::encode(rawHash, crypto_hash_sha256_BYTES, base64::STANDARD));
-  hash.Append(".sha256");
-  REQUIRE(hash == "%JFOLfCUuZz0AFMvo0iN0J3/cWV0nRF6aDKrRS6Bxz8c=.sha256");
+  SECTION("Signature successfully validated") {
+    bool valid;
+    {
+      JSON::RootSink rootSink(new JSON::VerifySignature(&valid));
+      BString blank;
+      rootSink.beginObject(blank);
+      JSON::fromBMessage(&rootSink, &outer);
+      rootSink.closeNode();
+    }
+    REQUIRE(valid == true);
+  }
 }
