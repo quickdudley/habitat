@@ -153,10 +153,19 @@ VerifySignature::VerifySignature(bool *target)
 
 VerifySignature::~VerifySignature() {
   this->inner.reset();
+  BString reencoded = base64::encode(this->author, crypto_sign_PUBLICKEYBYTES,
+                                     base64::STANDARD);
+  std::cout << "author: " << reencoded.String() << " (reencoded)" << std::endl;
+  reencoded =
+      base64::encode(this->signature, crypto_sign_BYTES, base64::STANDARD);
+  std::cout << "signature: " << reencoded.String() << " (reencoded)"
+            << std::endl;
   std::cout << this->body.String() << std::endl;
-  *this->target = crypto_sign_verify_detached(
-                      this->signature, (unsigned char *)this->body.String(),
-                      this->body.Length(), this->author) == 0;
+  int result = crypto_sign_verify_detached(this->signature,
+                                           (unsigned char *)this->body.String(),
+                                           this->body.Length(), this->author);
+  std::cout << "Verification result: " << result << std::endl;
+  *this->target = result == 0;
 }
 
 void VerifySignature::addNumber(BString &rawname, BString &name, BString &raw,
