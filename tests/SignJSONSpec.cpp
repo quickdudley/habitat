@@ -4,7 +4,7 @@
 #include <catch2/catch_all.hpp>
 
 TEST_CASE("Correctly handles test message",
-          "[JSON::Hash, JSON::VerifySignature]") {
+          "[JSON::Hash][JSON::VerifySignature]") {
   REQUIRE(sodium_init() >= 0);
   BMessage outer;
   outer.AddString("previous",
