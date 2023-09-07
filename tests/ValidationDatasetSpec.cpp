@@ -6,8 +6,7 @@
 // The dataset used here is from
 // https://github.com/fraction/ssb-validation-dataset
 
-TEST_CASE("Validation matches examples",
-          "[JSON::Hash][JSON::VerifySignature][other]") {
+TEST_CASE("Validation matches examples", "") {
   REQUIRE(sodium_init() >= 0);
   BMessage examples;
   {

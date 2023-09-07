@@ -573,6 +573,7 @@ status_t Parser::nextChar(char c) {
       } else {
         this->state = this->stack.back();
       }
+      this->target->closeNode();
       return B_OK;
     } else if (isspace(c)) {
       return B_OK;
@@ -588,6 +589,7 @@ status_t Parser::nextChar(char c) {
       } else {
         this->state = this->stack.back();
       }
+      this->target->closeNode();
       return B_OK;
     } else if (isspace(c)) {
       return B_OK;
