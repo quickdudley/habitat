@@ -1,6 +1,7 @@
 #include "JSON.h"
 #include <cctype>
 #include <cmath>
+#include <iostream>
 #include <utility>
 
 namespace JSON {
@@ -442,6 +443,26 @@ void RootSink::closeNode() {
   }
 }
 
+status_t parseStream(std::unique_ptr<NodeSink> target, BDataIO *input) {
+  Parser parser(std::move(target));
+  char buffer[1024];
+  ssize_t readBytes;
+  while ((readBytes = input->Read(buffer, sizeof(buffer))) > 0) {
+    for (int i = 0; i < readBytes; i++) {
+      std::cout << buffer[i];
+      std::cout.flush();
+      status_t parseResult = parser.nextChar(buffer[i]);
+      if (parseResult != B_OK)
+        return parseResult;
+    }
+  }
+  return B_OK;
+}
+
+status_t parseStream(NodeSink *target, BDataIO *input) {
+  return parseStream(std::unique_ptr<NodeSink>(target), input);
+}
+
 Parser::Parser(std::unique_ptr<RootSink> target) {
   this->target = std::move(target);
 }
@@ -483,6 +504,15 @@ status_t Parser::nextChar(char c) {
     } else if (isspace(c)) {
       return B_OK;
     }
+  } else if (this->state == 2 && c == ']') {
+    this->stack.pop_back();
+    if (this->stack.empty()) {
+      this->state = 14;
+    } else {
+      this->state = this->stack.back();
+    }
+    this->target->closeNode();
+    return B_OK;
   } else if (this->state == 3) { // In object key
     return this->charInString(c, 3, 4);
   } else if (this->state == 4) { // Before colon in object

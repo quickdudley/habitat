@@ -1,6 +1,7 @@
 #ifndef JSON_H
 #define JSON_H
 
+#include <DataIO.h>
 #include <String.h>
 #include <memory>
 #include <vector>
@@ -81,6 +82,9 @@ public:
 private:
   std::vector<std::unique_ptr<NodeSink>> stack;
 };
+
+status_t parseStream(std::unique_ptr<NodeSink> target, BDataIO *input);
+status_t parseStream(NodeSink *target, BDataIO *input);
 
 class Parser {
 public:

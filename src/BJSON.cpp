@@ -8,6 +8,8 @@ namespace JSON {
 bool wasArray(BMessage *msg) {
   if (msg->what == 'JSAR')
     return true;
+  if (msg->what == 'JSOB')
+    return false;
   std::set<int> collected;
   char *attrname;
   type_code attrtype;
@@ -159,7 +161,9 @@ BMessageObjectChild::BMessageObjectChild(BMessage *parent, BString &key)
     :
     BMessageObjectDocSink(&target),
     parent(parent),
-    key(key) {}
+    key(key) {
+  this->target.what = 'JSOB';
+}
 
 BMessageObjectChild::~BMessageObjectChild() {
   parent->AddMessage(this->key.String(), &this->target);
@@ -193,7 +197,9 @@ std::unique_ptr<NodeSink> BMessageDocSink::addArray(BString &rawname,
 
 BMessageObjectDocSink::BMessageObjectDocSink(BMessage *target)
     :
-    target(target) {}
+    target(target) {
+  target->what = 'JSOB';
+}
 
 void BMessageObjectDocSink::addNumber(BString &rawname, BString &name,
                                       BString &raw, number value) {

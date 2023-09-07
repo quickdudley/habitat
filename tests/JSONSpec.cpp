@@ -8,6 +8,20 @@ TEST_CASE("Handles unicode", "[JSON]") {
   REQUIRE(result == "\"🀐\"");
 }
 
+TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing]") {
+  // 1491901740000
+  // class AExpect :
+}
+
+TEST_CASE("Successfully parses object with empty array as properties",
+          "[JSON][parsing][debugnow]") {
+  char example[] = "{\"a\": [], \"b\": []}";
+  JSON::Parser parser(new JSON::IgnoreNode());
+  for (int i = 0; example[i] != 0; i++) {
+    REQUIRE(parser.nextChar(example[i]) == B_OK);
+  }
+}
+
 TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   struct Results {
     bool a1 = false, b1 = false, c1 = false, d1 = false, e1 = false, f1 = false;
