@@ -501,6 +501,15 @@ status_t Parser::nextChar(char c) {
       this->state2 = 0;
       this->token = BString("\"");
       return B_OK;
+    } else if (c == '}') {
+      this->stack.pop_back();
+      if (this->stack.empty()) {
+        this->state = 14;
+      } else {
+        this->state = this->stack.back();
+      }
+      this->target->closeNode();
+      return B_OK;
     } else if (isspace(c)) {
       return B_OK;
     }
