@@ -443,7 +443,7 @@ void RootSink::closeNode() {
   }
 }
 
-status_t parseStream(std::unique_ptr<NodeSink> target, BDataIO *input) {
+status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input) {
   Parser parser(std::move(target));
   char buffer[1024];
   ssize_t readBytes;
@@ -459,8 +459,36 @@ status_t parseStream(std::unique_ptr<NodeSink> target, BDataIO *input) {
   return B_OK;
 }
 
-status_t parseStream(NodeSink *target, BDataIO *input) {
-  return parseStream(std::unique_ptr<NodeSink>(target), input);
+status_t parse(NodeSink *target, BDataIO *input) {
+  return parse(std::unique_ptr<NodeSink>(target), input);
+}
+
+status_t parse(std::unique_ptr<NodeSink> target, char *input) {
+  Parser parser(std::move(target));
+  for (int i = 0; input[i] != 0; i++) {
+    status_t parseResult = parser.nextChar(input[i]);
+    if (parseResult != B_OK)
+      return parseResult;
+  }
+  return B_OK;
+}
+
+status_t parse(NodeSink *target, char *input) {
+  return parse(std::unique_ptr<NodeSink>(target), input);
+}
+
+status_t parse(std::unique_ptr<NodeSink> target, BString &input) {
+  Parser parser(std::move(target));
+  for (int i = 0; i < input.Length(); i++) {
+    status_t parseResult = parser.nextChar(input[i]);
+    if (parseResult != B_OK)
+      return parseResult;
+  }
+  return B_OK;
+}
+
+status_t parse(NodeSink *target, BString &input) {
+  return parse(std::unique_ptr<NodeSink>(target), input);
 }
 
 Parser::Parser(std::unique_ptr<RootSink> target) {
@@ -692,7 +720,9 @@ template <typename T> static T raise(T base, unsigned int p) {
 status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   this->token.Append(c, 1);
   if (c == '0') {
-    if (this->state2 <= 1) {
+    if (this->state2 == 0) {
+      this->s *= 10;
+    } else if (this->state2 == 1) {
       this->z++;
     } else {
       this->e *= 10;

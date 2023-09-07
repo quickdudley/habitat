@@ -83,8 +83,12 @@ private:
   std::vector<std::unique_ptr<NodeSink>> stack;
 };
 
-status_t parseStream(std::unique_ptr<NodeSink> target, BDataIO *input);
-status_t parseStream(NodeSink *target, BDataIO *input);
+status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input);
+status_t parse(NodeSink *target, BDataIO *input);
+status_t parse(std::unique_ptr<NodeSink> target, char *input);
+status_t parse(NodeSink *target, char *input);
+status_t parse(std::unique_ptr<NodeSink> target, BString &input);
+status_t parse(NodeSink *target, BString &input);
 
 class Parser {
 public:

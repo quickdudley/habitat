@@ -12,7 +12,7 @@ TEST_CASE("Validation matches examples", "") {
 
   {
     BFile input("tests/data.json", B_READ_ONLY);
-    REQUIRE(parseStream(new JSON::BMessageDocSink(&examples), &input) == B_OK);
+    REQUIRE(JSON::parse(new JSON::BMessageDocSink(&examples), &input) == B_OK);
   }
   examples.PrintToStream();
   REQUIRE(false);

@@ -8,13 +8,55 @@ TEST_CASE("Handles unicode", "[JSON]") {
   REQUIRE(result == "\"🀐\"");
 }
 
-TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing]") {
-  // 1491901740000
-  // class AExpect :
+TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
+  class AExpect : public JSON::NodeSink {
+  public:
+    AExpect(double *target)
+        :
+        target(target) {}
+    void addNumber(BString &rawname, BString &name, BString &raw,
+                   JSON::number value) {
+      *(this->target) = value;
+    }
+    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+      return std::unique_ptr<NodeSink>(new AExpect(this->target));
+    }
+
+  private:
+    double *target;
+  };
+  char example[] = "[1491901740000]";
+  double result;
+  REQUIRE(JSON::parse(new AExpect(&result), example) == B_OK);
+  REQUIRE(result == 1491901740000.0);
+}
+
+TEST_CASE("Correctly parses decimal with trailing 0",
+          "[JSON][parsing][number]") {
+  class AExpect : public JSON::NodeSink {
+  public:
+    AExpect(double *target)
+        :
+        target(target) {}
+    void addNumber(BString &rawname, BString &name, BString &raw,
+                   JSON::number value) {
+      *(this->target) = value;
+    }
+    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+      return std::unique_ptr<NodeSink>(new AExpect(this->target));
+    }
+
+  private:
+    double *target;
+  };
+  char example[] = "[10.00]";
+  double result;
+  REQUIRE(JSON::parse(new AExpect(&result), example) == B_OK);
+  REQUIRE(result == 10.00);
 }
 
 TEST_CASE("Successfully parses object with empty array as properties",
-          "[JSON][parsing][debugnow]") {
+          "[JSON][parsing]") {
   char example[] = "{\"a\": [], \"b\": []}";
   JSON::Parser parser(new JSON::IgnoreNode());
   for (int i = 0; example[i] != 0; i++) {
