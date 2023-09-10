@@ -14,7 +14,7 @@ static inline BString showNumber(int n) {
   return result;
 }
 
-TEST_CASE("Validation matches examples", "") {
+TEST_CASE("Validation matches examples", "[message][validation]") {
   REQUIRE(sodium_init() >= 0);
   BMessage examples;
   {
@@ -27,7 +27,33 @@ TEST_CASE("Validation matches examples", "") {
   while (examples.FindMessage(showNumber(i).String(), &sample) == B_OK) {
     DYNAMIC_SECTION("Example " << i) {
       std::cout << "-- Example " << i << " --" << std::endl;
-      sample.PrintToStream();
+      bool valid;
+      REQUIRE(sample.FindBool("valid", &valid) == B_OK);
+      bool foundValid;
+      double lastSequence = -1;
+      BString lastID;
+      BString hmacKey;
+      bool useHMac = false;
+      if (sample.FindString("hmacKey", &hmacKey) == B_OK) {
+        useHMac = true;
+      }
+      BString expectedID;
+      sample.FindString("id", &expectedID);
+      BMessage state;
+      if (sample.FindMessage("state", &state) == B_OK) {
+        REQUIRE(state.FindDouble("sequence", &lastSequence) == B_OK);
+        REQUIRE(state.FindString("id", &lastID) == B_OK);
+      }
+      BMessage message;
+      if (sample.FindMessage("message", &message) == B_OK) {
+        foundValid = post::validate(&message, lastSequence, lastID, useHMac,
+                                    hmacKey) == B_OK;
+      } else {
+        foundValid = false;
+      }
+      if (valid != foundValid)
+        sample.PrintToStream();
+      REQUIRE(valid == foundValid);
     }
     i++;
   }
