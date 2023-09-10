@@ -49,8 +49,9 @@ TESTABLE_SRCS = \
 	 src/Base64.cpp \
 	 src/BJSON.cpp \
 	 src/JSON.cpp \
+	 src/Post.cpp \
 	 src/SignJSON.cpp
-TEST_SRCS = $(wildcard tests/*Spec.cpp)
+TEST_SRCS = $(wildcard tests/*.cpp)
 
 
 #	Specify the resource definition files to use. Full or relative paths can be
@@ -414,7 +415,7 @@ test: $(TEST_TARGET)
 # The generic "clean" command. (Deletes everything in the object folder.)
 .PHONY: clean
 clean:
-	-rm -rf "$(OBJ_DIR)"
+	-rm -rf "$(OBJ_DIR)" "$(TEST_DIR)"
 
 # Remove just the application from the object folder.
 .PHONY: rmapp

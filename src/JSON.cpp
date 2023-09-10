@@ -1,7 +1,6 @@
 #include "JSON.h"
 #include <cctype>
 #include <cmath>
-#include <iostream>
 #include <utility>
 
 namespace JSON {
@@ -449,8 +448,6 @@ status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input) {
   ssize_t readBytes;
   while ((readBytes = input->Read(buffer, sizeof(buffer))) > 0) {
     for (int i = 0; i < readBytes; i++) {
-      std::cout << buffer[i];
-      std::cout.flush();
       status_t parseResult = parser.nextChar(buffer[i]);
       if (parseResult != B_OK)
         return parseResult;

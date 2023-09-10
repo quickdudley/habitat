@@ -160,7 +160,6 @@ VerifySignature::~VerifySignature() {
       base64::encode(this->signature, crypto_sign_BYTES, base64::STANDARD);
   std::cout << "signature: " << reencoded.String() << " (reencoded)"
             << std::endl;
-  std::cout << this->body.String() << std::endl;
   int result = crypto_sign_verify_detached(this->signature,
                                            (unsigned char *)this->body.String(),
                                            this->body.Length(), this->author);

@@ -62,4 +62,8 @@ private:
   unsigned char seckey[crypto_sign_SECRETKEYBYTES];
 };
 
+namespace post {
+  status_t validate(BMessage *message, int lastSequence, BString &lastID, bool useHmac, BString &hmacKey);
+}
+
 #endif // POST_H

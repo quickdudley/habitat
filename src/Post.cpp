@@ -323,3 +323,9 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
   full.PrintToStream();
   return this->save(&full, reply);
 }
+
+namespace post {
+status_t validate(BMessage *message, int lastSequence, BString &lastID, bool useHmac, BString &hmacKey) {
+  return B_OK;
+}
+}
