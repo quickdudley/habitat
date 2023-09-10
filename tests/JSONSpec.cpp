@@ -19,7 +19,7 @@ TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
       *(this->target) = value;
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
-      return std::unique_ptr<NodeSink>(new AExpect(this->target));
+      return std::make_unique<AExpect>(this->target);
     }
 
   private:
@@ -27,7 +27,7 @@ TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
   };
   char example[] = "[1491901740000]";
   double result;
-  REQUIRE(JSON::parse(new AExpect(&result), example) == B_OK);
+  REQUIRE(JSON::parse(std::make_unique<AExpect>(&result), example) == B_OK);
   REQUIRE(result == 1491901740000.0);
 }
 
@@ -43,7 +43,7 @@ TEST_CASE("Correctly parses decimal with trailing 0",
       *(this->target) = value;
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
-      return std::unique_ptr<NodeSink>(new AExpect(this->target));
+      return std::unique_ptr<NodeSink>(std::make_unique<AExpect>(this->target));
     }
 
   private:
@@ -51,14 +51,14 @@ TEST_CASE("Correctly parses decimal with trailing 0",
   };
   char example[] = "[10.00]";
   double result;
-  REQUIRE(JSON::parse(new AExpect(&result), example) == B_OK);
+  REQUIRE(JSON::parse(std::make_unique<AExpect>(&result), example) == B_OK);
   REQUIRE(result == 10.00);
 }
 
 TEST_CASE("Successfully parses object with empty array as properties",
           "[JSON][parsing]") {
   char example[] = "{\"a\": [], \"b\": []}";
-  JSON::Parser parser(new JSON::IgnoreNode());
+  JSON::Parser parser(std::make_unique<JSON::IgnoreNode>());
   for (int i = 0; example[i] != 0; i++) {
     REQUIRE(parser.nextChar(example[i]) == B_OK);
   }
@@ -191,7 +191,7 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
       std::cerr << name.String() << ": " << value << std::endl;
     }
     std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
-      return std::unique_ptr<NodeSink>(new OExpect(this->target, this->ix++));
+      return std::make_unique<OExpect>(this->target, this->ix++);
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
       this->target->extra = true;
@@ -232,7 +232,7 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
       return JSON::NodeSink::addObject(rawname, name);
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
-      return std::unique_ptr<NodeSink>(new AExpect(this->target));
+      return std::make_unique<AExpect>(this->target);
     }
 
   private:
@@ -242,7 +242,7 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   Results results;
   char example[] = "[{\"a\":\"b\",\"c\":\"d\"},{\"e\":\"f\"}]";
   {
-    JSON::Parser parser(new RootExpect(&results));
+    JSON::Parser parser(std::make_unique<RootExpect>(&results));
     for (int i = 0; i < sizeof(example); i++) {
       parser.nextChar(example[i]);
     }

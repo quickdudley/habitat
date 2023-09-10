@@ -63,7 +63,8 @@ private:
 };
 
 namespace post {
-  status_t validate(BMessage *message, int lastSequence, BString &lastID, bool useHmac, BString &hmacKey);
+status_t validate(BMessage *message, int lastSequence, BString &lastID,
+                  bool useHmac, BString &hmacKey);
 }
 
 #endif // POST_H

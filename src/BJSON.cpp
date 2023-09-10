@@ -187,12 +187,12 @@ BMessageDocSink::BMessageDocSink(BMessage *target)
 
 std::unique_ptr<NodeSink> BMessageDocSink::addObject(BString &rawname,
                                                      BString &name) {
-  return std::unique_ptr<NodeSink>(new BMessageObjectDocSink(this->target));
+  return std::make_unique<BMessageObjectDocSink>(this->target);
 }
 
 std::unique_ptr<NodeSink> BMessageDocSink::addArray(BString &rawname,
                                                     BString &name) {
-  return std::unique_ptr<NodeSink>(new BMessageArrayDocSink(this->target));
+  return std::make_unique<BMessageArrayDocSink>(this->target);
 }
 
 BMessageObjectDocSink::BMessageObjectDocSink(BMessage *target)
@@ -223,12 +223,12 @@ void BMessageObjectDocSink::addString(BString &rawname, BString &name,
 
 std::unique_ptr<NodeSink> BMessageObjectDocSink::addObject(BString &rawname,
                                                            BString &name) {
-  return std::unique_ptr<NodeSink>(new BMessageObjectChild(this->target, name));
+  return std::make_unique<BMessageObjectChild>(this->target, name);
 }
 
 std::unique_ptr<NodeSink> BMessageObjectDocSink::addArray(BString &rawname,
                                                           BString &name) {
-  return std::unique_ptr<NodeSink>(new BMessageArrayChild(this->target, name));
+  return std::make_unique<BMessageArrayChild>(this->target, name);
 }
 
 BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
@@ -261,13 +261,13 @@ void BMessageArrayDocSink::addString(BString &rawname, BString &name,
 std::unique_ptr<NodeSink> BMessageArrayDocSink::addObject(BString &rawname,
                                                           BString &name) {
   BString key = this->key();
-  return std::unique_ptr<NodeSink>(new BMessageObjectChild(this->target, key));
+  return std::make_unique<BMessageObjectChild>(this->target, key);
 }
 
 std::unique_ptr<NodeSink> BMessageArrayDocSink::addArray(BString &rawname,
                                                          BString &name) {
   BString key = this->key();
-  return std::unique_ptr<NodeSink>(new BMessageArrayChild(this->target, key));
+  return std::make_unique<BMessageArrayChild>(this->target, key);
 }
 
 BString BMessageArrayDocSink::key() {

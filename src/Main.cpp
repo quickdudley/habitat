@@ -77,9 +77,9 @@ Habitat::Habitat(void)
       status = settings_parent.FindEntry("Habitat", &entry, true);
       if (status != B_OK)
         throw status;
-      this->settings = std::unique_ptr<BDirectory>(new BDirectory(&entry));
+      this->settings = std::make_unique<BDirectory>(&entry);
     } else if (status == B_OK) {
-      this->settings = std::unique_ptr<BDirectory>(new BDirectory(settings));
+      this->settings = std::make_unique<BDirectory>(settings);
     } else {
       throw status;
     }
@@ -90,7 +90,7 @@ Habitat::Habitat(void)
       status = this->settings->FindEntry("posts", &entry, true);
       if (status != B_OK)
         throw status;
-      this->postDir = std::unique_ptr<BDirectory>(new BDirectory(&entry));
+      this->postDir = std::make_unique<BDirectory>(&entry);
     } else if (status != B_OK) {
       throw status;
     }
@@ -104,8 +104,7 @@ Habitat::Habitat(void)
       secret.GetPath(&path);
       BFile secretFile(&secret, B_READ_ONLY);
       char buffer[1024];
-      JSON::Parser parser(
-          std::unique_ptr<JSON::NodeSink>(new JSON::SecretNode(&this->myId)));
+      JSON::Parser parser(std::make_unique<JSON::SecretNode>(&this->myId));
       ssize_t readBytes;
       while (readBytes = secretFile.Read(buffer, 1024), readBytes > 0) {
         for (ssize_t i = 0; i < readBytes; i++) {
@@ -120,8 +119,7 @@ Habitat::Habitat(void)
         throw status;
       this->myId.generate();
       BString secretJson;
-      JSON::RootSink sink(std::unique_ptr<JSON::NodeSink>(
-          new JSON::SerializerStart(&secretJson)));
+      JSON::RootSink sink(std::make_unique<JSON::SerializerStart>(&secretJson));
       this->myId.write(&sink);
       secretFile.WriteExactly(secretJson.String(), secretJson.Length(), NULL);
       secretFile.Sync();

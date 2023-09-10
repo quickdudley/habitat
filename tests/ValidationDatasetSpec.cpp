@@ -19,16 +19,16 @@ TEST_CASE("Validation matches examples", "") {
   BMessage examples;
   {
     BFile input("tests/data.json", B_READ_ONLY);
-    REQUIRE(JSON::parse(new JSON::BMessageDocSink(&examples), &input) == B_OK);
+    REQUIRE(JSON::parse(std::make_unique<JSON::BMessageDocSink>(&examples),
+                        &input) == B_OK);
   }
   int i = 0;
   BMessage sample;
   while (examples.FindMessage(showNumber(i).String(), &sample) == B_OK) {
-	DYNAMIC_SECTION("Example " << i) {
-	  std::cout << "-- Example " << i << " --" << std::endl;
-	  sample.PrintToStream();
-	  
-	}
-	i++;
+    DYNAMIC_SECTION("Example " << i) {
+      std::cout << "-- Example " << i << " --" << std::endl;
+      sample.PrintToStream();
+    }
+    i++;
   }
 }

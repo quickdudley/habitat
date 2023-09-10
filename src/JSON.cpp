@@ -108,11 +108,11 @@ void NodeSink::addString(BString &rawname, BString &name, BString &raw,
                          BString &value) {}
 
 std::unique_ptr<NodeSink> NodeSink::addObject(BString &rawname, BString &name) {
-  return std::unique_ptr<NodeSink>(new IgnoreNode);
+  return std::make_unique<IgnoreNode>();
 }
 
 std::unique_ptr<NodeSink> NodeSink::addArray(BString &rawname, BString &name) {
-  return std::unique_ptr<NodeSink>(new IgnoreNode);
+  return std::make_unique<IgnoreNode>();
 }
 
 SerializerStart::SerializerStart(BString *target) { this->target = target; }
@@ -173,12 +173,12 @@ private:
 
 std::unique_ptr<NodeSink> SerializerStart::addObject(BString &rawname,
                                                      BString &name) {
-  return std::unique_ptr<NodeSink>(new ObjectSerializer(this->target, 2));
+  return std::make_unique<ObjectSerializer>(this->target, 2);
 }
 
 std::unique_ptr<NodeSink> SerializerStart::addArray(BString &rawname,
                                                     BString &name) {
-  return std::unique_ptr<NodeSink>(new ArraySerializer(this->target, 2));
+  return std::make_unique<ArraySerializer>(this->target, 2);
 }
 
 ObjectSerializer::ObjectSerializer(BString *target, int indent) {
@@ -221,15 +221,13 @@ void ObjectSerializer::addString(BString &rawname, BString &name, BString &raw,
 std::unique_ptr<NodeSink> ObjectSerializer::addObject(BString &rawname,
                                                       BString &name) {
   this->property(rawname);
-  return std::unique_ptr<NodeSink>(
-      new ObjectSerializer(this->target, this->indent + 2));
+  return std::make_unique<ObjectSerializer>(this->target, this->indent + 2);
 }
 
 std::unique_ptr<NodeSink> ObjectSerializer::addArray(BString &rawname,
                                                      BString &name) {
   this->property(rawname);
-  return std::unique_ptr<NodeSink>(
-      new ArraySerializer(this->target, this->indent + 2));
+  return std::make_unique<ArraySerializer>(this->target, this->indent + 2);
 }
 
 void ObjectSerializer::property(BString &rawname) {
@@ -284,15 +282,13 @@ void ArraySerializer::addString(BString &rawname, BString &name, BString &raw,
 std::unique_ptr<NodeSink> ArraySerializer::addObject(BString &rawname,
                                                      BString &name) {
   this->item();
-  return std::unique_ptr<NodeSink>(
-      new ObjectSerializer(this->target, this->indent + 2));
+  return std::make_unique<ObjectSerializer>(this->target, this->indent + 2);
 }
 
 std::unique_ptr<NodeSink> ArraySerializer::addArray(BString &rawname,
                                                     BString &name) {
   this->item();
-  return std::unique_ptr<NodeSink>(
-      new ArraySerializer(this->target, this->indent + 2));
+  return std::make_unique<ArraySerializer>(this->target, this->indent + 2);
 }
 
 void ArraySerializer::item() {
@@ -332,13 +328,13 @@ void Splitter::addString(BString &rawname, BString &name, BString &raw,
 }
 
 std::unique_ptr<NodeSink> Splitter::addObject(BString &rawname, BString &name) {
-  return std::unique_ptr<NodeSink>(new Splitter(
-      this->a->addObject(rawname, name), this->b->addObject(rawname, name)));
+  return std::make_unique<Splitter>(this->a->addObject(rawname, name),
+                                    this->b->addObject(rawname, name));
 }
 
 std::unique_ptr<NodeSink> Splitter::addArray(BString &rawname, BString &name) {
-  return std::unique_ptr<NodeSink>(new Splitter(
-      this->a->addArray(rawname, name), this->b->addArray(rawname, name)));
+  return std::make_unique<Splitter>(this->a->addArray(rawname, name),
+                                    this->b->addArray(rawname, name));
 }
 
 RootSink::RootSink(std::unique_ptr<NodeSink> rootConsumer) {
@@ -497,12 +493,11 @@ Parser::Parser(RootSink *target) {
 }
 
 Parser::Parser(std::unique_ptr<NodeSink> target) {
-  this->target = std::unique_ptr<RootSink>(new RootSink(std::move(target)));
+  this->target = std::make_unique<RootSink>(std::move(target));
 }
 
 Parser::Parser(NodeSink *target) {
-  this->target = std::unique_ptr<RootSink>(
-      new RootSink(std::unique_ptr<NodeSink>(target)));
+  this->target = std::make_unique<RootSink>(std::unique_ptr<NodeSink>(target));
 }
 
 status_t Parser::nextChar(char c) {

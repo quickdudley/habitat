@@ -11,8 +11,7 @@ namespace JSON {
 SignObject::SignObject(std::unique_ptr<NodeSink> target,
                        unsigned char key[crypto_sign_SECRETKEYBYTES]) {
   this->target = std::move(target);
-  this->serializer =
-      std::unique_ptr<NodeSink>(new SerializerStart(&this->body));
+  this->serializer = std::make_unique<SerializerStart>(&this->body);
   BString blank;
   this->object = this->serializer->addObject(blank, blank);
   memcpy(this->key, key, crypto_sign_SECRETKEYBYTES);
@@ -57,22 +56,20 @@ void SignObject::addString(BString &rawname, BString &name, BString &raw,
 
 std::unique_ptr<NodeSink> SignObject::addObject(BString &rawname,
                                                 BString &name) {
-  return std::unique_ptr<NodeSink>(
-      new Splitter(this->object->addObject(rawname, name),
-                   this->target->addObject(rawname, name)));
+  return std::make_unique<Splitter>(this->object->addObject(rawname, name),
+                                    this->target->addObject(rawname, name));
 }
 
 std::unique_ptr<NodeSink> SignObject::addArray(BString &rawname,
                                                BString &name) {
-  return std::unique_ptr<NodeSink>(
-      new Splitter(this->object->addArray(rawname, name),
-                   this->target->addArray(rawname, name)));
+  return std::make_unique<Splitter>(this->object->addArray(rawname, name),
+                                    this->target->addArray(rawname, name));
 }
 
 Hash::Hash(unsigned char target[crypto_hash_sha256_BYTES])
     :
     target(target) {
-  this->inner = std::unique_ptr<NodeSink>(new SerializerStart(&this->body));
+  this->inner = std::make_unique<SerializerStart>(&this->body);
 }
 
 Hash::~Hash() {
@@ -148,7 +145,7 @@ VerifyObjectSignature::VerifyObjectSignature(std::unique_ptr<NodeSink> inner,
 VerifySignature::VerifySignature(bool *target)
     :
     target(target) {
-  this->inner = std::unique_ptr<NodeSink>(new SerializerStart(&this->body));
+  this->inner = std::make_unique<SerializerStart>(&this->body);
 }
 
 VerifySignature::~VerifySignature() {
@@ -223,8 +220,8 @@ void VerifyObjectSignature::addString(BString &rawname, BString &name,
 
 std::unique_ptr<NodeSink> VerifySignature::addObject(BString &rawname,
                                                      BString &name) {
-  return std::unique_ptr<NodeSink>(new VerifyObjectSignature(
-      inner->addObject(rawname, name), this->author, this->signature));
+  return std::make_unique<VerifyObjectSignature>(
+      inner->addObject(rawname, name), this->author, this->signature);
 }
 
 std::unique_ptr<NodeSink> VerifyObjectSignature::addObject(BString &rawname,
@@ -235,7 +232,7 @@ std::unique_ptr<NodeSink> VerifyObjectSignature::addObject(BString &rawname,
 std::unique_ptr<NodeSink> VerifySignature::addArray(BString &rawname,
                                                     BString &name) {
   *this->target = false;
-  return std::unique_ptr<NodeSink>(new NodeSink());
+  return std::make_unique<NodeSink>();
 }
 
 std::unique_ptr<NodeSink> VerifyObjectSignature::addArray(BString &rawname,

@@ -176,8 +176,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
-    JSON::RootSink rootSink(
-        std::unique_ptr<JSON::NodeSink>(new JSON::Hash(msgHash)));
+    JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
   BFile sink;
@@ -280,10 +279,9 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
         target(target),
         key(key) {}
     std::unique_ptr<JSON::NodeSink> addObject(BString &rawname, BString &name) {
-      return std::unique_ptr<JSON::NodeSink>(new JSON::SignObject(
-          std::unique_ptr<JSON::NodeSink>(
-              new JSON::BMessageObjectDocSink(this->target)),
-          this->key));
+      return std::make_unique<JSON::SignObject>(
+          std::make_unique<JSON::BMessageObjectDocSink>(this->target),
+          this->key);
     }
 
   private:
@@ -292,8 +290,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
   };
   BMessage full;
   {
-    JSON::RootSink rootSink(
-        std::unique_ptr<JSON::NodeSink>(new SignRoot(&full, this->seckey)));
+    JSON::RootSink rootSink(std::make_unique<SignRoot>(&full, this->seckey));
     BString key;
     rootSink.beginObject(key);
     key.SetTo("previous");
@@ -325,7 +322,9 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
 }
 
 namespace post {
-status_t validate(BMessage *message, int lastSequence, BString &lastID, bool useHmac, BString &hmacKey) {
+
+status_t validate(BMessage *message, int lastSequence, BString &lastID,
+                  bool useHmac, BString &hmacKey) {
   return B_OK;
 }
-}
+} // namespace post

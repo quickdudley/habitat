@@ -35,7 +35,7 @@ TEST_CASE("Correctly handles test message",
   SECTION("Same message ID as in Manyverse") {
     unsigned char rawHash[crypto_hash_sha256_BYTES];
     {
-      JSON::RootSink rootSink(new JSON::Hash(rawHash));
+      JSON::RootSink rootSink(std::make_unique<JSON::Hash>(rawHash));
       BString blank;
       rootSink.beginObject(blank);
       JSON::fromBMessage(&rootSink, &outer);
@@ -50,7 +50,7 @@ TEST_CASE("Correctly handles test message",
   SECTION("Signature successfully validated") {
     bool valid;
     {
-      JSON::RootSink rootSink(new JSON::VerifySignature(&valid));
+      JSON::RootSink rootSink(std::make_unique<JSON::VerifySignature>(&valid));
       BString blank;
       rootSink.beginObject(blank);
       JSON::fromBMessage(&rootSink, &outer);

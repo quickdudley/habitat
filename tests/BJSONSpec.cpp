@@ -4,7 +4,7 @@
 TEST_CASE("Can represent two objects in arrays", "[BJSON]") {
   BMessage target;
   {
-    JSON::RootSink sink(new JSON::BMessageDocSink(&target));
+    JSON::RootSink sink(std::make_unique<JSON::BMessageDocSink>(&target));
     BString k, v;
     sink.beginArray(k);
     sink.beginObject(k);

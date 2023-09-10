@@ -67,6 +67,6 @@ interesting:
 
 std::unique_ptr<NodeSink> SecretNode::addObject(BString &rawname,
                                                 BString &name) {
-  return std::unique_ptr<NodeSink>(new SecretNode(this->target));
+  return std::make_unique<SecretNode>(this->target);
 }
 } // namespace JSON
