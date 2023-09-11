@@ -325,17 +325,42 @@ namespace post {
 
 status_t validate(BMessage *message, int lastSequence, BString &lastID,
                   bool useHmac, BString &hmacKey) {
-  bool signatureValid;
   {
-    JSON::RootSink rootSink(
-        std::make_unique<JSON::VerifySignature>(&signatureValid));
-    BString blank;
-    rootSink.beginObject(blank);
-    JSON::fromBMessage(&rootSink, message);
-    rootSink.closeNode();
+    BString hash;
+    if (message->FindString("hash", &hash) != B_OK || hash != "sha256") {
+      return B_NOT_ALLOWED;
+    }
   }
-  if (!signatureValid)
-    return B_NOT_ALLOWED;
+  {
+    double sequence;
+    if (message->FindDouble("sequence", &sequence) != B_OK) {
+      return B_NOT_ALLOWED;
+    }
+    if (!((lastSequence <= 0 && sequence == 1) ||
+          (int(sequence) - 1 == lastSequence))) {
+      return B_NOT_ALLOWED;
+    }
+  }
+  if (lastID != "") {
+    BString previous;
+    if (message->FindString("previous", &previous) != B_OK)
+      return B_NOT_ALLOWED;
+    if (previous != lastID)
+      return B_NOT_ALLOWED;
+  }
+  {
+    bool signatureValid;
+    {
+      JSON::RootSink rootSink(
+          std::make_unique<JSON::VerifySignature>(&signatureValid));
+      BString blank;
+      rootSink.beginObject(blank);
+      JSON::fromBMessage(&rootSink, message);
+      rootSink.closeNode();
+    }
+    if (!signatureValid)
+      return B_NOT_ALLOWED;
+  }
   return B_OK;
 }
 } // namespace post
