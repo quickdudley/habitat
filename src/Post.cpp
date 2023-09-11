@@ -323,43 +323,104 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
 
 namespace post {
 
-status_t validate(BMessage *message, int lastSequence, BString &lastID,
-                  bool useHmac, BString &hmacKey) {
+static inline status_t validateSignature(BMessage *message, bool useHMac,
+                                         BString &hmacKey) {
+  bool signatureValid;
   {
-    BString hash;
-    if (message->FindString("hash", &hash) != B_OK || hash != "sha256") {
-      return B_NOT_ALLOWED;
-    }
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::VerifySignature>(&signatureValid));
+    BString blank;
+    rootSink.beginObject(blank);
+    JSON::fromBMessage(&rootSink, message);
+    rootSink.closeNode();
   }
-  {
-    double sequence;
-    if (message->FindDouble("sequence", &sequence) != B_OK) {
-      return B_NOT_ALLOWED;
-    }
-    if (!((lastSequence <= 0 && sequence == 1) ||
-          (int(sequence) - 1 == lastSequence))) {
-      return B_NOT_ALLOWED;
-    }
+  if (signatureValid)
+    return B_OK;
+  else
+    return B_NOT_ALLOWED;
+}
+
+static inline status_t validateSequence(BMessage *message, int lastSequence) {
+  double sequence;
+  if (message->FindDouble("sequence", &sequence) != B_OK) {
+    return B_NOT_ALLOWED;
   }
+  if (!((lastSequence <= 0 && sequence == 1) ||
+        (int(sequence) - 1 == lastSequence))) {
+    return B_NOT_ALLOWED;
+  }
+  return B_OK;
+}
+
+static inline status_t validatePrevious(BMessage *message, BString &lastID) {
   if (lastID != "") {
     BString previous;
     if (message->FindString("previous", &previous) != B_OK)
       return B_NOT_ALLOWED;
     if (previous != lastID)
       return B_NOT_ALLOWED;
-  }
-  {
-    bool signatureValid;
-    {
-      JSON::RootSink rootSink(
-          std::make_unique<JSON::VerifySignature>(&signatureValid));
-      BString blank;
-      rootSink.beginObject(blank);
-      JSON::fromBMessage(&rootSink, message);
-      rootSink.closeNode();
-    }
-    if (!signatureValid)
+    return B_OK;
+  } else {
+    const void *data;
+    ssize_t numBytes;
+    if (message->FindData("previous", 'NULL', &data, &numBytes) != B_OK) {
       return B_NOT_ALLOWED;
+    }
+    return B_OK;
+  }
+  return B_NOT_ALLOWED;
+}
+
+static inline status_t validateHash(BMessage *message) {
+  BString hash;
+  if (message->FindString("hash", &hash) != B_OK || hash != "sha256") {
+    return B_NOT_ALLOWED;
+  }
+  return B_OK;
+}
+
+static inline status_t validateContent(BMessage *content) {
+  BString type;
+  if (content->FindString("type", &type) != B_OK)
+    return B_NOT_ALLOWED;
+  if (type.Length() < 3 || type.Length() > 52)
+    return B_NOT_ALLOWED;
+  return B_OK;
+}
+
+static inline status_t validateContent(BString &content) {
+  if (!(content.EndsWith(".box2") || content.EndsWith(".box")))
+    return B_NOT_ALLOWED;
+  return B_OK;
+}
+
+static inline status_t validateEitherContent(BMessage *message) {
+  BMessage content;
+  if (message->FindMessage("content", &content) == B_OK) {
+    return validateContent(&content);
+  } else {
+    BString encrypted;
+    if (message->FindString("content", &encrypted) == B_OK) {
+      return validateContent(encrypted);
+    } else {
+      return B_NOT_ALLOWED;
+    }
+  }
+}
+
+status_t validate(BMessage *message, int lastSequence, BString &lastID,
+                  bool useHmac, BString &hmacKey) {
+  status_t result;
+  if ((result = validateHash(message)) != B_OK)
+    return result;
+  if ((result = validateSequence(message, lastSequence)) != B_OK)
+    return result;
+  if ((result = validatePrevious(message, lastID)) != B_OK)
+    return result;
+  if ((result = validateEitherContent(message)) != B_OK)
+    return result;
+  if ((result = validateSignature(message, useHmac, hmacKey))) {
+    return result;
   }
   return B_OK;
 }
