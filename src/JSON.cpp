@@ -345,7 +345,10 @@ RootSink::RootSink(NodeSink *rootConsumer) {
   this->stack.push_back(std::unique_ptr<NodeSink>(rootConsumer));
 }
 
-RootSink::~RootSink() {}
+RootSink::~RootSink() {
+  while (!this->stack.empty())
+    this->stack.pop_back();
+}
 
 void RootSink::addNumber(BString &rawname, BString &name, BString &raw,
                          number value) {
@@ -456,7 +459,7 @@ status_t parse(NodeSink *target, BDataIO *input) {
   return parse(std::unique_ptr<NodeSink>(target), input);
 }
 
-status_t parse(std::unique_ptr<NodeSink> target, char *input) {
+status_t parse(std::unique_ptr<NodeSink> target, const char *input) {
   Parser parser(std::move(target));
   for (int i = 0; input[i] != 0; i++) {
     status_t parseResult = parser.nextChar(input[i]);
@@ -466,7 +469,7 @@ status_t parse(std::unique_ptr<NodeSink> target, char *input) {
   return B_OK;
 }
 
-status_t parse(NodeSink *target, char *input) {
+status_t parse(NodeSink *target, const char *input) {
   return parse(std::unique_ptr<NodeSink>(target), input);
 }
 

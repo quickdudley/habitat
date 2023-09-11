@@ -3,7 +3,6 @@
 #include "SignJSON.h"
 #include <File.h>
 #include <catch2/catch_all.hpp>
-#include <iostream>
 
 // The dataset used here is from
 // https://github.com/fraction/ssb-validation-dataset
@@ -26,7 +25,6 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
   BMessage sample;
   while (examples.FindMessage(showNumber(i).String(), &sample) == B_OK) {
     DYNAMIC_SECTION("Example " << i) {
-      std::cout << "-- Example " << i << " --" << std::endl;
       bool valid;
       REQUIRE(sample.FindBool("valid", &valid) == B_OK);
       bool foundValid;

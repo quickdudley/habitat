@@ -325,6 +325,17 @@ namespace post {
 
 status_t validate(BMessage *message, int lastSequence, BString &lastID,
                   bool useHmac, BString &hmacKey) {
+  bool signatureValid;
+  {
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::VerifySignature>(&signatureValid));
+    BString blank;
+    rootSink.beginObject(blank);
+    JSON::fromBMessage(&rootSink, message);
+    rootSink.closeNode();
+  }
+  if (!signatureValid)
+    return B_NOT_ALLOWED;
   return B_OK;
 }
 } // namespace post

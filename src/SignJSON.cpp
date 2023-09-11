@@ -1,7 +1,6 @@
 #include "SignJSON.h"
 #include "Base64.h"
 #include <cstring>
-#include <iostream>
 #include <unicode/utf8.h>
 #include <utility>
 #include <vector>
@@ -149,18 +148,11 @@ VerifySignature::VerifySignature(bool *target)
 }
 
 VerifySignature::~VerifySignature() {
+  static int ix = 0;
   this->inner.reset();
-  BString reencoded = base64::encode(this->author, crypto_sign_PUBLICKEYBYTES,
-                                     base64::STANDARD);
-  std::cout << "author: " << reencoded.String() << " (reencoded)" << std::endl;
-  reencoded =
-      base64::encode(this->signature, crypto_sign_BYTES, base64::STANDARD);
-  std::cout << "signature: " << reencoded.String() << " (reencoded)"
-            << std::endl;
   int result = crypto_sign_verify_detached(this->signature,
                                            (unsigned char *)this->body.String(),
                                            this->body.Length(), this->author);
-  std::cout << "Verification result: " << result << std::endl;
   *this->target = result == 0;
 }
 
@@ -202,17 +194,17 @@ void VerifyObjectSignature::addString(BString &rawname, BString &name,
   BString stuff;
   if (name == "author" && value[0] == '@' && value.EndsWith(".ed25519")) {
     value.CopyInto(stuff, 1, value.Length() - 9);
-    std::cout << "author: " << stuff.String() << std::endl;
     std::vector<unsigned char> buffer =
         base64::decode(stuff.String(), stuff.Length());
     memcpy(this->author, buffer.data(), buffer.size());
     this->inner->addString(rawname, name, raw, value);
   } else if (name == "signature" && value.EndsWith(".sig.ed25519")) {
-    value.CopyInto(stuff, 1, value.Length() - 13);
-    std::cout << "signature: " << stuff.String() << std::endl;
+    value.CopyInto(stuff, 0, value.Length() - 12);
     std::vector<unsigned char> buffer =
         base64::decode(stuff.String(), stuff.Length());
-    memcpy(this->signature, buffer.data(), buffer.size());
+    if (buffer.size() == crypto_sign_BYTES) {
+      memcpy(this->signature, buffer.data(), crypto_sign_BYTES);
+    }
   } else {
     this->inner->addString(rawname, name, raw, value);
   }
