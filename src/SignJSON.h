@@ -60,7 +60,7 @@ private:
   std::unique_ptr<NodeSink> inner;
   unsigned char author[crypto_sign_PUBLICKEYBYTES];
   unsigned char signature[crypto_sign_BYTES];
-  unsigned char hmac[crypto_auth_hmacsha256_KEYBYTES];
+  unsigned char hmac[crypto_auth_KEYBYTES];
   bool useHmac = false;
 };
 
