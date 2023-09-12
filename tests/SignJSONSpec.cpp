@@ -5,7 +5,6 @@
 
 TEST_CASE("Correctly handles test message",
           "[JSON::Hash][JSON::VerifySignature]") {
-  REQUIRE(sodium_init() >= 0);
   BMessage outer;
   outer.AddString("previous",
                   "%fkYNze1TmuWuQvpdowh7f+BR7nlrE8k3dVc3F1+21Nc=.sha256");

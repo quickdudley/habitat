@@ -15,7 +15,6 @@ static inline BString showNumber(int n) {
 }
 
 TEST_CASE("Validation matches examples", "[message][validation]") {
-  REQUIRE(sodium_init() >= 0);
   BMessage examples;
   {
     BFile input("tests/data.json", B_READ_ONLY);

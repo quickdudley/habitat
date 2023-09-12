@@ -50,8 +50,8 @@ public:
   virtual MethodMatch check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
                             std::vector<BString> name, RequestType type);
   virtual status_t call(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                        RequestType type, BMessage *args,
-                        BMessenger replyTo) = 0;
+                        RequestType type, BMessage *args, BMessenger replyTo,
+                        BMessenger *ongoing) = 0;
 
 private:
   std::vector<BString> name;
