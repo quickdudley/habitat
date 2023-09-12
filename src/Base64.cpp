@@ -118,4 +118,8 @@ std::vector<unsigned char> decode(const char *b64, size_t inlen) {
   }
   return result;
 }
+
+std::vector<unsigned char> decode(BString &b64) {
+  return decode(b64.String(), b64.Length());
+}
 } // namespace base64

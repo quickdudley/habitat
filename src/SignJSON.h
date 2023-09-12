@@ -45,6 +45,7 @@ private:
 class VerifySignature : public NodeSink {
 public:
   VerifySignature(bool *target);
+  VerifySignature(bool *target, BString &hmac);
   ~VerifySignature();
   void addNumber(BString &rawname, BString &name, BString &raw, number value);
   void addBool(BString &rawname, BString &name, bool value);
@@ -59,6 +60,8 @@ private:
   std::unique_ptr<NodeSink> inner;
   unsigned char author[crypto_sign_PUBLICKEYBYTES];
   unsigned char signature[crypto_sign_BYTES];
+  unsigned char hmac[crypto_auth_hmacsha256_KEYBYTES];
+  bool useHmac = false;
 };
 
 } // namespace JSON

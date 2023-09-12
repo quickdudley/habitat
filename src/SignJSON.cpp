@@ -147,13 +147,31 @@ VerifySignature::VerifySignature(bool *target)
   this->inner = std::make_unique<SerializerStart>(&this->body);
 }
 
+VerifySignature::VerifySignature(bool *target, BString &hmac)
+    :
+    VerifySignature::VerifySignature(target) {
+  auto hmacBytes = base64::decode(hmac);
+  if (hmacBytes.size() == crypto_auth_KEYBYTES) {
+    this->useHmac = true;
+    memcpy(this->hmac, hmacBytes.data(), crypto_auth_KEYBYTES);
+  }
+}
+
 VerifySignature::~VerifySignature() {
   static int ix = 0;
   this->inner.reset();
-  int result = crypto_sign_verify_detached(this->signature,
-                                           (unsigned char *)this->body.String(),
-                                           this->body.Length(), this->author);
-  *this->target = result == 0;
+  if (this->useHmac) {
+    unsigned char sig1[crypto_auth_BYTES];
+    crypto_auth(sig1, (unsigned char *)this->body.String(), this->body.Length(),
+                this->hmac);
+    *this->target =
+        crypto_sign_verify_detached(this->signature, sig1, crypto_auth_BYTES,
+                                    this->author) == 0;
+  } else {
+    *this->target = crypto_sign_verify_detached(
+                        this->signature, (unsigned char *)this->body.String(),
+                        this->body.Length(), this->author) == 0;
+  }
 }
 
 void VerifySignature::addNumber(BString &rawname, BString &name, BString &raw,

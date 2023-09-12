@@ -330,7 +330,9 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
   bool signatureValid;
   {
     JSON::RootSink rootSink(
-        std::make_unique<JSON::VerifySignature>(&signatureValid));
+        useHMac
+            ? std::make_unique<JSON::VerifySignature>(&signatureValid, hmacKey)
+            : std::make_unique<JSON::VerifySignature>(&signatureValid));
     BString blank;
     rootSink.beginObject(blank);
     JSON::fromBMessage(&rootSink, message);
@@ -509,7 +511,7 @@ status_t validate(BMessage *message, int lastSequence, BString &lastID,
     return result;
   if ((result = validateSize(message)) != B_OK)
     return result;
-  if ((result = validateSignature(message, useHmac, hmacKey))) {
+  if ((result = validateSignature(message, useHmac, hmacKey)) != B_OK) {
     return result;
   }
   return B_OK;
