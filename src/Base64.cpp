@@ -75,6 +75,10 @@ BString encode(const unsigned char *raw, size_t inlen, Variant variant) {
   return result;
 }
 
+BString encode(std::vector<unsigned char> &raw, Variant variant) {
+  return encode(raw.data(), raw.size(), variant);
+}
+
 std::vector<unsigned char> decode(const char *b64, size_t inlen) {
   int padding = 0;
   for (size_t i = inlen - 1; i >= 0; i--) {
@@ -121,5 +125,11 @@ std::vector<unsigned char> decode(const char *b64, size_t inlen) {
 
 std::vector<unsigned char> decode(BString &b64) {
   return decode(b64.String(), b64.Length());
+}
+
+bool isCanonical(BString &b64) {
+  auto buffer = decode(b64);
+  BString redo = encode(buffer.data(), buffer.size(), STANDARD);
+  return redo == b64;
 }
 } // namespace base64

@@ -212,14 +212,17 @@ void VerifyObjectSignature::addString(BString &rawname, BString &name,
   BString stuff;
   if (name == "author" && value[0] == '@' && value.EndsWith(".ed25519")) {
     value.CopyInto(stuff, 1, value.Length() - 9);
-    std::vector<unsigned char> buffer =
-        base64::decode(stuff.String(), stuff.Length());
+    std::vector<unsigned char> buffer = base64::decode(stuff);
+    if (base64::encode(buffer, base64::STANDARD) != stuff)
+      return;
     memcpy(this->author, buffer.data(), buffer.size());
     this->inner->addString(rawname, name, raw, value);
   } else if (name == "signature" && value.EndsWith(".sig.ed25519")) {
     value.CopyInto(stuff, 0, value.Length() - 12);
     std::vector<unsigned char> buffer =
         base64::decode(stuff.String(), stuff.Length());
+    if (base64::encode(buffer, base64::STANDARD) != stuff)
+      return;
     if (buffer.size() == crypto_sign_BYTES) {
       memcpy(this->signature, buffer.data(), crypto_sign_BYTES);
     }

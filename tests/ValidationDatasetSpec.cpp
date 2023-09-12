@@ -1,4 +1,5 @@
 #include "BJSON.h"
+#include "Base64.h"
 #include "Post.h"
 #include "SignJSON.h"
 #include <File.h>
@@ -27,16 +28,19 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
     DYNAMIC_SECTION("Example " << i) {
       bool valid;
       REQUIRE(sample.FindBool("valid", &valid) == B_OK);
-      bool foundValid;
+      bool foundValid = true;
       double lastSequence = -1;
       BString lastID;
       BString hmacKey;
       bool useHMac = false;
       if (sample.FindString("hmacKey", &hmacKey) == B_OK) {
         useHMac = true;
+        if (!base64::isCanonical(hmacKey))
+          foundValid = false;
       }
       BString expectedID;
       sample.FindString("id", &expectedID);
+
       BMessage state;
       if (sample.FindMessage("state", &state) == B_OK) {
         REQUIRE(state.FindDouble("sequence", &lastSequence) == B_OK);
@@ -44,8 +48,25 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
       }
       BMessage message;
       if (sample.FindMessage("message", &message) == B_OK) {
-        foundValid = post::validate(&message, lastSequence, lastID, useHMac,
-                                    hmacKey) == B_OK;
+        {
+          unsigned char hash[crypto_hash_sha256_BYTES];
+          JSON::RootSink rootSink(std::make_unique<JSON::Hash>(hash));
+          {
+            BString blank;
+            rootSink.beginObject(blank);
+          }
+          JSON::fromBMessage(&rootSink, &message);
+          rootSink.closeNode();
+          rootSink.closeNode();
+          BString computedID("%");
+          computedID.Append(
+              base64::encode(hash, crypto_hash_sha256_BYTES, base64::STANDARD));
+          computedID.Append(".sha256");
+          foundValid = foundValid && computedID == expectedID;
+        }
+        foundValid =
+            foundValid && post::validate(&message, lastSequence, lastID,
+                                         useHMac, hmacKey) == B_OK;
       } else {
         foundValid = false;
       }
