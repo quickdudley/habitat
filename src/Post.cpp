@@ -7,6 +7,8 @@
 #include <PropertyInfo.h>
 #include <cstring>
 #include <ctime>
+#include <unicode/utf8.h>
+#include <vector>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");
@@ -408,6 +410,88 @@ static inline status_t validateEitherContent(BMessage *message) {
   }
 }
 
+static inline status_t validateOrder(BMessage *message) {
+  char *attrname;
+  type_code attrtype;
+  int32 index = 0;
+  int32 state = 0;
+  while (message->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
+    if (state == 0) {
+      if (BString("previous") == attrname)
+        state = 1;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 1) {
+      if (BString("author") == attrname)
+        state = 2;
+      else if (BString("sequence") == attrname)
+        state = 3;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 2) {
+      if (BString("sequence") == attrname)
+        state = 4;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 3) {
+      if (BString("author") == attrname)
+        state = 4;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 4) {
+      if (BString("timestamp") == attrname)
+        state = 5;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 5) {
+      if (BString("hash") == attrname)
+        state = 6;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 6) {
+      if (BString("content") == attrname)
+        state = 7;
+      else
+        return B_NOT_ALLOWED;
+    } else if (state == 7) {
+      if (BString("signature") == attrname)
+        state = 8;
+      else
+        return B_NOT_ALLOWED;
+    } else {
+      return B_NOT_ALLOWED;
+    }
+    index++;
+  }
+  return B_OK;
+}
+
+static inline status_t validateSize(BMessage *message) {
+  BString serialized;
+  {
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::SerializerStart>(&serialized));
+    {
+      BString blank;
+      rootSink.beginObject(blank);
+    }
+    JSON::fromBMessage(&rootSink, message);
+  }
+  const char *u8 = serialized.String();
+  uint32 codepoint, offset = 0;
+  uint32 tally = 0;
+  while (offset < serialized.Length()) {
+    U8_NEXT_UNSAFE(u8, offset, codepoint);
+    if (codepoint >= 0x10000)
+      tally += 2;
+    else
+      tally++;
+    if (tally > 8192)
+      return B_NOT_ALLOWED;
+  }
+  return B_OK;
+}
+
 status_t validate(BMessage *message, int lastSequence, BString &lastID,
                   bool useHmac, BString &hmacKey) {
   status_t result;
@@ -417,7 +501,13 @@ status_t validate(BMessage *message, int lastSequence, BString &lastID,
     return result;
   if ((result = validatePrevious(message, lastID)) != B_OK)
     return result;
+  if ((result = validateOrder(message)) != B_OK)
+    return result;
   if ((result = validateEitherContent(message)) != B_OK)
+    return result;
+  if ((result = validateOrder(message)) != B_OK)
+    return result;
+  if ((result = validateSize(message)) != B_OK)
     return result;
   if ((result = validateSignature(message, useHmac, hmacKey))) {
     return result;
