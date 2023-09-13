@@ -1,4 +1,6 @@
 #include "MUXRPC.h"
+#include "BJSON.h"
+#include "JSON.h"
 #include <support/ByteOrder.h>
 #include <utility>
 
@@ -44,6 +46,98 @@ status_t Connection::populateHeader(Header *out) {
   return B_OK;
 }
 
+class RequestNameSink : public JSON::NodeSink {
+public:
+  RequestNameSink(std::vector<BString> *name);
+  void addString(BString &rawname, BString &name, BString &raw,
+                 BString &value) override;
+
+private:
+  std::vector<BString> *name;
+};
+
+class RequestObjectSink : public JSON::NodeSink {
+public:
+  RequestObjectSink(std::vector<BString> *name, RequestType *requestType,
+                    BMessage *args);
+  void addString(BString &rawname, BString &name, BString &raw,
+                 BString &value) override;
+  std::unique_ptr<JSON::NodeSink> addArray(BString &rawname,
+                                           BString &name) override;
+
+private:
+  std::vector<BString> *name;
+  RequestType *requestType;
+  BMessage *args;
+};
+
+class RequestSink : public JSON::NodeSink {
+public:
+  RequestSink(std::vector<BString> *name, RequestType *requestType,
+              BMessage *args);
+  std::unique_ptr<JSON::NodeSink> addObject(BString &rawname,
+                                            BString &name) override;
+
+private:
+  std::vector<BString> *name;
+  RequestType *requestType;
+  BMessage *args;
+};
+
+RequestObjectSink::RequestObjectSink(std::vector<BString> *name,
+                                     RequestType *requestType, BMessage *args)
+    :
+    name(name),
+    requestType(requestType),
+    args(args) {}
+
+RequestSink::RequestSink(std::vector<BString> *name, RequestType *requestType,
+                         BMessage *args)
+    :
+    name(name),
+    requestType(requestType),
+    args(args) {}
+
+std::unique_ptr<JSON::NodeSink> RequestSink::addObject(BString &rawname,
+                                                       BString &name) {
+  return std::make_unique<RequestObjectSink>(this->name, this->requestType,
+                                             this->args);
+}
+
+void RequestObjectSink::addString(BString &rawname, BString &name, BString &raw,
+                                  BString &value) {
+  if (name == "type") {
+    if (value == "source")
+      *this->requestType = RequestType::SOURCE;
+    else if (value == "duplex")
+      *this->requestType = RequestType::DUPLEX;
+    else if (value == "async")
+      *this->requestType = RequestType::ASYNC;
+    else
+      *this->requestType = RequestType::UNKNOWN;
+  }
+}
+
+std::unique_ptr<JSON::NodeSink> RequestObjectSink::addArray(BString &rawname,
+                                                            BString &name) {
+  if (name == "name") {
+    return std::make_unique<RequestNameSink>(this->name);
+  } else if (name == "args") {
+    return std::make_unique<JSON::BMessageDocSink>(args);
+  } else {
+    return JSON::NodeSink::addArray(rawname, name);
+  }
+}
+
+RequestNameSink::RequestNameSink(std::vector<BString> *name)
+    :
+    name(name) {}
+
+void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
+                                BString &value) {
+  this->name->push_back(value);
+}
+
 status_t Connection::readOne() {
   Header header;
   this->populateHeader(&header);
@@ -62,9 +156,46 @@ status_t Connection::readOne() {
     // send to search->second
   } else {
     switch (header.bodyType()) {
-    case BodyType::JSON:
-      // TODO: Method::check, Method::call
-      break;
+    case BodyType::JSON: {
+      std::vector<BString> name;
+      RequestType requestType = RequestType::MISSING;
+      BMessage args;
+      {
+        JSON::Parser parser(
+            std::make_unique<RequestSink>(&name, &requestType, &args));
+        char buffer[1024];
+        status_t result;
+        ssize_t remaining = header.bodyLength;
+        while (remaining > 0) {
+          ssize_t count = this->inner->Read(
+              buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+          remaining -= count;
+          if (count <= 0)
+            return B_PARTIAL_READ;
+          for (int i = 0; i < count; i++) {
+            if ((result = parser.nextChar(buffer[i])) != B_OK)
+              return result;
+          }
+        }
+      }
+      MethodMatch overall = MethodMatch::NO_MATCH;
+      for (int i = 0; i < this->handlers->size(); i++) {
+        MethodMatch match =
+            (*this->handlers)[i]->check(this->peer, name, requestType);
+        switch (match) {
+        case MethodMatch::NO_MATCH:
+          break;
+        case MethodMatch::WRONG_TYPE:
+          overall = MethodMatch::WRONG_TYPE;
+          break;
+        case MethodMatch::MATCH:
+          // TODO: setup *ongoing, call handler
+          return B_OK;
+        }
+      }
+    }
+    // TODO: Method::check, Method::call
+    break;
     default:
       // TODO: send error back
       break;
