@@ -8,6 +8,7 @@
 #include <String.h>
 #include <map>
 #include <memory>
+#include <queue>
 #include <sodium.h>
 #include <vector>
 
@@ -60,6 +61,10 @@ private:
 
 class Connection;
 
+class MessageOrder {
+  bool operator()(BMessage &a, BMessage &b);
+};
+
 class Sender : public BHandler {
 public:
   Sender(Connection *conn, int32 requestNumber);
@@ -67,7 +72,13 @@ public:
 
 private:
   Connection *conn;
+  std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
+};
+
+struct Inbound {
+  BMessenger target;
+  uint32 sequence;
 };
 
 class Connection : public BLooper {
@@ -76,7 +87,7 @@ private:
   status_t populateHeader(Header *out);
   status_t readOne();
   std::unique_ptr<BDataIO> inner;
-  std::map<int32, BMessenger> inboundOngoing;
+  std::map<int32, Inbound> inboundOngoing;
   std::map<int32, Sender> outboundOngoing;
   std::vector<Method *> *handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];

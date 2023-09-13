@@ -116,4 +116,13 @@ status_t Header::writeToBuffer(unsigned char *buffer) {
   memcpy(buffer + 5, &requestNumber, sizeof(uint32));
   return B_OK;
 }
+
+bool MessageOrder::operator()(BMessage &a, BMessage &b) {
+  uint32 aseq, bseq;
+  if (a.FindUInt32("sequence", &aseq) != B_OK)
+    aseq = 0;
+  if (b.FindUInt32("sequence", &bseq) != B_OK)
+    bseq = 0;
+  return aseq > bseq;
+}
 }; // namespace muxrpc
