@@ -172,6 +172,8 @@ TARGET := $(TARGET_DIR)/$(NAME)
 TEST_DIR := generated/test
 TEST_TARGET := $(TEST_DIR)/test-habitat
 
+LOCAL_INCLUDE_PATHS += $(OBJ_DIR) $(TEST_DIR)
+
 # Psuedo-function for converting a list of source files in SRCS variable to a
 # corresponding list of object files in $(OBJ_DIR)/xxx.o. The "function" strips
 # off the src file suffix (.ccp or .c or whatever) and then strips off the
@@ -316,7 +318,6 @@ $(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(OBJS) $(RSRCS) $(CATKEYS)
 	for lc in $(LOCALES); do linkcatkeys -o $(TARGET) -s $(APP_MIME_SIG) -tr -l $$lc $(CATKEYS_DIR)/$$lc.catkeys; done
 
 $(TEST_TARGET): $(OBJ_DIR) $(TEST_DIR) $(TEST_OBJS)
-	echo $(TEST_OBJS)
 	$(TEST_BUILD_LINE)
 
 # Create OBJ_DIR if it doesn't exist.
@@ -422,3 +423,9 @@ clean:
 rmapp ::
 	-rm -f $(TARGET)
 
+# For embedding the ssb validation dataset into the test executable
+$(TEST_DIR)/ssb_validation_dataset.json:
+	curl -o "$@" https://raw.githubusercontent.com/fraction/ssb-validation-dataset/master/data.json
+$(TEST_DIR)/ssb_validation_dataset.h: $(TEST_DIR)/ssb_validation_dataset.json
+	xxd -i $(TEST_DIR)/ssb_validation_dataset.json "$@"
+generated/test/ValidationDatasetSpec.o : $(TEST_DIR)/ssb_validation_dataset.h

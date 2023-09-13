@@ -2,7 +2,7 @@
 #include "Base64.h"
 #include "Post.h"
 #include "SignJSON.h"
-#include <File.h>
+#include "ssb_validation_dataset.h"
 #include <catch2/catch_all.hpp>
 
 // The dataset used here is from
@@ -17,9 +17,17 @@ static inline BString showNumber(int n) {
 TEST_CASE("Validation matches examples", "[message][validation]") {
   BMessage examples;
   {
-    BFile input("tests/data.json", B_READ_ONLY);
-    REQUIRE(JSON::parse(std::make_unique<JSON::BMessageDocSink>(&examples),
-                        &input) == B_OK);
+    status_t parseStatus = B_OK;
+    {
+      JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&examples));
+      for (int i = 0; parseStatus == B_OK &&
+                      i < generated_test_ssb_validation_dataset_json_len;
+        i++) {
+        parseStatus =
+            parser.nextChar(generated_test_ssb_validation_dataset_json[i]);
+      }
+    }
+    REQUIRE(parseStatus == B_OK);
   }
   int i = 0;
   BMessage sample;
