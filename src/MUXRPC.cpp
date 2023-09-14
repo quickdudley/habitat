@@ -32,15 +32,23 @@ status_t Connection::populateHeader(Header *out) {
   if ((last_error = this->inner->ReadExactly(buffer, 9)) != B_OK) {
     return last_error;
   }
-  out->flags = buffer[0];
-  memcpy(&(out->bodyLength), buffer + 1, sizeof(uint32));
-  if ((last_error = swap_data(B_UINT32_TYPE, &out->bodyLength, sizeof(uint32),
+  return out->readFromBuffer(buffer);
+}
+
+status_t Header::readFromBuffer(unsigned char *buffer) {
+  status_t last_error;
+  this->flags = buffer[0];
+  if (this->flags & 3 == 3)
+    return B_BAD_DATA;
+  memcpy(&(this->bodyLength), buffer + 1, sizeof(uint32));
+  if ((last_error = swap_data(B_UINT32_TYPE, &this->bodyLength, sizeof(uint32),
                               B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
     return last_error;
   }
-  memcpy(&(out->requestNumber), buffer + 5, sizeof(uint32));
-  if ((last_error = swap_data(B_INT32_TYPE, &out->requestNumber, sizeof(uint32),
-                              B_SWAP_BENDIAN_TO_HOST)) != B_OK) {
+  memcpy(&(this->requestNumber), buffer + 5, sizeof(uint32));
+  if ((last_error = swap_data(B_INT32_TYPE, &this->requestNumber,
+                              sizeof(uint32), B_SWAP_BENDIAN_TO_HOST)) !=
+      B_OK) {
     return last_error;
   }
   return B_OK;
@@ -193,9 +201,7 @@ status_t Connection::readOne() {
           return B_OK;
         }
       }
-    }
-    // TODO: Method::check, Method::call
-    break;
+    } break;
     default:
       // TODO: send error back
       break;

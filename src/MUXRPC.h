@@ -30,6 +30,7 @@ struct Header {
   void setEndOrError(bool value);
   void setStream(bool value);
   status_t writeToBuffer(unsigned char *buffer);
+  status_t readFromBuffer(unsigned char *buffer);
 };
 
 enum struct RequestType {
