@@ -1,6 +1,5 @@
 #include "JSON.h"
 #include <catch2/catch_all.hpp>
-#include <iostream>
 
 TEST_CASE("Handles unicode", "[JSON]") {
   BString source("🀐");
@@ -79,22 +78,15 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
     void addNumber(BString &rawname, BString &name, BString &raw,
                    JSON::number value) {
       this->target->extra = true;
-      std::cerr << '[' << this->ix << "]: " << name.String() << ": " << value
-                << std::endl;
     }
     void addBool(BString &rawname, BString &name, bool value) {
       this->target->extra = true;
-      std::cerr << '[' << this->ix << "]: " << name.String() << ": " << value
-                << std::endl;
     }
     void addNull(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << '[' << this->ix << "]: " << name.String() << ": null"
-                << std::endl;
     }
     void addString(BString &rawname, BString &name, BString &raw,
                    BString &value) {
-      bool showError = false;
       if (name == "a") {
         if (this->ix == 0) {
           this->target->a1 = true;
@@ -107,8 +99,6 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
           } else {
             this->target->b2 = true;
           }
-        } else {
-          showError = true;
         }
       } else if (name == "c") {
         if (this->ix == 0) {
@@ -122,8 +112,6 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
           } else {
             this->target->d2 = true;
           }
-        } else {
-          showError = true;
         }
       } else if (name == "e") {
         if (this->ix == 0) {
@@ -137,28 +125,17 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
           } else {
             this->target->f2 = true;
           }
-        } else {
-          showError = true;
         }
       } else {
         this->target->extra = true;
-        showError = true;
-      }
-      if (showError) {
-        std::cerr << '[' << this->ix << "]: " << name.String() << ": " << value
-                  << std::endl;
       }
     }
     std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << '[' << this->ix << "]: " << name.String() << ": {}"
-                << std::endl;
       return JSON::NodeSink::addObject(rawname, name);
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << '[' << this->ix << "]: " << name.String() << ": []"
-                << std::endl;
       return JSON::NodeSink::addArray(rawname, name);
     }
 
@@ -175,27 +152,22 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
     void addNumber(BString &rawname, BString &name, BString &raw,
                    JSON::number value) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": " << value << std::endl;
     }
     void addBool(BString &rawname, BString &name, bool value) {
       this->target->extra = true;
-      std::cerr << name.String() << ": " << value << std::endl;
     }
     void addNull(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << name.String() << ": null" << std::endl;
     }
     void addString(BString &rawname, BString &name, BString &raw,
                    BString &value) {
       this->target->extra = true;
-      std::cerr << name.String() << ": " << value << std::endl;
     }
     std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
       return std::make_unique<OExpect>(this->target, this->ix++);
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << name.String() << ": []" << std::endl;
       return JSON::NodeSink::addArray(rawname, name);
     }
 
@@ -211,24 +183,19 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
     void addNumber(BString &rawname, BString &name, BString &raw,
                    JSON::number value) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": " << value << std::endl;
     }
     void addBool(BString &rawname, BString &name, bool value) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": " << value << std::endl;
     }
     void addNull(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": null" << std::endl;
     }
     void addString(BString &rawname, BString &name, BString &raw,
                    BString &value) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": " << value << std::endl;
     }
     std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
       this->target->extra = true;
-      std::cerr << "root: " << name.String() << ": {}" << std::endl;
       return JSON::NodeSink::addObject(rawname, name);
     }
     std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
