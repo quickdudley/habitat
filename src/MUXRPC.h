@@ -61,6 +61,7 @@ private:
 
 class Connection;
 
+// For putting messages into a priority queue
 class MessageOrder {
   bool operator()(BMessage &a, BMessage &b);
 };
@@ -89,7 +90,7 @@ private:
   std::unique_ptr<BDataIO> inner;
   std::map<int32, Inbound> inboundOngoing;
   std::map<int32, Sender> outboundOngoing;
-  std::vector<Method *> *handlers;
+  std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
 };
