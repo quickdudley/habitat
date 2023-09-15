@@ -35,10 +35,7 @@ TEST_CASE("Correctly handles test message",
     unsigned char rawHash[crypto_hash_sha256_BYTES];
     {
       JSON::RootSink rootSink(std::make_unique<JSON::Hash>(rawHash));
-      BString blank;
-      rootSink.beginObject(blank);
       JSON::fromBMessage(&rootSink, &outer);
-      rootSink.closeNode();
     }
     BString hash("%");
     hash.Append(
@@ -50,10 +47,7 @@ TEST_CASE("Correctly handles test message",
     bool valid;
     {
       JSON::RootSink rootSink(std::make_unique<JSON::VerifySignature>(&valid));
-      BString blank;
-      rootSink.beginObject(blank);
       JSON::fromBMessage(&rootSink, &outer);
-      rootSink.closeNode();
     }
     REQUIRE(valid == true);
   }

@@ -58,12 +58,7 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
         {
           unsigned char hash[crypto_hash_sha256_BYTES];
           JSON::RootSink rootSink(std::make_unique<JSON::Hash>(hash));
-          {
-            BString blank;
-            rootSink.beginObject(blank);
-          }
           JSON::fromBMessage(&rootSink, &message);
-          rootSink.closeNode();
           rootSink.closeNode();
           BString computedID("%");
           computedID.Append(

@@ -41,9 +41,9 @@ status_t Sender::send(BMessage *content, bool stream, bool error,
     status_t result;
     if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
       return result;
-    int32 sequence = this->sequence++;
+    uint32 sequence = this->sequence++;
     release_sem(this->sequenceSemaphore);
-    wrapper.AddInt32("sequence", sequence);
+    wrapper.AddUInt32("sequence", sequence);
   }
   return BMessenger(this).SendMessage(&wrapper);
 }
@@ -57,9 +57,9 @@ status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
     status_t result;
     if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
       return result;
-    int32 sequence = this->sequence++;
+    uint32 sequence = this->sequence++;
     release_sem(this->sequenceSemaphore);
-    wrapper.AddInt32("sequence", sequence);
+    wrapper.AddUInt32("sequence", sequence);
   }
   return BMessenger(this).SendMessage(&wrapper);
 }
@@ -74,14 +74,89 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
     status_t result;
     if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
       return result;
-    int32 sequence = this->sequence++;
+    uint32 sequence = this->sequence++;
     release_sem(this->sequenceSemaphore);
-    wrapper.AddInt32("sequence", sequence);
+    wrapper.AddUInt32("sequence", sequence);
   }
   return BMessenger(this).SendMessage(&wrapper);
 }
 
-void Sender::MessageReceived(BMessage *msg) {}
+void Sender::MessageReceived(BMessage *msg) {
+  switch (msg->what) {
+  case 'SEND': {
+    uint32 sequence;
+    if (msg->FindUInt32("sequence", &sequence) == B_OK) {
+      uint32 nextSequence = this->sentSequence + 1;
+      if (sequence <= nextSequence) {
+        this->sentSequence = sequence;
+        nextSequence = sequence + 1;
+        this->actuallySend(msg);
+        while (!this->outOfOrder.empty() &&
+               (sequence = this->outOfOrder.top().GetUInt32("sequence", 0)) <=
+                   nextSequence) {
+          this->sentSequence = sequence;
+          nextSequence = sequence + 1;
+          this->actuallySend(&this->outOfOrder.top());
+          this->outOfOrder.pop();
+        }
+      } else {
+        this->outOfOrder.push(*msg);
+      }
+    } else {
+      this->actuallySend(msg);
+    }
+    break;
+  }
+  case 'DEL_':
+    delete this;
+    break;
+  default:
+    BHandler::MessageReceived(msg);
+  }
+}
+
+void Sender::actuallySend(const BMessage *wrapper) {
+  Header header;
+  header.setEndOrError(wrapper->GetBool("end", true));
+  header.setStream(wrapper->GetBool("stream", true));
+  header.requestNumber = this->requestNumber;
+  {
+    BString content;
+    if (wrapper->FindString("content", &content) == B_OK) {
+      header.setBodyType(BodyType::UTF8_STRING);
+    } else {
+      BMessage inner;
+      if (wrapper->FindMessage("content", &inner) == B_OK) {
+        header.setBodyType(BodyType::JSON);
+        JSON::RootSink rootSink(
+            std::make_unique<JSON::SerializerStart>(&content));
+        JSON::fromBMessage(&rootSink, &inner);
+      } else {
+        goto check_for_raw;
+      }
+    }
+    header.bodyLength = content.Length();
+    BDataIO *output = this->output();
+    unsigned char headerBytes[9];
+    header.writeToBuffer(headerBytes);
+    output->WriteExactly(headerBytes, 9);
+    output->WriteExactly(content.String(), content.Length());
+    return;
+  }
+check_for_raw : {
+  const void *data;
+  ssize_t length;
+  if (wrapper->FindData("content", 'RAW_', &data, &length) == B_OK) {
+    header.setBodyType(BodyType::BINARY);
+    header.bodyLength = length;
+    unsigned char headerBytes[9];
+    header.writeToBuffer(headerBytes);
+    BDataIO *output = this->output();
+    output->WriteExactly(headerBytes, 9);
+    output->WriteExactly(data, length);
+  }
+}
+}
 
 BDataIO *Sender::output() {
   return dynamic_cast<Connection *>(this->Looper())->inner.get();

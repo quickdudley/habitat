@@ -116,10 +116,15 @@ void fromBMessageObject(RootSink *target, BMessage *source) {
 }
 
 void fromBMessage(RootSink *target, BMessage *source) {
-  if (wasArray(source))
+  BString blank;
+  if (wasArray(source)) {
+    target->beginArray(blank);
     fromBMessageArray(target, source);
-  else
+  } else {
+    target->beginObject(blank);
     fromBMessageObject(target, source);
+  }
+  target->closeNode();
 }
 
 void fromBMessageArray(RootSink *target, BMessage *source) {

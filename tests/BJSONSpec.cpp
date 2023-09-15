@@ -37,3 +37,21 @@ TEST_CASE("Can represent two objects in arrays", "[BJSON]") {
   REQUIRE(inner.FindString("e", &value) == B_OK);
   REQUIRE(value == "f");
 }
+
+TEST_CASE("Includes outermost braces when serialising BMessage to JSON",
+          "[BJSON]") {
+  BString output;
+  BMessage message('JSOB');
+  {
+    JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&output));
+    JSON::fromBMessage(&rootSink, &message);
+  }
+  REQUIRE(output == "{}");
+  output = "";
+  message.what = 'JSAR';
+  {
+    JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&output));
+    JSON::fromBMessage(&rootSink, &message);
+  }
+  REQUIRE(output == "[]");
+}

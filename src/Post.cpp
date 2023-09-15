@@ -315,7 +315,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     rootSink.addString(key, value);
     key.SetTo("content");
     rootSink.beginObject(key);
-    JSON::fromBMessage(&rootSink, message);
+    JSON::fromBMessageObject(&rootSink, message);
     rootSink.closeNode();
     rootSink.closeNode();
   }
@@ -333,10 +333,7 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
         useHMac
             ? std::make_unique<JSON::VerifySignature>(&signatureValid, hmacKey)
             : std::make_unique<JSON::VerifySignature>(&signatureValid));
-    BString blank;
-    rootSink.beginObject(blank);
     JSON::fromBMessage(&rootSink, message);
-    rootSink.closeNode();
   }
   if (signatureValid)
     return B_OK;
@@ -473,10 +470,6 @@ static inline status_t validateSize(BMessage *message) {
   {
     JSON::RootSink rootSink(
         std::make_unique<JSON::SerializerStart>(&serialized));
-    {
-      BString blank;
-      rootSink.beginObject(blank);
-    }
     JSON::fromBMessage(&rootSink, message);
   }
   const char *u8 = serialized.String();
@@ -511,9 +504,8 @@ status_t validate(BMessage *message, int lastSequence, BString &lastID,
     return result;
   if ((result = validateSize(message)) != B_OK)
     return result;
-  if ((result = validateSignature(message, useHmac, hmacKey)) != B_OK) {
+  if ((result = validateSignature(message, useHmac, hmacKey)) != B_OK)
     return result;
-  }
   return B_OK;
 }
 } // namespace post

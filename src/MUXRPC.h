@@ -64,6 +64,7 @@ class Connection;
 
 // For putting messages into a priority queue
 class MessageOrder {
+public:
   bool operator()(BMessage &a, BMessage &b);
 };
 
@@ -80,9 +81,11 @@ public:
 private:
   void MessageReceived(BMessage *msg) override;
   BDataIO *output();
+  void actuallySend(const BMessage *wrapper);
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
-  int32 sequence = 1;
+  uint32 sequence = 1;
+  uint32 sentSequence = 0;
   sem_id sequenceSemaphore;
   friend class Connection;
 };
