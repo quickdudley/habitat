@@ -67,15 +67,24 @@ class MessageOrder {
   bool operator()(BMessage &a, BMessage &b);
 };
 
-class Sender : public BHandler {
+class Sender : private BHandler {
 public:
   Sender(Connection *conn, int32 requestNumber);
-  void MessageReceived(BMessage *msg);
+  ~Sender();
+  status_t send(BMessage *content, bool stream, bool error,
+                bool inOrder = true);
+  status_t send(BString &content, bool stream, bool error, bool inOrder = true);
+  status_t send(unsigned char *content, uint32 length, bool stream, bool error,
+                bool inOrder = true);
 
 private:
-  Connection *conn;
+  void MessageReceived(BMessage *msg) override;
+  BDataIO *output();
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
+  int32 sequence = 1;
+  sem_id sequenceSemaphore;
+  friend class Connection;
 };
 
 struct Inbound {
@@ -94,6 +103,7 @@ private:
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
+  friend BDataIO *Sender::output();
 };
 }; // namespace muxrpc
 

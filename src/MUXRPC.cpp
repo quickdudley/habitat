@@ -21,10 +21,71 @@ MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
 
 Sender::Sender(Connection *conn, int32 requestNumber)
     :
-    conn(conn),
-    requestNumber(requestNumber) {}
+    requestNumber(requestNumber),
+    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")) {
+  conn->AddHandler(this);
+}
+
+Sender::~Sender() {
+  this->Looper()->RemoveHandler(this);
+  delete_sem(this->sequenceSemaphore);
+}
+
+status_t Sender::send(BMessage *content, bool stream, bool error,
+                      bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddMessage("content", content);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    int32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddInt32("sequence", sequence);
+  }
+  return BMessenger(this).SendMessage(&wrapper);
+}
+
+status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddString("content", content);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    int32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddInt32("sequence", sequence);
+  }
+  return BMessenger(this).SendMessage(&wrapper);
+}
+
+status_t Sender::send(unsigned char *content, uint32 length, bool stream,
+                      bool error, bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddData("content", 'RAW_', content, length, false);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    int32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddInt32("sequence", sequence);
+  }
+  return BMessenger(this).SendMessage(&wrapper);
+}
 
 void Sender::MessageReceived(BMessage *msg) {}
+
+BDataIO *Sender::output() {
+  return dynamic_cast<Connection *>(this->Looper())->inner.get();
+}
 
 status_t Connection::populateHeader(Header *out) {
   unsigned char buffer[9];
