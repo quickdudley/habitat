@@ -68,9 +68,9 @@ public:
   bool operator()(BMessage &a, BMessage &b);
 };
 
-class Sender : private BHandler {
+class Sender {
 public:
-  Sender(Connection *conn, int32 requestNumber);
+  Sender(BMessenger inner);
   ~Sender();
   status_t send(BMessage *content, bool stream, bool error,
                 bool inOrder = true);
@@ -79,14 +79,23 @@ public:
                 bool inOrder = true);
 
 private:
+  BMessenger inner;
+  uint32 sequence;
+  sem_id sequenceSemaphore;
+};
+
+class SenderHandler : public BHandler {
+public:
+  SenderHandler(Connection *conn, int32 requestNumber);
+  ~SenderHandler();
+
+private:
   void MessageReceived(BMessage *msg) override;
   BDataIO *output();
   void actuallySend(const BMessage *wrapper);
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
-  uint32 sequence = 1;
   uint32 sentSequence = 0;
-  sem_id sequenceSemaphore;
   friend class Connection;
 };
 
@@ -102,11 +111,10 @@ private:
   status_t readOne();
   std::unique_ptr<BDataIO> inner;
   std::map<int32, Inbound> inboundOngoing;
-  std::map<int32, Sender> outboundOngoing;
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
-  friend BDataIO *Sender::output();
+  friend BDataIO *SenderHandler::output();
 };
 }; // namespace muxrpc
 

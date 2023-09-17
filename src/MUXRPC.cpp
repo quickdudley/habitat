@@ -19,17 +19,20 @@ MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
   }
 }
 
-Sender::Sender(Connection *conn, int32 requestNumber)
+Sender::Sender(BMessenger inner)
     :
-    requestNumber(requestNumber),
-    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")) {
+    inner(inner),
+    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")) {}
+
+SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
+    :
+    requestNumber(requestNumber) {
   conn->AddHandler(this);
 }
 
-Sender::~Sender() {
-  this->Looper()->RemoveHandler(this);
-  delete_sem(this->sequenceSemaphore);
-}
+Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
+
+SenderHandler::~SenderHandler() { this->Looper()->RemoveHandler(this); }
 
 status_t Sender::send(BMessage *content, bool stream, bool error,
                       bool inOrder) {
@@ -45,7 +48,7 @@ status_t Sender::send(BMessage *content, bool stream, bool error,
     release_sem(this->sequenceSemaphore);
     wrapper.AddUInt32("sequence", sequence);
   }
-  return BMessenger(this).SendMessage(&wrapper);
+  return this->inner.SendMessage(&wrapper);
 }
 
 status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
@@ -61,7 +64,7 @@ status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
     release_sem(this->sequenceSemaphore);
     wrapper.AddUInt32("sequence", sequence);
   }
-  return BMessenger(this).SendMessage(&wrapper);
+  return this->inner.SendMessage(&wrapper);
 }
 
 status_t Sender::send(unsigned char *content, uint32 length, bool stream,
@@ -78,10 +81,10 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
     release_sem(this->sequenceSemaphore);
     wrapper.AddUInt32("sequence", sequence);
   }
-  return BMessenger(this).SendMessage(&wrapper);
+  return this->inner.SendMessage(&wrapper);
 }
 
-void Sender::MessageReceived(BMessage *msg) {
+void SenderHandler::MessageReceived(BMessage *msg) {
   switch (msg->what) {
   case 'SEND': {
     uint32 sequence;
@@ -115,7 +118,7 @@ void Sender::MessageReceived(BMessage *msg) {
   }
 }
 
-void Sender::actuallySend(const BMessage *wrapper) {
+void SenderHandler::actuallySend(const BMessage *wrapper) {
   Header header;
   header.setEndOrError(wrapper->GetBool("end", true));
   header.setStream(wrapper->GetBool("stream", true));
@@ -158,7 +161,7 @@ check_for_raw : {
 }
 }
 
-BDataIO *Sender::output() {
+BDataIO *SenderHandler::output() {
   return dynamic_cast<Connection *>(this->Looper())->inner.get();
 }
 
