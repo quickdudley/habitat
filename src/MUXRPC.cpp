@@ -288,19 +288,42 @@ void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
 status_t Connection::readOne() {
   Header header;
   this->populateHeader(&header);
-  //	switch (header.bodyType()) {
-  //		case BodyType::BINARY:
-  //		break;
-  //		case BodyType::UTF8_STRING:
-  //		break;
-  //		case BodyType::JSON:
-  //		break;
-  //	}
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
     // TODO: handle reply or stream continuation
     // construct message
     // send to search->second
+    BMessage wrapper('MXRP');
+    switch (header.bodyType()) {
+    case BodyType::JSON: {
+      BMessage content;
+      {
+        // TODO: Reduce code duplication
+        JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&content));
+        char buffer[1024];
+        status_t result;
+        ssize_t remaining = header.bodyLength;
+        while (remaining > 0) {
+          ssize_t count = this->inner->Read(
+              buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+          remaining -= count;
+          if (count <= 0)
+            return B_PARTIAL_READ;
+          for (int i = 0; i < count; i++) {
+            if ((result = parser.nextChar(buffer[i])) != B_OK)
+              return result;
+          }
+        }
+      }
+      wrapper.AddMessage("content", &content);
+    } break;
+    case BodyType::UTF8_STRING: {
+      BString content;
+
+    } break;
+    }
+    wrapper.AddBool("stream", header.stream());
+    wrapper.AddBool("end", header.endOrError());
   } else {
     switch (header.bodyType()) {
     case BodyType::JSON: {
