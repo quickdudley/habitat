@@ -85,8 +85,13 @@ private:
 
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input);
 status_t parse(NodeSink *target, BDataIO *input);
+status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes);
+status_t parse(NodeSink *target, BDataIO *input, size_t bytes);
 status_t parse(std::unique_ptr<NodeSink> target, const char *input);
 status_t parse(NodeSink *target, const char *input);
+status_t parse(std::unique_ptr<NodeSink> target, const char *input,
+               size_t bytes);
+status_t parse(NodeSink *target, const char *input, size_t bytes);
 status_t parse(std::unique_ptr<NodeSink> target, BString &input);
 status_t parse(NodeSink *target, BString &input);
 

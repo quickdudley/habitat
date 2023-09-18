@@ -298,22 +298,11 @@ status_t Connection::readOne() {
     case BodyType::JSON: {
       BMessage content;
       {
-        // TODO: Reduce code duplication
-        JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&content));
-        char buffer[1024];
-        status_t result;
-        ssize_t remaining = header.bodyLength;
-        while (remaining > 0) {
-          ssize_t count = this->inner->Read(
-              buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
-          remaining -= count;
-          if (count <= 0)
-            return B_PARTIAL_READ;
-          for (int i = 0; i < count; i++) {
-            if ((result = parser.nextChar(buffer[i])) != B_OK)
-              return result;
-          }
-        }
+        status_t result =
+            JSON::parse(std::make_unique<JSON::BMessageDocSink>(&content),
+                        this->inner.get(), header.bodyLength);
+        if (result != B_OK)
+          return result;
       }
       wrapper.AddMessage("content", &content);
     } break;
@@ -352,22 +341,11 @@ status_t Connection::readOne() {
       RequestType requestType = RequestType::MISSING;
       BMessage args;
       {
-        JSON::Parser parser(
-            std::make_unique<RequestSink>(&name, &requestType, &args));
-        char buffer[1024];
-        status_t result;
-        ssize_t remaining = header.bodyLength;
-        while (remaining > 0) {
-          ssize_t count = this->inner->Read(
-              buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
-          remaining -= count;
-          if (count <= 0)
-            return B_PARTIAL_READ;
-          for (int i = 0; i < count; i++) {
-            if ((result = parser.nextChar(buffer[i])) != B_OK)
-              return result;
-          }
-        }
+        status_t result = JSON::parse(
+            std::make_unique<RequestSink>(&name, &requestType, &args),
+            this->inner.get(), header.bodyLength);
+        if (result != B_OK)
+          return result;
       }
       MethodMatch overall = MethodMatch::NO_MATCH;
       for (int i = 0; i < this->handlers->size(); i++) {

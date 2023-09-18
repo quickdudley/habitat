@@ -459,6 +459,29 @@ status_t parse(NodeSink *target, BDataIO *input) {
   return parse(std::unique_ptr<NodeSink>(target), input);
 }
 
+status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes) {
+  JSON::Parser parser(std::move(target));
+  char buffer[1024];
+  status_t result;
+  ssize_t remaining = bytes;
+  while (remaining > 0) {
+    ssize_t count = input->Read(
+        buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+    remaining -= count;
+    if (count <= 0)
+      return B_PARTIAL_READ;
+    for (int i = 0; i < count; i++) {
+      if ((result = parser.nextChar(buffer[i])) != B_OK)
+        return result;
+    }
+  }
+  return B_OK;
+}
+
+status_t parse(NodeSink *target, BDataIO *input, size_t bytes) {
+  return parse(std::unique_ptr<NodeSink>(target), input, bytes);
+}
+
 status_t parse(std::unique_ptr<NodeSink> target, const char *input) {
   Parser parser(std::move(target));
   for (int i = 0; input[i] != 0; i++) {
@@ -471,6 +494,21 @@ status_t parse(std::unique_ptr<NodeSink> target, const char *input) {
 
 status_t parse(NodeSink *target, const char *input) {
   return parse(std::unique_ptr<NodeSink>(target), input);
+}
+
+status_t parse(std::unique_ptr<NodeSink> target, const char *input,
+               size_t bytes) {
+  Parser parser(std::move(target));
+  for (size_t i = 0; i < bytes; i++) {
+    status_t result = parser.nextChar(input[i]);
+    if (result != B_OK)
+      return result;
+  }
+  return B_OK;
+}
+
+status_t parse(NodeSink *target, const char *input, size_t bytes) {
+  return parse(std::unique_ptr<NodeSink>(target), input, bytes);
 }
 
 status_t parse(std::unique_ptr<NodeSink> target, BString &input) {
