@@ -343,8 +343,8 @@ status_t Connection::readOne() {
     }
     wrapper.AddBool("stream", header.stream());
     wrapper.AddBool("end", header.endOrError());
-    // TODO: Add sequence number
-    // TODO: Dispatch the message
+    wrapper.AddUInt32("sequence", search->second.sequence);
+    return search->second.target.SendMessage(&wrapper);
   } else {
     switch (header.bodyType()) {
     case BodyType::JSON: {
