@@ -70,7 +70,7 @@ status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
 status_t Sender::send(unsigned char *content, uint32 length, bool stream,
                       bool error, bool inOrder) {
   BMessage wrapper('SEND');
-  wrapper.AddData("content", 'RAW_', content, length, false);
+  wrapper.AddData("content", B_RAW_TYPE, content, length, false);
   wrapper.AddBool("stream", stream);
   wrapper.AddBool("end", error);
   if (inOrder) {
@@ -149,7 +149,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
 check_for_raw : {
   const void *data;
   ssize_t length;
-  if (wrapper->FindData("content", 'RAW_', &data, &length) == B_OK) {
+  if (wrapper->FindData("content", B_RAW_TYPE, &data, &length) == B_OK) {
     header.setBodyType(BodyType::BINARY);
     header.bodyLength = length;
     unsigned char headerBytes[9];
@@ -319,11 +319,32 @@ status_t Connection::readOne() {
     } break;
     case BodyType::UTF8_STRING: {
       BString content;
-
+      ssize_t remaining = header.bodyLength;
+      while (remaining > 0) {
+        char buffer[1024];
+        ssize_t count = this->inner->Read(
+            buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+        remaining -= count;
+        if (count <= 0)
+          return B_PARTIAL_READ;
+        content.Append(buffer, count);
+      }
+      wrapper.AddString("content", content);
+    } break;
+    case BodyType::BINARY: {
+      auto content = std::make_unique<unsigned char[]>(header.bodyLength);
+      status_t result =
+          this->inner->ReadExactly(content.get(), header.bodyLength);
+      if (result != B_OK)
+        return result;
+      wrapper.AddData("content", B_RAW_TYPE, content.get(), header.bodyLength,
+                      false);
     } break;
     }
     wrapper.AddBool("stream", header.stream());
     wrapper.AddBool("end", header.endOrError());
+    // TODO: Add sequence number
+    // TODO: Dispatch the message
   } else {
     switch (header.bodyType()) {
     case BodyType::JSON: {
