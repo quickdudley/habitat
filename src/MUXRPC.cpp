@@ -167,9 +167,10 @@ BDataIO *SenderHandler::output() {
 
 Connection::Connection(std::unique_ptr<BDataIO> inner) {
   this->inner = std::move(inner);
+  this->ongoingLock = create_sem(1, "MUXRPC incoming connections lock");
 }
 
-Connection::~Connection() {}
+Connection::~Connection() { delete_sem(this->ongoingLock); }
 
 thread_id Connection::Run() {
   this->pullThreadID =
@@ -328,11 +329,9 @@ void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
 status_t Connection::readOne() {
   Header header;
   this->populateHeader(&header);
+  // TODO: Use the semaphore
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
-    // TODO: handle reply or stream continuation
-    // construct message
-    // send to search->second
     BMessage wrapper('MXRP');
     switch (header.bodyType()) {
     case BodyType::JSON: {
@@ -398,8 +397,21 @@ status_t Connection::readOne() {
           overall = MethodMatch::WRONG_TYPE;
           break;
         case MethodMatch::MATCH:
-          // TODO: setup *ongoing, call handler
-          return B_OK;
+          SenderHandler *replies;
+          try {
+            replies = new SenderHandler(this, -header.requestNumber);
+          } catch (...) {
+            delete replies;
+            throw;
+          }
+          BMessenger inbound;
+          status_t result = (*this->handlers)[i]->call(
+              this->peer, requestType, &args, BMessenger(replies), &inbound);
+          if (result == B_OK && requestType == RequestType::DUPLEX) {
+            acquire_sem(this->ongoingLock);
+            this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
+            release_sem(this->ongoingLock);
+          }
         }
       }
     } break;

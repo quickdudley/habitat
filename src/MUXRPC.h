@@ -53,7 +53,7 @@ public:
                             std::vector<BString> name, RequestType type);
   virtual status_t call(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
                         RequestType type, BMessage *args, BMessenger replyTo,
-                        BMessenger *ongoing) = 0;
+                        BMessenger *inbound) = 0;
 
 private:
   std::vector<BString> name;
@@ -118,6 +118,7 @@ private:
   thread_id pullThreadID = B_NO_MORE_THREADS;
   std::unique_ptr<BDataIO> inner;
   std::map<int32, Inbound> inboundOngoing;
+  sem_id ongoingLock;
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
