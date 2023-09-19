@@ -329,9 +329,10 @@ void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
 status_t Connection::readOne() {
   Header header;
   this->populateHeader(&header);
-  // TODO: Use the semaphore
+  acquire_sem(this->ongoingLock);
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
+    release_sem(this->ongoingLock);
     BMessage wrapper('MXRP');
     switch (header.bodyType()) {
     case BodyType::JSON: {
@@ -374,6 +375,7 @@ status_t Connection::readOne() {
     wrapper.AddUInt32("sequence", search->second.sequence);
     return search->second.target.SendMessage(&wrapper);
   } else {
+    release_sem(this->ongoingLock);
     switch (header.bodyType()) {
     case BodyType::JSON: {
       std::vector<BString> name;
