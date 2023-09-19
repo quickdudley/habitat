@@ -106,15 +106,23 @@ struct Inbound {
 
 class Connection : public BLooper {
 public:
+  Connection(std::unique_ptr<BDataIO> inner);
+  ~Connection();
+  thread_id Run() override;
+  void Quit() override;
+
 private:
   status_t populateHeader(Header *out);
   status_t readOne();
+  int32 pullLoop();
+  thread_id pullThreadID = B_NO_MORE_THREADS;
   std::unique_ptr<BDataIO> inner;
   std::map<int32, Inbound> inboundOngoing;
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
   friend BDataIO *SenderHandler::output();
+  static int32 pullThreadFunction(void *data);
 };
 }; // namespace muxrpc
 

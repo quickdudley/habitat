@@ -165,6 +165,29 @@ BDataIO *SenderHandler::output() {
   return dynamic_cast<Connection *>(this->Looper())->inner.get();
 }
 
+Connection::Connection(std::unique_ptr<BDataIO> inner) {
+  this->inner = std::move(inner);
+}
+
+Connection::~Connection() {}
+
+thread_id Connection::Run() {
+  this->pullThreadID =
+      spawn_thread(Connection::pullThreadFunction, "MUXRPC receiver", 10, this);
+  resume_thread(this->pullThreadID);
+  return BLooper::Run();
+}
+
+void Connection::Quit() {
+  BLooper::Quit();
+  if (this->pullThreadID != B_NO_MORE_THREADS) {
+    send_data(this->pullThreadID, 'STOP', NULL, 0);
+    status_t exitValue;
+    wait_for_thread(this->pullThreadID, &exitValue);
+  }
+  this->pullThreadID = B_NO_MORE_THREADS;
+}
+
 status_t Connection::populateHeader(Header *out) {
   unsigned char buffer[9];
   status_t last_error;
@@ -172,6 +195,23 @@ status_t Connection::populateHeader(Header *out) {
     return last_error;
   }
   return out->readFromBuffer(buffer);
+}
+
+int32 Connection::pullLoop() {
+  status_t result;
+  do {
+    result = readOne();
+    if (has_data(this->pullThreadID)) {
+      thread_id sender;
+      if (receive_data(&sender, NULL, 0) == 'STOP')
+        return B_CANCELED;
+    }
+  } while (result == B_OK);
+  return result;
+}
+
+int32 Connection::pullThreadFunction(void *data) {
+  return ((Connection *)data)->pullLoop();
 }
 
 status_t Header::readFromBuffer(unsigned char *buffer) {
