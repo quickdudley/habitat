@@ -50,7 +50,7 @@ enum struct MethodMatch {
 class Method {
 public:
   virtual MethodMatch check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                            std::vector<BString> name, RequestType type);
+                            std::vector<BString> &name, RequestType type);
   virtual status_t call(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
                         RequestType type, BMessage *args, BMessenger replyTo,
                         BMessenger *inbound) = 0;
@@ -86,11 +86,11 @@ private:
 
 class SenderHandler : public BHandler {
 public:
-  SenderHandler(Connection *conn, int32 requestNumber);
   ~SenderHandler();
+  void MessageReceived(BMessage *msg) override;
 
 private:
-  void MessageReceived(BMessage *msg) override;
+  SenderHandler(Connection *conn, int32 requestNumber);
   BDataIO *output();
   void actuallySend(const BMessage *wrapper);
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
@@ -110,11 +110,14 @@ public:
   ~Connection();
   thread_id Run() override;
   void Quit() override;
+  status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
+                   BMessenger replyTo, BMessenger *outbound);
 
 private:
   status_t populateHeader(Header *out);
   status_t readOne();
   int32 pullLoop();
+  SenderHandler *findSend(uint32 requestNumber);
   thread_id pullThreadID = B_NO_MORE_THREADS;
   std::unique_ptr<BDataIO> inner;
   std::map<int32, Inbound> inboundOngoing;

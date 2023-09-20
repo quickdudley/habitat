@@ -7,7 +7,7 @@
 namespace muxrpc {
 
 MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                          std::vector<BString> name, RequestType type) {
+                          std::vector<BString> &name, RequestType type) {
   if (name == this->name) {
     if (type == this->expectedType) {
       return MethodMatch::MATCH;
@@ -180,13 +180,16 @@ thread_id Connection::Run() {
 }
 
 void Connection::Quit() {
-  BLooper::Quit();
   if (this->pullThreadID != B_NO_MORE_THREADS) {
     send_data(this->pullThreadID, 'STOP', NULL, 0);
     status_t exitValue;
     wait_for_thread(this->pullThreadID, &exitValue);
   }
-  this->pullThreadID = B_NO_MORE_THREADS;
+  for (int32 i = this->CountHandlers(); i <= 0; i--) {
+    BHandler *handler = this->HandlerAt(i);
+    delete handler;
+  }
+  BLooper::Quit();
 }
 
 status_t Connection::populateHeader(Header *out) {
@@ -196,6 +199,49 @@ status_t Connection::populateHeader(Header *out) {
     return last_error;
   }
   return out->readFromBuffer(buffer);
+}
+
+status_t Connection::request(std::vector<BString> &name, RequestType type,
+                             BMessage *args, BMessenger replyTo,
+                             BMessenger *outbound) {
+  SenderHandler *handler;
+  try {
+    int32 requestNumber = this->nextRequest++;
+    handler = new SenderHandler(this, requestNumber);
+    BMessage content('JSOB');
+    {
+      BMessage methodName('JSAR');
+      for (int i = 0; i < name.size(); i++) {
+        BString k;
+        k << i;
+        methodName.AddString(k.String(), name[i]);
+      }
+      content.AddMessage("name", &methodName);
+    }
+    switch (type) {
+    case RequestType::SOURCE:
+      content.AddString("type", "source");
+      break;
+    case RequestType::DUPLEX:
+      content.AddString("type", "duplex");
+      break;
+    case RequestType::ASYNC:
+      content.AddString("type", "async");
+      break;
+    }
+    content.AddMessage("args", args);
+    if (type == RequestType::DUPLEX) {
+      *outbound = BMessenger(handler);
+    }
+    acquire_sem(this->ongoingLock);
+    this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
+    release_sem(this->ongoingLock);
+    return Sender(BMessenger(handler))
+        .send(&content, type != RequestType::ASYNC, false, false);
+  } catch (...) {
+    delete handler;
+    throw;
+  }
 }
 
 int32 Connection::pullLoop() {
@@ -213,6 +259,17 @@ int32 Connection::pullLoop() {
 
 int32 Connection::pullThreadFunction(void *data) {
   return ((Connection *)data)->pullLoop();
+}
+
+SenderHandler *Connection::findSend(uint32 requestNumber) {
+  this->Lock();
+  for (int32 i = 0; i < this->CountHandlers(); i++) {
+    SenderHandler *handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
+    if (handler != NULL && handler->requestNumber == requestNumber) {
+      return handler;
+    }
+  }
+  return NULL;
 }
 
 status_t Header::readFromBuffer(unsigned char *buffer) {
