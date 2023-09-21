@@ -22,6 +22,16 @@ struct FeedBuildComparator {
 };
 } // namespace post_private_
 
+class SSBDatabase : public BLooper {
+public:
+  SSBDatabase();
+  ~SSBDatabase() override;
+  status_t GetSupportedSuites(BMessage *data) override;
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property) override;
+  void MessageReceived(BMessage *msg) override;
+};
+
 class SSBFeed : public BHandler {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);

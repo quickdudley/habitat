@@ -29,7 +29,7 @@ public:
 
 private:
   MainWindow *mainWindow;
-  BLooper *databaseLooper;
+  SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<BDirectory> postDir;

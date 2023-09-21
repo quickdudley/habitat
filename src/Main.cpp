@@ -128,7 +128,7 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new BLooper("Habitat message database");
+  this->databaseLooper = new SSBDatabase();
   this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
   this->databaseLooper->AddHandler(this->ownFeed);
   // Open main window

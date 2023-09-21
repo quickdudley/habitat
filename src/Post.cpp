@@ -19,6 +19,29 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
+SSBDatabase::SSBDatabase()
+    :
+    BLooper("SSB message database") {}
+
+SSBDatabase::~SSBDatabase() {}
+
+status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
+  // TODO
+  return BLooper::GetSupportedSuites(data);
+}
+
+BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
+                                        BMessage *specifier, int32 what,
+                                        const char *property) {
+  // TODO
+  return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
+}
+
+void SSBDatabase::MessageReceived(BMessage *msg) {
+  // TODO
+  return BLooper::MessageReceived(msg);
+}
+
 static inline status_t eitherNumber(int64 *result, BMessage *source,
                                     const char *name) {
   if (source->FindInt64(name, result) == B_OK) {

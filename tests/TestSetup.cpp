@@ -28,9 +28,7 @@ public:
 
   void testRunEnded(Catch::TestRunStats const &) override {
     if (testApp != NULL) {
-      testApp->Lock();
-      testApp->Quit();
-      testApp->Unlock();
+      BMessenger(NULL, testApp).SendMessage(B_QUIT_REQUESTED);
       status_t exitValue;
       wait_for_thread(testAppThread, &exitValue);
     }
