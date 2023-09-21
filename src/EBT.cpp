@@ -2,6 +2,13 @@
 
 namespace ebt {
 
+Note decodeNote(double note) {
+  bool replicate = note >= 0;
+  uint64 v = note;
+  bool receive = replicate && (v & 1) == 0;
+  return {replicate, receive, replicate ? v >> 1 : 0};
+}
+
 status_t Dispatcher::GetSupportedSuites(BMessage *data) {
   // TODO
   return BLooper::GetSupportedSuites(data);

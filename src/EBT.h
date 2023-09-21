@@ -4,6 +4,14 @@
 #include "MUXRPC.h"
 
 namespace ebt {
+struct Note {
+  bool replicate;
+  bool receive;
+  uint64 sequence;
+};
+
+Note decodeNote(double note);
+
 class Dispatcher : public BLooper {
 public:
   status_t GetSupportedSuites(BMessage *data) override;
