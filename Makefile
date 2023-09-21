@@ -35,6 +35,7 @@ SRCS = \
 	 src/Base64.cpp  \
 	 src/BJSON.cpp  \
 	 src/Connection.cpp  \
+	 src/EBT.cpp \
 	 src/Indices.cpp  \
 	 src/JSON.cpp  \
 	 src/Lan.cpp  \
@@ -48,6 +49,7 @@ SRCS = \
 TESTABLE_SRCS = \
 	 src/Base64.cpp  \
 	 src/BJSON.cpp  \
+	 src/EBT.cpp \
 	 src/JSON.cpp  \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp  \

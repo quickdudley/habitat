@@ -55,7 +55,7 @@ public:
                         RequestType type, BMessage *args, BMessenger replyTo,
                         BMessenger *inbound) = 0;
 
-private:
+protected:
   std::vector<BString> name;
   RequestType expectedType;
 };
