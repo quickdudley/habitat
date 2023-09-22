@@ -25,20 +25,72 @@ SSBDatabase::SSBDatabase()
 
 SSBDatabase::~SSBDatabase() {}
 
+enum { kReplicatedFeed };
+
+static property_info databaseProperties[] = {{"ReplicatedFeed",
+                                              {B_CREATE_PROPERTY, 0},
+                                              {B_DIRECT_SPECIFIER, 0},
+                                              "A known SSB log",
+                                              kReplicatedFeed,
+                                              {B_STRING_TYPE}},
+                                             {"ReplicatedFeed",
+                                              {B_DELETE_PROPERTY, 0},
+                                              {B_NAME_SPECIFIER, 0},
+                                              "A known SSB log",
+                                              kReplicatedFeed,
+                                              {B_STRING_TYPE}}};
+
 status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
-  // TODO
+  data->AddString("suites", "suite/x-vnd.habitat+ssbdb");
+  BPropertyInfo propertyInfo(databaseProperties);
+  data->AddFlat("messages", &propertyInfo);
   return BLooper::GetSupportedSuites(data);
 }
 
 BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
                                         BMessage *specifier, int32 what,
                                         const char *property) {
-  // TODO
+  BPropertyInfo propertyInfo(databaseProperties);
+  uint32 match;
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
+      0) {
+    return this;
+  }
   return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
 void SSBDatabase::MessageReceived(BMessage *msg) {
-  // TODO
+  if (msg->HasSpecifiers()) {
+    BMessage reply(B_REPLY);
+    status_t error = B_ERROR;
+    int32 index;
+    BMessage specifier;
+    int32 what;
+    const char *property;
+    uint32 match;
+    if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
+      return BLooper::MessageReceived(msg);
+    BPropertyInfo propertyInfo(databaseProperties);
+    propertyInfo.FindMatch(msg, index, &specifier, what, property, &match);
+    switch (match) {
+    case kReplicatedFeed:
+      switch (what) {
+      case B_CREATE_PROPERTY:
+        // TODO
+        break;
+      case B_DELETE_PROPERTY:
+        // TODO
+        break;
+      default:
+        error = B_DONT_DO_THAT;
+      }
+      break;
+    default:
+      return BLooper::MessageReceived(msg);
+    }
+    reply.AddInt32("error", error);
+    msg->SendReply(&reply);
+  }
   return BLooper::MessageReceived(msg);
 }
 
