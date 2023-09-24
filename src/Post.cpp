@@ -27,18 +27,19 @@ SSBDatabase::~SSBDatabase() {}
 
 enum { kReplicatedFeed };
 
-static property_info databaseProperties[] = {{"ReplicatedFeed",
-                                              {B_CREATE_PROPERTY, 0},
-                                              {B_DIRECT_SPECIFIER, 0},
-                                              "A known SSB log",
-                                              kReplicatedFeed,
-                                              {B_STRING_TYPE}},
-                                             {"ReplicatedFeed",
-                                              {B_DELETE_PROPERTY, 0},
-                                              {B_NAME_SPECIFIER, 0},
-                                              "A known SSB log",
-                                              kReplicatedFeed,
-                                              {B_STRING_TYPE}}};
+static property_info databaseProperties[] = {
+    {"ReplicatedFeed",
+     {B_COUNT_PROPERTIES, B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A known SSB log",
+     kReplicatedFeed,
+     {B_STRING_TYPE}},
+    {"ReplicatedFeed",
+     {B_GET_PROPERTY, B_DELETE_PROPERTY, 0},
+     {B_NAME_SPECIFIER, 0},
+     "A known SSB log",
+     kReplicatedFeed,
+     {B_STRING_TYPE}}};
 
 status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
   data->AddString("suites", "suite/x-vnd.habitat+ssbdb");
@@ -50,13 +51,46 @@ status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
 BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
                                         BMessage *specifier, int32 what,
                                         const char *property) {
+  status_t error = B_OK;
   BPropertyInfo propertyInfo(databaseProperties);
   uint32 match;
   if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
-    return this;
+    switch (match) {
+    case kReplicatedFeed:
+      switch (what) {
+      case B_DELETE_PROPERTY:
+      case B_GET_PROPERTY: {
+        BString name;
+        error = specifier->FindString("name", &name);
+        if (error != B_OK)
+          break;
+        for (int32 i = this->CountHandlers(); i >= 0; i--) {
+          SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+          if (feed && feed->cypherkey() == name) {
+            msg->PopSpecifier();
+            BMessenger(feed).SendMessage(msg);
+            return NULL;
+          }
+        }
+      } break;
+      default:
+        return this;
+      }
+      break;
+    default:
+      return this;
+    }
   }
-  return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
+  if (error == B_OK)
+    return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
+  else {
+    BMessage reply(B_MESSAGE_NOT_UNDERSTOOD);
+    reply.AddInt32("error", error);
+    reply.AddString("message", strerror(error));
+    msg->SendReply(&reply);
+    return NULL;
+  }
 }
 
 void SSBDatabase::MessageReceived(BMessage *msg) {
@@ -75,9 +109,14 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     switch (match) {
     case kReplicatedFeed:
       switch (what) {
+      case B_COUNT_PROPERTIES:
+        // TODO
+        break;
       case B_CREATE_PROPERTY:
         // TODO
         break;
+      case B_GET_PROPERTY:
+
       case B_DELETE_PROPERTY:
         // TODO
         break;
