@@ -25,21 +25,22 @@ SSBDatabase::SSBDatabase()
 
 SSBDatabase::~SSBDatabase() {}
 
-enum { kReplicatedFeed };
+enum { kReplicatedFeed, kAReplicatedFeed };
 
 static property_info databaseProperties[] = {
     {"ReplicatedFeed",
-     {B_COUNT_PROPERTIES, B_CREATE_PROPERTY, 0},
+     {B_CREATE_PROPERTY, 0},
      {B_DIRECT_SPECIFIER, 0},
      "A known SSB log",
      kReplicatedFeed,
-     {B_STRING_TYPE}},
+     {}},
     {"ReplicatedFeed",
-     {B_GET_PROPERTY, B_DELETE_PROPERTY, 0},
-     {B_NAME_SPECIFIER, 0},
+     {},
+     {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
-     kReplicatedFeed,
-     {B_STRING_TYPE}}};
+     kAReplicatedFeed,
+     {}},
+    {0}};
 
 status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
   data->AddString("suites", "suite/x-vnd.habitat+ssbdb");
@@ -58,13 +59,12 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
       0) {
     switch (match) {
     case kReplicatedFeed:
-      switch (what) {
-      case B_DELETE_PROPERTY:
-      case B_GET_PROPERTY: {
-        BString name;
-        error = specifier->FindString("name", &name);
-        if (error != B_OK)
-          break;
+      return this;
+    case kAReplicatedFeed: {
+      BString name;
+      int32 sindex;
+      error = specifier->FindString("name", &name);
+      if (error == B_OK) {
         for (int32 i = this->CountHandlers(); i >= 0; i--) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
           if (feed && feed->cypherkey() == name) {
@@ -73,11 +73,19 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
             return NULL;
           }
         }
-      } break;
-      default:
-        return this;
-      }
-      break;
+        error = B_NAME_NOT_FOUND;
+      } else if ((error = specifier->FindInt32("index", &sindex)) == B_OK) {
+        for (int32 i = 0, j = 0; i < this->CountHandlers(); i++) {
+          SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+          if (feed) {
+            if (j++ == sindex)
+              return feed;
+          }
+        }
+        error = B_BAD_INDEX;
+      } else
+        break;
+    }
     default:
       return this;
     }
@@ -115,11 +123,6 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       case B_CREATE_PROPERTY:
         // TODO
         break;
-      case B_GET_PROPERTY:
-
-      case B_DELETE_PROPERTY:
-        // TODO
-        break;
       default:
         error = B_DONT_DO_THAT;
       }
@@ -128,6 +131,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       return BLooper::MessageReceived(msg);
     }
     reply.AddInt32("error", error);
+    reply.AddString("message", strerror(error));
     msg->SendReply(&reply);
   }
   return BLooper::MessageReceived(msg);
@@ -221,16 +225,37 @@ void SSBFeed::start() {
     ;
 }
 
-static property_info ssbFeedProperties[] = {{"Cypherkey",
-                                             {B_GET_PROPERTY, 0},
-                                             {B_DIRECT_SPECIFIER, 0},
-                                             "The SSB identifier for this feed",
-                                             0,
-                                             {B_STRING_TYPE}},
-                                            {0}};
+enum {
+  kFeedCypherkey,
+  kFeedLastSequence,
+  kFeedLastID,
+};
+
+static property_info ssbFeedProperties[] = {
+    {"Cypherkey",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "The SSB identifier for this feed",
+     kFeedCypherkey,
+     {B_STRING_TYPE}},
+    {"Sequence",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "The sequence number of the last known message in this feed, equal to the "
+     "number of messages",
+     kFeedLastSequence,
+     {B_INT64_TYPE}},
+    {"Last",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "The Message ID of the last known messag of this feed",
+     kFeedLastID,
+     {B_STRING_TYPE}},
+    {0},
+};
 
 status_t SSBFeed::GetSupportedSuites(BMessage *data) {
-  data->AddString("suites", "suite/x-vnd.habitat-ssb-feed");
+  data->AddString("suites", "suite/x-vnd.habitat+ssb-feed");
   BPropertyInfo propertyInfo(ssbFeedProperties);
   data->AddFlat("messages", &propertyInfo);
   return BHandler::GetSupportedSuites(data);
@@ -247,12 +272,29 @@ void SSBFeed::MessageReceived(BMessage *msg) {
   BMessage specifier;
   int32 what;
   const char *property;
-  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
-    return BHandler::MessageReceived(msg);
+  uint32 match;
+  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK) {
+    if (msg->what == B_DELETE_PROPERTY) {
+      this->Looper()->RemoveHandler(this);
+      delete this;
+    } else
+      return BHandler::MessageReceived(msg);
+  }
   BPropertyInfo propertyInfo(ssbFeedProperties);
-  switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
-  case 0: // Cypherkey
+  if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
+      0)
+    return BHandler::MessageReceived(msg);
+  switch (match) {
+  case kFeedCypherkey:
     reply.AddString("result", this->cypherkey());
+    error = B_OK;
+    break;
+  case kFeedLastSequence:
+    reply.AddInt64("result", this->lastSequence);
+    error = B_OK;
+    break;
+  case kFeedLastID:
+    reply.AddString("result", this->previousLink());
     error = B_OK;
     break;
   default:
@@ -375,6 +417,7 @@ void OwnFeed::MessageReceived(BMessage *msg) {
     return SSBFeed::MessageReceived(msg);
   }
   reply.AddInt32("error", error);
+  reply.AddString("message", strerror(error));
   msg->SendReply(&reply);
 }
 

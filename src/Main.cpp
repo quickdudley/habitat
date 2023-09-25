@@ -169,7 +169,7 @@ void Habitat::MessageReceived(BMessage *msg) {
   int32 what;
   const char *property;
   uint32 match;
-  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK)
+  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) < 0)
     return BApplication::MessageReceived(msg);
   BPropertyInfo propertyInfo(habitatProperties);
   propertyInfo.FindMatch(msg, index, &specifier, what, property, &match);
@@ -203,6 +203,8 @@ void Habitat::MessageReceived(BMessage *msg) {
     return BApplication::MessageReceived(msg);
   }
   reply.AddInt32("error", error);
+  if (error != B_OK)
+    reply.AddString("message", strerror(error));
   msg->SendReply(&reply);
 }
 
