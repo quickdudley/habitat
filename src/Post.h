@@ -39,13 +39,13 @@ class SSBFeed : public BHandler {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
-  void start();
   BString cypherkey();
   BString previousLink();
   status_t GetSupportedSuites(BMessage *data) override;
   void MessageReceived(BMessage *msg) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
+  status_t load();
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
 
@@ -57,8 +57,7 @@ protected:
       pending;
   BDirectory store;
   BVolume volume;
-  BQuery updateQuery;
-  BMessenger updateMessenger;
+  BQuery query;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = -1;
   unsigned char lastHash[crypto_hash_sha256_BYTES];

@@ -131,6 +131,7 @@ Habitat::Habitat(void)
   this->databaseLooper = new SSBDatabase(*this->postDir);
   this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
   this->databaseLooper->AddHandler(this->ownFeed);
+  this->ownFeed->load();
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();

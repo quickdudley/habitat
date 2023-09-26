@@ -129,6 +129,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed = new SSBFeed(this->store, key);
           this->AddHandler(feed);
+          feed->load();
           reply.AddMessenger("result", BMessenger(feed));
         }
       } break;
@@ -172,17 +173,25 @@ SSBFeed::SSBFeed(BDirectory store,
     BHandler(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
-  BQuery query;
   this->store.GetVolume(&this->volume);
-  query.SetVolume(&this->volume);
-  query.PushAttr("HABITAT:author");
+}
+
+status_t SSBFeed::load() {
+  status_t error;
+  this->query.Clear();
+  this->query.SetVolume(&this->volume);
+  this->query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
-  query.PushString(attrValue.String());
-  query.PushOp(B_EQ);
-  this->updateMessenger = BMessenger(this);
-  if (query.Fetch() == B_OK) {
+  this->query.PushString(attrValue.String());
+  this->query.PushOp(B_EQ);
+  if (this->Looper()) {
+    // TODO: Ensure the messages we get from this are handled, including
+    // call to SendNotices
+    this->query.SetTarget(BMessenger(this));
+  }
+  if ((error = this->query.Fetch()) == B_OK) {
     entry_ref ref;
-    while (query.GetNextRef(&ref) == B_OK) {
+    while (this->query.GetNextRef(&ref) == B_OK) {
       BEntry entry(&ref);
       BNode node(&entry);
       int64 sequence;
@@ -210,29 +219,10 @@ SSBFeed::SSBFeed(BDirectory store,
       }
     }
   }
+  return error;
 }
 
 SSBFeed::~SSBFeed() {}
-
-void SSBFeed::start() {
-  this->updateMessenger = BMessenger(this);
-  // I don't seem to receive any updates via live query; will just leave it
-  // for now and try again later.
-  this->updateQuery.SetVolume(&this->volume);
-  this->updateQuery.PushAttr("HABITAT:author");
-  BString attrValue = this->cypherkey();
-  this->updateQuery.PushString(attrValue.String());
-  this->updateQuery.PushOp(B_EQ);
-  this->updateQuery.PushAttr("HABITAT:sequence");
-  this->updateQuery.PushInt32(this->lastSequence);
-  this->updateQuery.PushOp(B_GT);
-  this->updateQuery.PushOp(B_AND);
-  this->updateQuery.SetTarget(this->updateMessenger);
-  this->updateQuery.Fetch();
-  BEntry entry;
-  for (; this->updateQuery.GetNextEntry(&entry) == B_OK;)
-    ;
-}
 
 enum {
   kFeedCypherkey,
