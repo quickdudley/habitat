@@ -15,13 +15,15 @@ struct RequiredIndex {
 static RequiredIndex requiredIndices[] = {{"HABITAT:cypherkey", B_STRING_TYPE},
                                           {"HABITAT:sequence", B_INT64_TYPE},
                                           {"HABITAT:author", B_STRING_TYPE},
-                                          {"HABITAT:timestamp", B_INT64_TYPE}};
-
+                                          {"HABITAT:timestamp", B_INT64_TYPE},
+                                          {"HABITAT:context", B_STRING_TYPE}};
+namespace {
 struct IndexDirDeleter {
   void operator()(DIR *p) { fs_close_index_dir(p); }
 };
+} // namespace
 
-#define HABITAT_INDEX_COUNT sizeof(requiredIndices) / sizeof(RequiredIndex)
+#define HABITAT_INDEX_COUNT (sizeof(requiredIndices) / sizeof(RequiredIndex))
 
 void ensureIndices(const char *path) {
   bool exists[HABITAT_INDEX_COUNT] = {false};

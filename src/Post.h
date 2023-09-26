@@ -24,12 +24,15 @@ struct FeedBuildComparator {
 
 class SSBDatabase : public BLooper {
 public:
-  SSBDatabase();
+  SSBDatabase(BDirectory store);
   ~SSBDatabase() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *msg) override;
+
+private:
+  BDirectory store;
 };
 
 class SSBFeed : public BHandler {
@@ -39,10 +42,12 @@ public:
   void start();
   BString cypherkey();
   BString previousLink();
-  status_t GetSupportedSuites(BMessage *data);
-  void MessageReceived(BMessage *msg);
+  status_t GetSupportedSuites(BMessage *data) override;
+  void MessageReceived(BMessage *msg) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
-                             int32 what, const char *property);
+                             int32 what, const char *property) override;
+  static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
+                              BString &in);
 
 protected:
   status_t save(BMessage *message, BMessage *reply);

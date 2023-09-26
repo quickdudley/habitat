@@ -19,9 +19,10 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
-SSBDatabase::SSBDatabase()
+SSBDatabase::SSBDatabase(BDirectory store)
     :
-    BLooper("SSB message database") {}
+    BLooper("SSB message database"),
+    store(store) {}
 
 SSBDatabase::~SSBDatabase() {}
 
@@ -120,9 +121,17 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       case B_COUNT_PROPERTIES:
         // TODO
         break;
-      case B_CREATE_PROPERTY:
-        // TODO
-        break;
+      case B_CREATE_PROPERTY: {
+        unsigned char key[crypto_sign_PUBLICKEYBYTES];
+        BString formatted;
+        error = msg->FindString("cypherkey", &formatted);
+        if (error == B_OK &&
+            (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
+          SSBFeed *feed = new SSBFeed(this->store, key);
+          this->AddHandler(feed);
+          reply.AddMessenger("result", BMessenger(feed));
+        }
+      } break;
       default:
         error = B_DONT_DO_THAT;
       }
@@ -277,6 +286,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (msg->what == B_DELETE_PROPERTY) {
       this->Looper()->RemoveHandler(this);
       delete this;
+      error = B_OK;
     } else
       return BHandler::MessageReceived(msg);
   }
@@ -301,6 +311,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     return BHandler::MessageReceived(msg);
   }
   reply.AddInt32("error", error);
+  reply.AddString("message", strerror(error));
   msg->SendReply(&reply);
 }
 
@@ -328,6 +339,21 @@ BString SSBFeed::previousLink() {
                                base64::STANDARD));
   result.Append(".sha256");
   return result;
+}
+
+status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
+                              BString &in) {
+  // TODO: Also parse URL format
+  if (!in.StartsWith("@") && in.EndsWith(".ed25519")) {
+    BString substring;
+    in.CopyInto(substring, 1, in.Length() - 9);
+    auto raw = base64::decode(substring);
+    if (raw.size() == crypto_sign_PUBLICKEYBYTES) {
+      memcpy(out, raw.data(), crypto_sign_PUBLICKEYBYTES);
+      return B_OK;
+    }
+  }
+  return B_ERROR;
 }
 
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
