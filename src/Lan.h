@@ -2,15 +2,23 @@
 #define LAN_H
 
 #include <DatagramSocket.h>
+#include <Handler.h>
+#include <MessageRunner.h>
+#include <memory>
 #include <sodium.h>
 
-struct BroadcastLoopArguments {
-  uint16 ssbPort;
-  unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
-  BDatagramSocket socket; // Assumed to already be in broadcast mode
-};
+class LanBroadcaster : public BHandler {
+public:
+  LanBroadcaster(BDatagramSocket socket,
+                 unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]);
+  void MessageReceived(BMessage *message) override;
 
-int broacastLoop(BroadcastLoopArguments *vargs);
-thread_id runBroadcastThread(BroadcastLoopArguments *args);
+private:
+  status_t sendBroadcast();
+  uint16 ssbPort;
+  BDatagramSocket socket;
+  std::unique_ptr<BMessageRunner> timer;
+  unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
+};
 
 #endif // LAN_H

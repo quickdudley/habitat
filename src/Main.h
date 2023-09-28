@@ -25,6 +25,7 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property);
   thread_id Run();
+  void ReadyToRun();
   void Quit();
 
 private:
@@ -35,9 +36,8 @@ private:
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
   std::unique_ptr<SSBListener> ipListener;
+  std::unique_ptr<BHandler> lanBroadcaster;
   Ed25519Secret myId;
-  BroadcastLoopArguments broadcastArgs;
-  thread_id broadcastThreadId;
 };
 
 extern Habitat *app;

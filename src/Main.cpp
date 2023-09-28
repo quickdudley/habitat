@@ -132,6 +132,7 @@ Habitat::Habitat(void)
   this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
+  this->RegisterLooper(databaseLooper);
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
@@ -211,26 +212,27 @@ void Habitat::MessageReceived(BMessage *msg) {
 
 thread_id Habitat::Run() {
   thread_id r = this->databaseLooper->Run();
-  this->broadcastArgs.ssbPort = 8008; // TODO make dynimic
-  memcpy(this->broadcastArgs.pubkey, this->myId.pubkey,
-         crypto_sign_PUBLICKEYBYTES);
   {
     BNetworkAddress local;
     local.SetToWildcard(AF_INET, 8008);
-    this->broadcastArgs.socket.Bind(local, true);
-    this->broadcastArgs.socket.SetBroadcast(true);
+    BDatagramSocket socket;
+    socket.Bind(local, true);
+    socket.SetBroadcast(true);
+    this->lanBroadcaster =
+        std::make_unique<LanBroadcaster>(socket, this->myId.pubkey);
   }
-  this->broadcastThreadId = runBroadcastThread(&(this->broadcastArgs));
   BApplication::Run();
   return r;
 }
 
-void Habitat::Quit() {
-  send_data(this->broadcastThreadId, 'QUIT', NULL, 0);
-  status_t exitValue;
-  wait_for_thread(this->broadcastThreadId, &exitValue);
-  BApplication::Quit();
+void Habitat::ReadyToRun() {
+  BMessage message('BEGN');
+  // TODO: Make the port number configurable (including randomized option)
+  message.AddUInt16("port", 8008);
+  BMessenger(this->lanBroadcaster.get()).SendMessage(&message);
 }
+
+void Habitat::Quit() { BApplication::Quit(); }
 
 MainWindow::MainWindow(void)
     :
