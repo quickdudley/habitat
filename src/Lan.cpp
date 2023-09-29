@@ -2,6 +2,7 @@
 #include "Base64.h"
 #include <NetworkInterface.h>
 #include <NetworkRoster.h>
+#include <iostream>
 
 static BString
 generatePayload(BNetworkAddress *addr,
@@ -16,10 +17,14 @@ generatePayload(BNetworkAddress *addr,
   return result;
 }
 
-LanBroadcaster::LanBroadcaster(BDatagramSocket socket,
-                               unsigned char pubkey[crypto_sign_PUBLICKEYBYTES])
-    :
-    socket(socket) {
+LanBroadcaster::LanBroadcaster(
+    unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]) {
+  {
+    BNetworkAddress local;
+    local.SetToWildcard(AF_INET, 0);
+    this->socket.Bind(local, true);
+    this->socket.SetBroadcast(true);
+  }
   memcpy(this->pubkey, pubkey, crypto_sign_PUBLICKEYBYTES);
 }
 

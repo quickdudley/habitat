@@ -9,8 +9,7 @@
 
 class LanBroadcaster : public BHandler {
 public:
-  LanBroadcaster(BDatagramSocket socket,
-                 unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]);
+  LanBroadcaster(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]);
   void MessageReceived(BMessage *message) override;
 
 private:

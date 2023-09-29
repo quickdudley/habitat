@@ -212,24 +212,17 @@ void Habitat::MessageReceived(BMessage *msg) {
 
 thread_id Habitat::Run() {
   thread_id r = this->databaseLooper->Run();
-  {
-    BNetworkAddress local;
-    local.SetToWildcard(AF_INET, 8008);
-    BDatagramSocket socket;
-    socket.Bind(local, true);
-    socket.SetBroadcast(true);
-    this->lanBroadcaster =
-        std::make_unique<LanBroadcaster>(socket, this->myId.pubkey);
-  }
+  this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId.pubkey);
   BApplication::Run();
   return r;
 }
 
 void Habitat::ReadyToRun() {
+  this->AddHandler(this->lanBroadcaster.get());
   BMessage message('BEGN');
   // TODO: Make the port number configurable (including randomized option)
   message.AddUInt16("port", 8008);
-  BMessenger(this->lanBroadcaster.get()).SendMessage(&message);
+  this->lanBroadcaster->MessageReceived(&message);
 }
 
 void Habitat::Quit() { BApplication::Quit(); }

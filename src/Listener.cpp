@@ -1,44 +1,35 @@
 #include "Listener.h"
+#include <Application.h>
 #include <Handler.h>
 
-SSBListener::SSBListener(BAbstractSocket *srv, BMessenger sink)
+SSBListener::SSBListener(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES],
+                         BMessenger broadcaster)
     :
-    listenSocket(srv),
-    sink(sink) {}
+    broadcaster(broadcaster) {
+  memcpy(this->pubkey, pubkey, crypto_sign_PUBLICKEYBYTES);
+}
 
 int SSBListener::run_() {
-  class Cleanup : public BHandler {
-  public:
-    Cleanup(BAbstractSocket *skt)
-        :
-        skt(skt) {}
-    void MessageReceived(BMessage *msg) {
-      if (msg->what == B_NO_REPLY) {
-        delete this->skt;
-      }
-      delete this;
-    }
-
-  private:
-    BAbstractSocket *skt;
-  };
   thread_id thisThread = find_thread(NULL);
+  this->listenSocket = std::make_unique<BSocket>();
+  {
+    BNetworkAddress local;
+    local.SetToWildcard(AF_INET, 0);
+    this->listenSocket->Bind(local, true);
+    local = this->listenSocket->Local();
+    BMessage message('BEGN');
+    message.AddUInt16("port", 8008);
+    this->broadcaster.SendMessage(&message);
+  }
   while (true) {
     if (has_data(thisThread)) {
       thread_id sender;
       if (receive_data(&sender, NULL, 0) == 'STOP') {
-        break;
+        break; // TODO: prevent leaked thread ID
       }
     }
     BAbstractSocket *peer;
-    int err = this->listenSocket->Accept(peer);
-    if (err < B_OK)
-      return err;
-    BMessage msg('NCON');
-    Cleanup *cleanup = new Cleanup(peer);
-    msg.AddPointer("socket", (BDataIO *)peer);
-    msg.AddPointer("listener", this);
-    this->sink.SendMessage(&msg, cleanup);
+    // TODO: this->listenSocket->Accept(peer) etc
   }
   return 0;
 }
@@ -46,7 +37,7 @@ int SSBListener::run_() {
 thread_id SSBListener::run() {
   this->task = spawn_thread(trampoline, "SSB Listener", 0, this);
   if (this->task < B_OK)
-    return task;
+    return this->task;
   status_t err = resume_thread(task);
   if (err < B_OK)
     return err;
