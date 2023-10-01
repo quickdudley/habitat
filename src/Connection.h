@@ -16,6 +16,7 @@ enum HandshakeError {
   SECRET_FAILED
 };
 
+// TODO: wrap & inherit `BAbstractSocket` instead.
 class BoxStream : public BDataIO {
 public:
   // Client side of handshake (server public key known)
