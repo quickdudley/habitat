@@ -15,7 +15,7 @@ public:
 private:
   status_t sendBroadcast();
   uint16 ssbPort;
-  BDatagramSocket socket;
+  std::shared_ptr<BDatagramSocket> socket;
   std::unique_ptr<BMessageRunner> timer;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
 };

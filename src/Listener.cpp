@@ -1,13 +1,15 @@
 #include "Listener.h"
+#include "Connection.h"
+#include "MUXRPC.h"
 #include <Application.h>
 #include <Handler.h>
+#include <iostream>
 
-SSBListener::SSBListener(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES],
+SSBListener::SSBListener(std::shared_ptr<Ed25519Secret> myId,
                          BMessenger broadcaster)
     :
-    broadcaster(broadcaster) {
-  memcpy(this->pubkey, pubkey, crypto_sign_PUBLICKEYBYTES);
-}
+    myId(myId),
+    broadcaster(broadcaster) {}
 
 int SSBListener::run_() {
   thread_id thisThread = find_thread(NULL);
@@ -28,8 +30,24 @@ int SSBListener::run_() {
         break; // TODO: prevent leaked thread ID
       }
     }
-    BAbstractSocket *peer;
-    // TODO: this->listenSocket->Accept(peer) etc
+    try {
+      BAbstractSocket *peer;
+      std::unique_ptr<BoxStream> shsPeer;
+      this->listenSocket->Accept(peer);
+      try {
+        shsPeer = std::make_unique<BoxStream>(std::unique_ptr<BDataIO>(peer),
+                                              SSB_NETWORK_ID, myId.get());
+      } catch (...) {
+        delete peer;
+        throw;
+      }
+      muxrpc::Connection *rpc = new muxrpc::Connection(std::move(shsPeer));
+      be_app->RegisterLooper(rpc);
+      rpc->Run();
+      std::cerr << "MUXRPC connection opened!" << std::endl;
+    } catch (HandshakeError err) {
+      // TODO Print this
+    }
   }
   return 0;
 }

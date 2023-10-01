@@ -17,13 +17,14 @@ generatePayload(BNetworkAddress *addr,
   return result;
 }
 
-LanBroadcaster::LanBroadcaster(
-    unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]) {
+LanBroadcaster::LanBroadcaster(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES])
+    :
+    socket(std::make_unique<BDatagramSocket>()) {
   {
     BNetworkAddress local;
-    local.SetToWildcard(AF_INET, 0);
-    this->socket.Bind(local, true);
-    this->socket.SetBroadcast(true);
+    local.SetToWildcard(AF_INET, 8008);
+    this->socket->Bind(local, true);
+    this->socket->SetBroadcast(true);
   }
   memcpy(this->pubkey, pubkey, crypto_sign_PUBLICKEYBYTES);
 }
@@ -77,8 +78,8 @@ status_t LanBroadcaster::sendBroadcast() {
         BNetworkAddress broadcastAddress = address.Broadcast();
         BString payload = generatePayload(&myAddress, this->pubkey);
         broadcastAddress.SetPort(8008);
-        this->socket.SendTo(broadcastAddress, payload.String(),
-                            (size_t)payload.Length());
+        this->socket->SendTo(broadcastAddress, payload.String(),
+                             (size_t)payload.Length());
       }
     }
   }

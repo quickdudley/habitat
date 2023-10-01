@@ -1,6 +1,7 @@
 #ifndef LISTENER_H
 #define LISTENER_H
 
+#include "Secret.h"
 #include <Messenger.h>
 #include <Socket.h>
 #include <memory>
@@ -8,15 +9,14 @@
 
 class SSBListener {
 public:
-  SSBListener(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES],
-              BMessenger broadcaster);
+  SSBListener(std::shared_ptr<Ed25519Secret> myId, BMessenger broadcaster);
   virtual thread_id run();
   virtual void halt();
 
 private:
   static int trampoline(void *);
   int run_();
-  unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
+  std::shared_ptr<Ed25519Secret> myId;
   thread_id task = -1;
   std::unique_ptr<BAbstractSocket> listenSocket;
   BMessenger broadcaster;

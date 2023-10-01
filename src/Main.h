@@ -37,7 +37,7 @@ private:
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
   std::unique_ptr<SSBListener> ipListener;
   std::unique_ptr<BHandler> lanBroadcaster;
-  Ed25519Secret myId;
+  std::shared_ptr<Ed25519Secret> myId;
 };
 
 extern Habitat *app;

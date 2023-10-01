@@ -64,7 +64,6 @@ Habitat::Habitat(void)
         U_ICU_NAMESPACE::TimeZone::createTimeZone(
             defaultTimeZone.ID().String()));
   }
-
   {
     // Create settings directory
     BPath settings_path;
@@ -97,6 +96,7 @@ Habitat::Habitat(void)
     // Create indices
     ensureIndices(settings_path.Path());
     // Load secret if it exists
+    this->myId = std::make_shared<Ed25519Secret>();
     BEntry secret;
     status = this->settings->FindEntry("secret", &secret, true);
     if (status == B_OK) {
@@ -104,7 +104,7 @@ Habitat::Habitat(void)
       secret.GetPath(&path);
       BFile secretFile(&secret, B_READ_ONLY);
       char buffer[1024];
-      JSON::Parser parser(std::make_unique<JSON::SecretNode>(&this->myId));
+      JSON::Parser parser(std::make_unique<JSON::SecretNode>(this->myId.get()));
       ssize_t readBytes;
       while (readBytes = secretFile.Read(buffer, 1024), readBytes > 0) {
         for (ssize_t i = 0; i < readBytes; i++) {
@@ -117,10 +117,10 @@ Habitat::Habitat(void)
       status = this->settings->CreateFile("secret", &secretFile, true);
       if (status != B_OK)
         throw status;
-      this->myId.generate();
+      this->myId->generate();
       BString secretJson;
       JSON::RootSink sink(std::make_unique<JSON::SerializerStart>(&secretJson));
-      this->myId.write(&sink);
+      this->myId->write(&sink);
       secretFile.WriteExactly(secretJson.String(), secretJson.Length(), NULL);
       secretFile.Sync();
     } else {
@@ -129,7 +129,7 @@ Habitat::Habitat(void)
   }
   // Create main feed looper
   this->databaseLooper = new SSBDatabase(*this->postDir);
-  this->ownFeed = new OwnFeed(*this->postDir, &this->myId);
+  this->ownFeed = new OwnFeed(*this->postDir, this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);
@@ -198,7 +198,7 @@ void Habitat::MessageReceived(BMessage *msg) {
     }
     break;
   case kCypherkey: // Cypherkey
-    reply.AddString("result", this->myId.getCypherkey());
+    reply.AddString("result", this->myId->getCypherkey());
     error = B_OK;
     break;
   default:
@@ -212,7 +212,7 @@ void Habitat::MessageReceived(BMessage *msg) {
 
 thread_id Habitat::Run() {
   thread_id r = this->databaseLooper->Run();
-  this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId.pubkey);
+  this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId->pubkey);
   BApplication::Run();
   return r;
 }

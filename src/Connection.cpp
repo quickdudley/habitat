@@ -12,9 +12,9 @@ const unsigned char SSB_NETWORK_ID[32] = {
 
 // Client side of handshake (server public key known)
 BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
-                     unsigned char netkey[crypto_auth_KEYBYTES],
+                     const unsigned char netkey[crypto_auth_KEYBYTES],
                      Ed25519Secret *myId,
-                     unsigned char srvkey[crypto_sign_PUBLICKEYBYTES]) {
+                     const unsigned char srvkey[crypto_sign_PUBLICKEYBYTES]) {
   unsigned char *seckey = myId->secret;
   unsigned char *pubkey = myId->pubkey;
   this->inner = std::move(inner);
@@ -133,7 +133,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
 
 // Server side of handshake (will receive client public key)
 BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
-                     unsigned char netkey[crypto_auth_KEYBYTES],
+                     const unsigned char netkey[crypto_auth_KEYBYTES],
                      Ed25519Secret *myId) {
   unsigned char *seckey = myId->secret;
   unsigned char *pubkey = myId->pubkey;
