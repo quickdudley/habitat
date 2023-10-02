@@ -3,6 +3,7 @@
 #include <Errors.h>
 #include <algorithm>
 #include <cstring>
+#include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
 
@@ -144,8 +145,6 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
 #define BUFFER_LENGTH (crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES)
   {
     unsigned char buf[BUFFER_LENGTH];
-    for (int i = 0; i < BUFFER_LENGTH; i++)
-      buf[i] = 12;
     if (this->inner->ReadExactly(buf, BUFFER_LENGTH) != B_OK)
       throw HANDSHAKE_HANGUP;
     if (crypto_auth_verify(buf, buf + crypto_auth_BYTES,
@@ -202,8 +201,10 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
     if (crypto_secretbox_open_easy(buf + crypto_secretbox_MACBYTES, buf, 112,
                                    nonce, key) != 0)
       throw SECRET_FAILED;
+    memcpy(detached_signature_a, buf + crypto_secretbox_MACBYTES,
+           crypto_sign_BYTES);
     memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES + crypto_sign_BYTES,
-           crypto_auth_KEYBYTES);
+           crypto_sign_PUBLICKEYBYTES);
     memcpy(keyparts + crypto_auth_KEYBYTES, pubkey, crypto_sign_PUBLICKEYBYTES);
 #define OFFSET_2 (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES)
     if (crypto_hash_sha256(keyparts + OFFSET_2, secret1, sizeof(secret1)) != 0)
@@ -219,8 +220,6 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
       throw SECRET_FAILED;
     if (crypto_scalarmult(secret3, e_seckey, key) != 0)
       throw SECRET_FAILED;
-    memcpy(detached_signature_a, buf + crypto_secretbox_MACBYTES,
-           crypto_sign_BYTES);
 #undef OFFSET_2
   }
   // Section 4: Server Accept
@@ -332,15 +331,19 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
     unsigned char header[34];
     unsigned char *headerMsg = header + crypto_secretbox_MACBYTES;
     if (this->inner->ReadExactly(header, 34) != B_OK) {
+      std::cerr << "Box stream unable to fetch header" << std::endl;
       return B_IO_ERROR;
     }
     if (crypto_secretbox_open_easy(headerMsg, header, 34, this->recvnonce,
                                    this->recvkey) != 0) {
+      std::cerr << "Box stream unable to decrypt header" << std::endl;
       return B_IO_ERROR;
     }
     nonce_inc(this->recvnonce);
     if (swap_data(B_INT16_TYPE, headerMsg, sizeof(short),
                   B_SWAP_BENDIAN_TO_HOST) != B_OK) {
+      std::cerr << "Box stream unable to decode box size to host endianness"
+                << std::endl;
       return B_IO_ERROR;
     }
     size_t bodyLength = (size_t) * ((short *)headerMsg);
@@ -348,13 +351,17 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
         std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
     memcpy(this->read_buffer.get(), headerMsg + 2, 16);
     if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK) {
+      std::cout << "Box stream unable to read " << size << " bytes"
+                << std::endl;
       return B_IO_ERROR;
     }
     if (crypto_secretbox_open_easy(this->read_buffer.get() + 16,
                                    this->read_buffer.get(), bodyLength + 16,
                                    this->recvnonce, this->recvkey) != 0) {
+      std::cout << "Box stream unable to open secret box" << std::endl;
       return B_IO_ERROR;
     }
+    std::cerr.write((const char *)(read_buffer.get() + 16), bodyLength);
     nonce_inc(this->recvnonce);
     unread = bodyLength;
     this->rb_length = bodyLength + 16;

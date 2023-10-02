@@ -22,6 +22,13 @@ LanBroadcaster::LanBroadcaster(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES])
     socket(std::make_unique<BDatagramSocket>()) {
   {
     BNetworkAddress local;
+    local.SetToWildcard(AF_INET, 0);
+    this->socket->Bind(local, true);
+    {
+      int value = 1;
+      setsockopt(this->socket->Socket(), SOL_SOCKET, SO_REUSEPORT, &value,
+                 sizeof(value));
+    }
     local.SetToWildcard(AF_INET, 8008);
     this->socket->Bind(local, true);
     this->socket->SetBroadcast(true);

@@ -34,8 +34,9 @@ int SSBListener::run_() {
       }
     }
     BAbstractSocket *peer;
-    std::unique_ptr<BoxStream> shsPeer;
     if (this->listenSocket->Accept(peer) == B_OK) {
+      peer->SetTimeout(B_INFINITE_TIMEOUT);
+      std::unique_ptr<BoxStream> shsPeer;
       try {
         shsPeer = std::make_unique<BoxStream>(std::unique_ptr<BDataIO>(peer),
                                               SSB_NETWORK_ID, myId.get());
@@ -45,9 +46,16 @@ int SSBListener::run_() {
         delete peer;
         throw;
       }
-      muxrpc::Connection *rpc = new muxrpc::Connection(std::move(shsPeer));
-      be_app->RegisterLooper(rpc);
-      rpc->Run();
+      char buffer[1024];
+      ssize_t rbytes;
+      while ((rbytes = shsPeer->Read(buffer, 1024)) > 0) {
+        std::cerr.write(buffer, rbytes);
+        std::cerr.flush();
+      }
+      std::cerr << std::endl;
+      // muxrpc::Connection *rpc = new muxrpc::Connection(std::move(shsPeer));
+      // be_app->RegisterLooper(rpc);
+      // rpc->Run();
     }
   }
   return 0;
