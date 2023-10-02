@@ -11,6 +11,7 @@ class LanBroadcaster : public BHandler {
 public:
   LanBroadcaster(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES]);
   void MessageReceived(BMessage *message) override;
+  std::shared_ptr<BDatagramSocket> getSocket();
 
 private:
   status_t sendBroadcast();

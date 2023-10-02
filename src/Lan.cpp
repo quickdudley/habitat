@@ -85,3 +85,7 @@ status_t LanBroadcaster::sendBroadcast() {
   }
   return B_OK;
 }
+
+std::shared_ptr<BDatagramSocket> LanBroadcaster::getSocket() {
+  return this->socket;
+}
