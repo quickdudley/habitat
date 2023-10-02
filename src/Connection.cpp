@@ -1,4 +1,5 @@
 #include "Connection.h"
+#include "Base64.h"
 #include <Errors.h>
 #include <algorithm>
 #include <cstring>
@@ -143,7 +144,9 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
 #define BUFFER_LENGTH (crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES)
   {
     unsigned char buf[BUFFER_LENGTH];
-    if (this->inner->ReadExactly(buf, BUFFER_LENGTH, NULL) != B_OK)
+    for (int i = 0; i < BUFFER_LENGTH; i++)
+      buf[i] = 12;
+    if (this->inner->ReadExactly(buf, BUFFER_LENGTH) != B_OK)
       throw HANDSHAKE_HANGUP;
     if (crypto_auth_verify(buf, buf + crypto_auth_BYTES,
                            crypto_box_PUBLICKEYBYTES, netkey) != 0)
@@ -181,6 +184,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
   unsigned char secret3[crypto_scalarmult_BYTES]; // Shared secret Ab
   unsigned char detached_signature_a[crypto_sign_BYTES];
   {
+
     unsigned char buf[112];
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     unsigned char keyparts[crypto_scalarmult_BYTES * 3];
@@ -198,7 +202,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
     if (crypto_secretbox_open_easy(buf + crypto_secretbox_MACBYTES, buf, 112,
                                    nonce, key) != 0)
       throw SECRET_FAILED;
-    memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES,
+    memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES + crypto_sign_BYTES,
            crypto_auth_KEYBYTES);
     memcpy(keyparts + crypto_auth_KEYBYTES, pubkey, crypto_sign_PUBLICKEYBYTES);
 #define OFFSET_2 (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES)
@@ -363,3 +367,15 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
 }
 
 status_t BoxStream::Flush() { return this->inner->Flush(); }
+
+void BoxStream::getPeerKey(unsigned char out[crypto_sign_PUBLICKEYBYTES]) {
+  memcpy(out, this->peerkey, crypto_sign_PUBLICKEYBYTES);
+}
+
+BString BoxStream::cypherkey() {
+  BString result("@");
+  result << base64::encode(this->peerkey, crypto_sign_PUBLICKEYBYTES,
+                           base64::STANDARD);
+  result << ".ed25519";
+  return result;
+}

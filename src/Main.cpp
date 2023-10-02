@@ -219,13 +219,15 @@ thread_id Habitat::Run() {
 
 void Habitat::ReadyToRun() {
   this->AddHandler(this->lanBroadcaster.get());
-  BMessage message('BEGN');
-  // TODO: Make the port number configurable (including randomized option)
-  message.AddUInt16("port", 8008);
-  this->lanBroadcaster->MessageReceived(&message);
+  this->ipListener = std::make_unique<SSBListener>(
+      this->myId, BMessenger(this->lanBroadcaster.get()));
+  this->ipListener->run();
 }
 
-void Habitat::Quit() { BApplication::Quit(); }
+void Habitat::Quit() {
+  this->ipListener->halt();
+  BApplication::Quit();
+}
 
 MainWindow::MainWindow(void)
     :

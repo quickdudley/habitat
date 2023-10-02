@@ -18,9 +18,12 @@ int SSBListener::run_() {
     BNetworkAddress local;
     local.SetToWildcard(AF_INET, 0);
     this->listenSocket->Bind(local, true);
+    this->listenSocket->Listen();
+    this->listenSocket->SetTimeout(5000000);
     local = this->listenSocket->Local();
+    std::cerr << "Listening on port " << local.Port() << std::endl;
     BMessage message('BEGN');
-    message.AddUInt16("port", 8008);
+    message.AddUInt16("port", local.Port());
     this->broadcaster.SendMessage(&message);
   }
   while (true) {
@@ -30,13 +33,14 @@ int SSBListener::run_() {
         break; // TODO: prevent leaked thread ID
       }
     }
-    try {
-      BAbstractSocket *peer;
-      std::unique_ptr<BoxStream> shsPeer;
-      this->listenSocket->Accept(peer);
+    BAbstractSocket *peer;
+    std::unique_ptr<BoxStream> shsPeer;
+    if (this->listenSocket->Accept(peer) == B_OK) {
       try {
         shsPeer = std::make_unique<BoxStream>(std::unique_ptr<BDataIO>(peer),
                                               SSB_NETWORK_ID, myId.get());
+      } catch (HandshakeError err) {
+        continue;
       } catch (...) {
         delete peer;
         throw;
@@ -44,9 +48,6 @@ int SSBListener::run_() {
       muxrpc::Connection *rpc = new muxrpc::Connection(std::move(shsPeer));
       be_app->RegisterLooper(rpc);
       rpc->Run();
-      std::cerr << "MUXRPC connection opened!" << std::endl;
-    } catch (HandshakeError err) {
-      // TODO Print this
     }
   }
   return 0;
@@ -70,6 +71,7 @@ void SSBListener::halt() {
   if (this->task > 0) {
     send_data(this->task, 'STOP', NULL, 0);
     status_t exitValue;
+    resume_thread(this->task);
     wait_for_thread(this->task, &exitValue);
   }
 }

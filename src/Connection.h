@@ -3,6 +3,7 @@
 
 #include "Secret.h"
 #include <DataIO.h>
+#include <String.h>
 #include <memory>
 #include <sodium.h>
 
@@ -25,18 +26,20 @@ public:
   // Server side of handshake (will receive client public key)
   BoxStream(std::unique_ptr<BDataIO> inner, const unsigned char netkey[32],
             Ed25519Secret *myId);
-  // Goodbye
+  // TODO: Move goodbye into separate method and just call it from destructor
   ~BoxStream();
-  ssize_t Write(const void *buffer, size_t size);
-  ssize_t Read(void *buffer, size_t size);
-  status_t Flush();
+  ssize_t Write(const void *buffer, size_t size) override;
+  ssize_t Read(void *buffer, size_t size) override;
+  status_t Flush() override;
+  BString cypherkey();
+  void getPeerKey(unsigned char out[crypto_sign_PUBLICKEYBYTES]);
 
 private:
   std::unique_ptr<BDataIO> inner;
   std::unique_ptr<unsigned char> read_buffer;
   size_t rb_length = 0;
   size_t rb_offset = 0;
-  unsigned char peerkey[32];
+  unsigned char peerkey[crypto_sign_PUBLICKEYBYTES];
   unsigned char sendkey[32];
   unsigned char sendnonce[24];
   unsigned char recvkey[32];
