@@ -48,7 +48,8 @@ static void readHello(BDataIO *peer,
 }
 
 static void
-clientAuthKey(unsigned char *boxkey, const unsigned char netkey[crypto_auth_KEYBYTES],
+clientAuthKey(unsigned char *boxkey,
+              const unsigned char netkey[crypto_auth_KEYBYTES],
               const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
               const unsigned char sharedSecretaB[crypto_scalarmult_BYTES]) {
   crypto_hash_sha256_state state;
@@ -187,7 +188,8 @@ readClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
 }
 
 static inline void
-sendServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+sendServerAccept(BDataIO *peer,
+                 const unsigned char netkey[crypto_auth_KEYBYTES],
                  const unsigned char serverSecret[crypto_sign_SECRETKEYBYTES],
                  const unsigned char clientKey[crypto_sign_PUBLICKEYBYTES],
                  const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
@@ -224,15 +226,19 @@ sendServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES]
     serverAcceptKey(boxkey, netkey, sharedSecretab, sharedSecretaB,
                     sharedSecretAb);
     memset(nonce, 0, sizeof(nonce));
-    if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES, sizeof(boxBuffer) - crypto_secretbox_MACBYTES, nonce, boxkey) < 0)
+    if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES,
+                              sizeof(boxBuffer) - crypto_secretbox_MACBYTES,
+                              nonce, boxkey) < 0)
       throw SECRET_FAILED;
   }
-  if (peer->WriteExactly(boxBuffer, sizeof(boxBuffer), NULL) != B_OK)
+  size_t sent;
+  if (peer->WriteExactly(boxBuffer, sizeof(boxBuffer), &sent) != B_OK)
     throw HANDSHAKE_HANGUP;
 }
 
 static inline void
-readServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+readServerAccept(BDataIO *peer,
+                 const unsigned char netkey[crypto_auth_KEYBYTES],
                  const unsigned char serverKey[crypto_sign_PUBLICKEYBYTES],
                  const unsigned char clientKey[crypto_sign_PUBLICKEYBYTES],
                  const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
@@ -248,7 +254,9 @@ readServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES]
     serverAcceptKey(boxkey, netkey, sharedSecretab, sharedSecretaB,
                     sharedSecretAb);
     memset(nonce, 0, sizeof(nonce));
-    if (crypto_secretbox_open_easy(boxBuffer + crypto_secretbox_MACBYTES, boxBuffer, sizeof(boxBuffer), nonce, boxkey) < 0)
+    if (crypto_secretbox_open_easy(boxBuffer + crypto_secretbox_MACBYTES,
+                                   boxBuffer, sizeof(boxBuffer), nonce,
+                                   boxkey) < 0)
       throw SECRET_FAILED;
   }
 #define detachedSignature (boxBuffer + crypto_secretbox_MACBYTES)
@@ -312,8 +320,7 @@ static void streamKey(unsigned char *output,
   crypto_hash_sha256_state state;
   if (crypto_hash_sha256_init(&state) < 0)
     throw SECRET_FAILED;
-  if (crypto_hash_sha256_update(&state, common,
-                                crypto_hash_sha256_BYTES) < 0)
+  if (crypto_hash_sha256_update(&state, common, crypto_hash_sha256_BYTES) < 0)
     throw SECRET_FAILED;
   if (crypto_hash_sha256_update(&state, peerKey, crypto_sign_PUBLICKEYBYTES) <
       0)
@@ -384,7 +391,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
   unsigned char sharedSecretaB[crypto_scalarmult_BYTES];
   {
     unsigned char converted[crypto_secretbox_KEYBYTES];
-    if (crypto_sign_ed25519_pk_to_curve25519(converted, myId->secret) != 0)
+    if (crypto_sign_ed25519_sk_to_curve25519(converted, myId->secret) != 0)
       throw SECRET_FAILED;
     if (crypto_scalarmult(sharedSecretaB, converted, clientEphemeral) != 0)
       throw SECRET_FAILED;
@@ -395,11 +402,11 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
                  sharedSecretab, sharedSecretaB, signatureA);
   unsigned char sharedSecretAb[crypto_scalarmult_BYTES];
   {
-  	unsigned char converted[crypto_box_PUBLICKEYBYTES];
-  	if (crypto_sign_ed25519_sk_to_curve25519(converted, this->peerkey) != 0)
-  	  throw SECRET_FAILED;
-  	if (crypto_scalarmult(sharedSecretAb, ephemeralSecret, converted) != 0)
-  	  throw SECRET_FAILED;
+    unsigned char converted[crypto_box_PUBLICKEYBYTES];
+    if (crypto_sign_ed25519_pk_to_curve25519(converted, this->peerkey) != 0)
+      throw SECRET_FAILED;
+    if (crypto_scalarmult(sharedSecretAb, ephemeralSecret, converted) != 0)
+      throw SECRET_FAILED;
   }
   sendServerAccept(this->inner.get(), netkey, myId->pubkey, this->peerkey,
                    sharedSecretab, sharedSecretaB, sharedSecretAb, signatureA);
@@ -467,20 +474,18 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
   if (unread == 0) {
     unsigned char header[34];
     unsigned char *headerMsg = header + crypto_secretbox_MACBYTES;
-    if (this->inner->ReadExactly(header, 34) != B_OK) {
-      std::cerr << "Box stream unable to fetch header" << std::endl;
+    status_t err;
+    size_t received;
+    if ((err = this->inner->ReadExactly(header, 1, &received)) != B_OK) {
       return B_IO_ERROR;
     }
     if (crypto_secretbox_open_easy(headerMsg, header, 34, this->recvnonce,
                                    this->recvkey) != 0) {
-      std::cerr << "Box stream unable to decrypt header" << std::endl;
       return B_IO_ERROR;
     }
     nonce_inc(this->recvnonce);
     if (swap_data(B_INT16_TYPE, headerMsg, sizeof(short),
                   B_SWAP_BENDIAN_TO_HOST) != B_OK) {
-      std::cerr << "Box stream unable to decode box size to host endianness"
-                << std::endl;
       return B_IO_ERROR;
     }
     size_t bodyLength = (size_t) * ((short *)headerMsg);
@@ -488,14 +493,11 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
         std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
     memcpy(this->read_buffer.get(), headerMsg + 2, 16);
     if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK) {
-      std::cout << "Box stream unable to read " << size << " bytes"
-                << std::endl;
       return B_IO_ERROR;
     }
     if (crypto_secretbox_open_easy(this->read_buffer.get() + 16,
                                    this->read_buffer.get(), bodyLength + 16,
                                    this->recvnonce, this->recvkey) != 0) {
-      std::cout << "Box stream unable to open secret box" << std::endl;
       return B_IO_ERROR;
     }
     std::cerr.write((const char *)(read_buffer.get() + 16), bodyLength);
