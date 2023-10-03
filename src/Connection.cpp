@@ -12,265 +12,402 @@ const unsigned char SSB_NETWORK_ID[32] = {
     0xe2, 0x64, 0x41, 0xcc, 0x5d, 0xac, 0x1b, 0x08, 0x42, 0x0c, 0xea,
     0xac, 0x23, 0x08, 0x39, 0xb7, 0x55, 0x84, 0x5a, 0x9f, 0xfb};
 
+static void
+sendHello(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+          const unsigned char ephemeralPK[crypto_box_PUBLICKEYBYTES],
+          unsigned char *nonce) {
+  unsigned char buffer[crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES];
+#define sendingAuth (buffer + 0)
+#define sendingKey (sendingAuth + crypto_auth_BYTES)
+  memcpy(sendingKey, ephemeralPK, crypto_sign_PUBLICKEYBYTES);
+  if (crypto_auth(sendingAuth, sendingKey, crypto_box_PUBLICKEYBYTES, netkey) <
+      0)
+    throw HMAC_FAIL;
+  if (peer->WriteExactly(buffer, sizeof(buffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+  memcpy(nonce, sendingAuth, crypto_secretbox_NONCEBYTES);
+#undef sendingKey
+#undef sendingAuth
+}
+
+static void readHello(BDataIO *peer,
+                      const unsigned char netkey[crypto_auth_KEYBYTES],
+                      unsigned char *ephemeralKey, unsigned char *nonce) {
+  unsigned char buffer[crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES];
+  if (peer->ReadExactly(buffer, sizeof(buffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+#define receivedAuth (buffer + 0)
+#define receivedKey (receivedAuth + crypto_auth_BYTES)
+  if (crypto_auth_verify(receivedAuth, receivedKey, crypto_box_PUBLICKEYBYTES,
+                         netkey) < 0)
+    throw WRONG_NETKEY;
+  memcpy(ephemeralKey, receivedKey, crypto_sign_PUBLICKEYBYTES);
+  memcpy(nonce, receivedAuth, crypto_secretbox_NONCEBYTES);
+#undef receivedKey
+#undef receivedAuth
+}
+
+static void
+clientAuthKey(unsigned char *boxkey, const unsigned char netkey[crypto_auth_KEYBYTES],
+              const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+              const unsigned char sharedSecretaB[crypto_scalarmult_BYTES]) {
+  crypto_hash_sha256_state state;
+  if (crypto_hash_sha256_init(&state) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, sharedSecretab,
+                                crypto_scalarmult_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, sharedSecretaB,
+                                crypto_scalarmult_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_final(&state, boxkey) < 0)
+    throw SECRET_FAILED;
+}
+
+static void
+serverAcceptKey(unsigned char *boxkey,
+                const unsigned char netkey[crypto_auth_KEYBYTES],
+                const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+                const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+                const unsigned char sharedSecretAb[crypto_scalarmult_BYTES]) {
+  crypto_hash_sha256_state state;
+  if (crypto_hash_sha256_init(&state) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, sharedSecretab,
+                                crypto_scalarmult_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, sharedSecretaB,
+                                crypto_scalarmult_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, sharedSecretAb,
+                                crypto_scalarmult_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_final(&state, boxkey) < 0)
+    throw SECRET_FAILED;
+}
+
+static inline void
+sendClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+               const unsigned char serverKey[crypto_sign_PUBLICKEYBYTES],
+               const unsigned char clientSecret[crypto_sign_SECRETKEYBYTES],
+               const unsigned char clientKey[crypto_sign_PUBLICKEYBYTES],
+               const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+               const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+               unsigned char *savedSignature) {
+  unsigned char boxBuffer[crypto_secretbox_MACBYTES + crypto_sign_BYTES +
+                          crypto_sign_PUBLICKEYBYTES];
+#define detachedSignature (boxBuffer + crypto_secretbox_MACBYTES)
+#define sendingKey (detachedSignature + crypto_sign_BYTES)
+  {
+    unsigned char signBuffer[crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES +
+                             crypto_hash_sha256_BYTES];
+#define signingNetid (signBuffer + 0)
+#define signingServerKey (signingNetid + crypto_auth_KEYBYTES)
+#define signingSharedSecret (signingServerKey + crypto_sign_PUBLICKEYBYTES)
+    if (crypto_hash_sha256(signingSharedSecret, sharedSecretab,
+                           crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    memcpy(signingNetid, netkey, crypto_auth_KEYBYTES);
+    memcpy(signingServerKey, serverKey, crypto_sign_PUBLICKEYBYTES);
+#undef signingSharedSecret
+#undef signingServerKey
+#undef signingNetid
+    if (crypto_sign_detached(detachedSignature, NULL, signBuffer,
+                             sizeof(signBuffer), clientSecret) < 0)
+      throw SECRET_FAILED;
+    memcpy(savedSignature, detachedSignature, crypto_sign_BYTES);
+  }
+  memcpy(sendingKey, clientKey, crypto_sign_PUBLICKEYBYTES);
+  {
+    unsigned char boxkey[crypto_hash_sha256_BYTES];
+    clientAuthKey(boxkey, netkey, sharedSecretab, sharedSecretaB);
+    unsigned char nonce[crypto_box_NONCEBYTES];
+    memset(nonce, 0, sizeof(nonce));
+    if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES,
+                              sizeof(boxBuffer) - crypto_secretbox_MACBYTES,
+                              nonce, boxkey) < 0)
+      throw SECRET_FAILED;
+  }
+#undef sendingKey
+#undef detachedSignature
+  if (peer->WriteExactly(boxBuffer, sizeof(boxBuffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+}
+
+static inline void
+readClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+               const unsigned char serverKey[crypto_sign_PUBLICKEYBYTES],
+               unsigned char *clientKey,
+               const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+               const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+               unsigned char *savedSignature) {
+  unsigned char buffer[crypto_secretbox_MACBYTES + crypto_sign_BYTES +
+                       crypto_sign_PUBLICKEYBYTES];
+  if (peer->ReadExactly(buffer, sizeof(buffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+  {
+    unsigned char key[crypto_hash_sha256_BYTES];
+    clientAuthKey(key, netkey, sharedSecretab, sharedSecretaB);
+    unsigned char nonce[crypto_box_NONCEBYTES];
+    memset(nonce, 0, crypto_box_NONCEBYTES);
+    if (crypto_secretbox_open_easy(buffer + crypto_secretbox_MACBYTES, buffer,
+                                   sizeof(buffer), nonce, key) < 0)
+      throw SECRET_FAILED;
+  }
+#define detachedSignature (buffer + crypto_secretbox_MACBYTES)
+#define receivedClientKey (detachedSignature + crypto_sign_BYTES)
+  {
+    unsigned char verifyBuffer[crypto_auth_KEYBYTES +
+                               crypto_sign_PUBLICKEYBYTES +
+                               crypto_hash_sha256_BYTES];
+#define verifyNetkey (verifyBuffer + 0)
+#define verifyServerKey (verifyNetkey + crypto_auth_KEYBYTES)
+#define verifySharedSecret (verifyServerKey + crypto_sign_PUBLICKEYBYTES)
+    if (crypto_hash_sha256(verifySharedSecret, sharedSecretab,
+                           crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    memcpy(verifyNetkey, netkey, crypto_auth_KEYBYTES);
+    memcpy(verifyServerKey, serverKey, crypto_sign_PUBLICKEYBYTES);
+#undef verifySharedSecret
+#undef verifyServerKey
+#undef verifyNetkey
+    if (crypto_sign_verify_detached(detachedSignature, verifyBuffer,
+                                    sizeof(verifyBuffer),
+                                    receivedClientKey) != 0)
+      throw SECRET_FAILED;
+    memcpy(savedSignature, detachedSignature, crypto_sign_BYTES);
+  }
+  memcpy(clientKey, receivedClientKey, crypto_sign_PUBLICKEYBYTES);
+#undef receivedClientKey
+#undef detachedSignature
+}
+
+static inline void
+sendServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+                 const unsigned char serverSecret[crypto_sign_SECRETKEYBYTES],
+                 const unsigned char clientKey[crypto_sign_PUBLICKEYBYTES],
+                 const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+                 const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+                 const unsigned char sharedSecretAb[crypto_scalarmult_BYTES],
+                 const unsigned char signatureA[crypto_sign_BYTES]) {
+  unsigned char boxBuffer[crypto_secretbox_MACBYTES + crypto_sign_BYTES];
+#define signature (boxBuffer + crypto_secretbox_MACBYTES)
+  {
+    unsigned char signBuffer[crypto_auth_KEYBYTES + crypto_sign_BYTES +
+                             crypto_sign_PUBLICKEYBYTES +
+                             crypto_hash_sha256_BYTES];
+#define signingNetkey (signBuffer + 0)
+#define signingSignature (signingNetkey + crypto_auth_KEYBYTES)
+#define signingClientKey (signingSignature + crypto_sign_BYTES)
+#define signingSharedSecret (signingClientKey + crypto_sign_PUBLICKEYBYTES)
+    if (crypto_hash_sha256(signingSharedSecret, sharedSecretab,
+                           crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    memcpy(signingNetkey, netkey, crypto_auth_KEYBYTES);
+    memcpy(signingSignature, signatureA, crypto_sign_BYTES);
+    memcpy(signingClientKey, clientKey, crypto_sign_PUBLICKEYBYTES);
+#undef signingSharedSecret
+#undef signingClientKey
+#undef signingSignature
+#undef signingNetkey
+    if (crypto_sign_detached(signature, NULL, signBuffer, sizeof(signBuffer),
+                             serverSecret) < 0)
+      throw SECRET_FAILED;
+  }
+  {
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    unsigned char boxkey[crypto_hash_sha256_BYTES];
+    serverAcceptKey(boxkey, netkey, sharedSecretab, sharedSecretaB,
+                    sharedSecretAb);
+    memset(nonce, 0, sizeof(nonce));
+    if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES, sizeof(boxBuffer) - crypto_secretbox_MACBYTES, nonce, boxkey) < 0)
+      throw SECRET_FAILED;
+  }
+  if (peer->WriteExactly(boxBuffer, sizeof(boxBuffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+}
+
+static inline void
+readServerAccept(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
+                 const unsigned char serverKey[crypto_sign_PUBLICKEYBYTES],
+                 const unsigned char clientKey[crypto_sign_PUBLICKEYBYTES],
+                 const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+                 const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+                 const unsigned char sharedSecretAb[crypto_scalarmult_BYTES],
+                 const unsigned char signatureA[crypto_sign_BYTES]) {
+  unsigned char boxBuffer[crypto_secretbox_MACBYTES + crypto_sign_BYTES];
+  if (peer->ReadExactly(boxBuffer, sizeof(boxBuffer), NULL) != B_OK)
+    throw HANDSHAKE_HANGUP;
+  {
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    unsigned char boxkey[crypto_hash_sha256_BYTES];
+    serverAcceptKey(boxkey, netkey, sharedSecretab, sharedSecretaB,
+                    sharedSecretAb);
+    memset(nonce, 0, sizeof(nonce));
+    if (crypto_secretbox_open_easy(boxBuffer + crypto_secretbox_MACBYTES, boxBuffer, sizeof(boxBuffer), nonce, boxkey) < 0)
+      throw SECRET_FAILED;
+  }
+#define detachedSignature (boxBuffer + crypto_secretbox_MACBYTES)
+  {
+    unsigned char verifyBuffer[crypto_auth_KEYBYTES + crypto_sign_BYTES +
+                               crypto_sign_PUBLICKEYBYTES +
+                               crypto_hash_sha256_BYTES];
+#define verifyNetkey (verifyBuffer + 0)
+#define verifyFirstSignature (verifyNetkey + crypto_auth_KEYBYTES)
+#define verifyClientKey (verifyFirstSignature + crypto_sign_BYTES)
+#define verifySharedSecret (verifyClientKey + crypto_sign_PUBLICKEYBYTES)
+    if (crypto_hash_sha256(verifySharedSecret, sharedSecretab,
+                           crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    memcpy(verifyNetkey, netkey, crypto_auth_KEYBYTES);
+    memcpy(verifyFirstSignature, signatureA, crypto_sign_BYTES);
+    memcpy(verifyClientKey, clientKey, crypto_sign_PUBLICKEYBYTES);
+#undef verifySharedSecret
+#undef verifyClientKey
+#undef verifyFirstSignature
+#undef verifyNetkey
+    if (crypto_sign_verify_detached(detachedSignature, verifyBuffer,
+                                    sizeof(verifyBuffer), clientKey) < 0)
+      throw SECRET_FAILED;
+  }
+#undef detachedSignature
+}
+
+static void
+streamKeyCommon(unsigned char *output,
+                const unsigned char netkey[crypto_auth_KEYBYTES],
+                const unsigned char sharedSecretab[crypto_scalarmult_BYTES],
+                const unsigned char sharedSecretaB[crypto_scalarmult_BYTES],
+                const unsigned char sharedSecretAb[crypto_scalarmult_BYTES]) {
+  unsigned char hash1[crypto_hash_sha256_BYTES];
+  {
+    crypto_hash_sha256_state state;
+    if (crypto_hash_sha256_init(&state) < 0)
+      throw SECRET_FAILED;
+    if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
+      throw SECRET_FAILED;
+    if (crypto_hash_sha256_update(&state, sharedSecretab,
+                                  crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    if (crypto_hash_sha256_update(&state, sharedSecretaB,
+                                  crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    if (crypto_hash_sha256_update(&state, sharedSecretAb,
+                                  crypto_scalarmult_BYTES) < 0)
+      throw SECRET_FAILED;
+    if (crypto_hash_sha256_final(&state, hash1) < 0)
+      throw SECRET_FAILED;
+  }
+  if (crypto_hash_sha256(output, hash1, crypto_hash_sha256_BYTES) < 0)
+    throw SECRET_FAILED;
+}
+
+static void streamKey(unsigned char *output,
+                      const unsigned char common[crypto_hash_sha256_BYTES],
+                      const unsigned char peerKey[crypto_sign_PUBLICKEYBYTES]) {
+  crypto_hash_sha256_state state;
+  if (crypto_hash_sha256_init(&state) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, common,
+                                crypto_hash_sha256_BYTES) < 0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_update(&state, peerKey, crypto_sign_PUBLICKEYBYTES) <
+      0)
+    throw SECRET_FAILED;
+  if (crypto_hash_sha256_final(&state, output) < 0)
+    throw SECRET_FAILED;
+}
+
 // Client side of handshake (server public key known)
 BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
                      const unsigned char netkey[crypto_auth_KEYBYTES],
                      Ed25519Secret *myId,
                      const unsigned char srvkey[crypto_sign_PUBLICKEYBYTES]) {
-  unsigned char *seckey = myId->secret;
-  unsigned char *pubkey = myId->pubkey;
   this->inner = std::move(inner);
-  memcpy(this->peerkey, srvkey, crypto_sign_PUBLICKEYBYTES);
-  // Section 1: Client Hello
-  unsigned char e_pubkey[crypto_box_PUBLICKEYBYTES];
-  unsigned char e_seckey[crypto_box_SECRETKEYBYTES];
-  if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
+  unsigned char ephemeralKey[crypto_box_PUBLICKEYBYTES];
+  unsigned char ephemeralSecret[crypto_box_SECRETKEYBYTES];
+  if (crypto_box_keypair(ephemeralKey, ephemeralSecret) < 0)
     throw KEYGEN_FAIL;
-  unsigned char server_e_key[32];
-  {
-    unsigned char hmac[32];
-    if (crypto_auth(hmac, e_pubkey, 32, netkey) < 0)
-      throw HMAC_FAIL;
-    memcpy(this->recvnonce, hmac, 24);
-    unsigned char buf[64];
-    memcpy(buf, hmac, 32);
-    memcpy(buf + 32, e_pubkey, 32);
-    if (this->inner->WriteExactly(buf, 64, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    // Section 2: Server hello
-    if (this->inner->ReadExactly(buf, 64, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    if (crypto_auth_verify(buf, buf + 32, 32, netkey) != 0)
-      throw WRONG_NETKEY;
-    memcpy(server_e_key, buf + 32, 32);
-  }
-  unsigned char secret1[crypto_scalarmult_BYTES]; // Shared secret ab
-  if (crypto_scalarmult(secret1, e_seckey, server_e_key) < 0)
+  memcpy(this->peerkey, srvkey, crypto_sign_PUBLICKEYBYTES);
+  sendHello(this->inner.get(), netkey, ephemeralKey, this->sendnonce);
+  unsigned char serverEphemeral[crypto_box_PUBLICKEYBYTES];
+  readHello(this->inner.get(), netkey, serverEphemeral, this->recvnonce);
+  unsigned char sharedSecretab[crypto_scalarmult_BYTES];
+  if (crypto_scalarmult(sharedSecretab, ephemeralSecret, serverEphemeral) < 0)
     throw SECRET_FAILED;
-  unsigned char secret2[crypto_scalarmult_BYTES]; // Shared secret aB
+  unsigned char sharedSecretaB[crypto_scalarmult_BYTES];
   {
-    unsigned char remote_curve[32];
-    if (crypto_sign_ed25519_pk_to_curve25519(remote_curve, srvkey) < 0)
+    unsigned char converted[crypto_scalarmult_BYTES];
+    if (crypto_sign_ed25519_pk_to_curve25519(converted, srvkey) < 0)
       throw SECRET_FAILED;
-    if (crypto_scalarmult(secret2, e_seckey, remote_curve) < 0)
+    if (crypto_scalarmult(sharedSecretaB, ephemeralSecret, serverEphemeral) < 0)
       throw SECRET_FAILED;
   }
-  // Section 3: Client authenticate
-  unsigned char detached_signature_a[crypto_sign_BYTES];
+  unsigned char signatureA[crypto_sign_BYTES];
+  sendClientAuth(this->inner.get(), netkey, srvkey, myId->secret, myId->pubkey,
+                 sharedSecretab, sharedSecretaB, signatureA);
+  unsigned char sharedSecretAb[crypto_scalarmult_BYTES];
   {
-    unsigned char sgnmsg[64 + crypto_hash_sha256_BYTES];
-    memcpy(sgnmsg, netkey, 32);
-    memcpy(sgnmsg + 32, srvkey, 32);
-    unsigned long long siglen = 32;
-    if (crypto_hash_sha256(sgnmsg + 64, secret1, 32) != 0)
+    unsigned char converted[crypto_scalarmult_BYTES];
+    if (crypto_sign_ed25519_sk_to_curve25519(converted, myId->secret) != 0)
       throw SECRET_FAILED;
-    if (crypto_sign_detached(detached_signature_a, &siglen, sgnmsg,
-                             sizeof(sgnmsg), seckey) != 0)
-      throw SECRET_FAILED;
-    unsigned char boxkey[crypto_hash_sha256_BYTES];
-    {
-      unsigned char keyparts[32 * 3];
-      memcpy(keyparts, netkey, 32);
-      memcpy(keyparts + 32, secret1, 32);
-      memcpy(keyparts + 64, secret2, 32);
-      if (crypto_hash_sha256(boxkey, keyparts, 32 * 3) != 0)
-        throw SECRET_FAILED;
-    }
-    unsigned char msg[64 + 32];
-    unsigned char secretbox[crypto_secretbox_MACBYTES + 64 + 32];
-    unsigned char zerobytes[24];
-    memset(zerobytes, 0, 24);
-    memcpy(msg, detached_signature_a, 32);
-    memcpy(msg + 64, pubkey, 32);
-    if (crypto_secretbox_easy(secretbox, msg, 64 + 32, zerobytes, boxkey) != 0)
-      throw SECRET_FAILED;
-    if (this->inner->WriteExactly(secretbox, 112, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-  }
-  unsigned char secret3[crypto_scalarmult_BYTES]; // Shared secret Ab
-  {
-    unsigned char curvified[32];
-    if (crypto_sign_ed25519_sk_to_curve25519(curvified, seckey) != 0)
-      throw SECRET_FAILED;
-    if (crypto_scalarmult(secret3, curvified, server_e_key) != 0)
+    if (crypto_scalarmult(sharedSecretAb, converted, serverEphemeral) != 0)
       throw SECRET_FAILED;
   }
-  // Section 4: Server Accept
-  {
-    unsigned char secretbox[80];
-    if (this->inner->ReadExactly(secretbox, 80, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    unsigned char detached_signature_b[80 - crypto_secretbox_MACBYTES];
-    unsigned char key[crypto_hash_sha256_BYTES];
-    unsigned char seed[32 * 5];
-    unsigned char nonce[24];
-    memcpy(seed, netkey, 32);
-    memcpy(seed + 32, secret1, 32);
-    memcpy(seed + 64, secret2, 32);
-    memcpy(seed + 96, secret3, 32);
-    memset(nonce, 0, 24);
-    if (crypto_hash_sha256(key, seed, 32 * 4) != 0)
-      throw SECRET_FAILED;
-    if (crypto_secretbox_open_easy(detached_signature_b, secretbox, 80, nonce,
-                                   key) != 0)
-      throw SECRET_FAILED;
-    unsigned char seed2[64];
-    if (crypto_hash_sha256(seed2, key, 32) != 0)
-      throw SECRET_FAILED;
-    memcpy(seed2 + 32, srvkey, 32);
-    if (crypto_hash_sha256(this->sendkey, seed2, 64) != 0)
-      throw SECRET_FAILED;
-    memcpy(seed2 + 32, pubkey, 32);
-    if (crypto_hash_sha256(this->recvkey, seed2, 64) != 0)
-      throw SECRET_FAILED;
-    memcpy(seed + 32, detached_signature_a, crypto_sign_BYTES);
-    memcpy(seed + 32 + crypto_sign_BYTES, pubkey, 32);
-    if (crypto_hash_sha256(seed + 32 * 2 + crypto_sign_BYTES, secret1, 32) != 0)
-      throw SECRET_FAILED;
-    if (crypto_sign_verify_detached(detached_signature_b, seed,
-                                    32 * 3 + crypto_sign_BYTES, srvkey) != 0)
-      throw SECRET_FAILED;
-  }
+  readServerAccept(this->inner.get(), netkey, srvkey, myId->pubkey,
+                   sharedSecretab, sharedSecretaB, sharedSecretAb, signatureA);
+  unsigned char commonStreamKey[crypto_hash_sha256_BYTES];
+  streamKeyCommon(commonStreamKey, netkey, sharedSecretab, sharedSecretaB,
+                  sharedSecretAb);
+  streamKey(this->sendkey, commonStreamKey, srvkey);
+  streamKey(this->recvkey, commonStreamKey, myId->pubkey);
 }
 
 // Server side of handshake (will receive client public key)
 BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
                      const unsigned char netkey[crypto_auth_KEYBYTES],
                      Ed25519Secret *myId) {
-  unsigned char *seckey = myId->secret;
-  unsigned char *pubkey = myId->pubkey;
   this->inner = std::move(inner);
-  unsigned char client_e_key[crypto_box_PUBLICKEYBYTES];
-  // Section 1: Client hello
-#define BUFFER_LENGTH (crypto_auth_BYTES + crypto_box_PUBLICKEYBYTES)
-  {
-    unsigned char buf[BUFFER_LENGTH];
-    if (this->inner->ReadExactly(buf, BUFFER_LENGTH) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    if (crypto_auth_verify(buf, buf + crypto_auth_BYTES,
-                           crypto_box_PUBLICKEYBYTES, netkey) != 0)
-      throw WRONG_NETKEY;
-    memcpy(client_e_key, buf + crypto_auth_BYTES, crypto_box_PUBLICKEYBYTES);
-    memcpy(this->sendnonce, buf, crypto_secretbox_NONCEBYTES);
-  }
-  // Section 2: Server hello
-  unsigned char e_pubkey[crypto_box_PUBLICKEYBYTES];
-  unsigned char e_seckey[crypto_box_SECRETKEYBYTES];
-  if (crypto_box_keypair(e_pubkey, e_seckey) < 0)
+  unsigned char ephemeralKey[crypto_box_PUBLICKEYBYTES];
+  unsigned char ephemeralSecret[crypto_box_SECRETKEYBYTES];
+  if (crypto_box_keypair(ephemeralKey, ephemeralSecret) < 0)
     throw KEYGEN_FAIL;
+  unsigned char clientEphemeral[crypto_box_PUBLICKEYBYTES];
+  readHello(this->inner.get(), netkey, clientEphemeral, this->recvnonce);
+  unsigned char sharedSecretab[crypto_scalarmult_BYTES];
+  if (crypto_scalarmult(sharedSecretab, ephemeralSecret, clientEphemeral) != 0)
+    throw SECRET_FAILED;
+  unsigned char sharedSecretaB[crypto_scalarmult_BYTES];
   {
-    unsigned char buf[BUFFER_LENGTH];
-    memcpy(buf + crypto_auth_BYTES, e_pubkey, crypto_box_PUBLICKEYBYTES);
-    if (crypto_auth(buf, e_pubkey, crypto_box_PUBLICKEYBYTES, netkey) != 0)
-      throw HMAC_FAIL;
-    if (this->inner->WriteExactly(buf, BUFFER_LENGTH, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    memcpy(this->sendnonce, buf, crypto_secretbox_NONCEBYTES);
-  }
-#undef BUFFER_LENGTH
-  unsigned char secret1[crypto_scalarmult_BYTES]; // Shared secret ab
-  unsigned char secret2[crypto_scalarmult_BYTES]; // Shared secret aB
-  {
-    if (crypto_scalarmult(secret1, e_seckey, client_e_key) < 0)
+    unsigned char converted[crypto_secretbox_KEYBYTES];
+    if (crypto_sign_ed25519_pk_to_curve25519(converted, myId->secret) != 0)
       throw SECRET_FAILED;
-    unsigned char remote_curve[crypto_scalarmult_curve25519_BYTES];
-    if (crypto_sign_ed25519_sk_to_curve25519(remote_curve, seckey) < 0)
-      throw SECRET_FAILED;
-    if (crypto_scalarmult(secret2, remote_curve, client_e_key) < 0)
+    if (crypto_scalarmult(sharedSecretaB, converted, clientEphemeral) != 0)
       throw SECRET_FAILED;
   }
-  // Section 3: Client authenticate
-  unsigned char secret3[crypto_scalarmult_BYTES]; // Shared secret Ab
-  unsigned char detached_signature_a[crypto_sign_BYTES];
+  sendHello(this->inner.get(), netkey, ephemeralKey, this->sendnonce);
+  unsigned char signatureA[crypto_sign_BYTES];
+  readClientAuth(this->inner.get(), netkey, myId->pubkey, this->peerkey,
+                 sharedSecretab, sharedSecretaB, signatureA);
+  unsigned char sharedSecretAb[crypto_scalarmult_BYTES];
   {
-
-    unsigned char buf[112];
-    unsigned char nonce[crypto_secretbox_NONCEBYTES];
-    unsigned char keyparts[crypto_scalarmult_BYTES * 3];
-    unsigned char key[crypto_hash_sha256_BYTES];
-    if (this->inner->ReadExactly(buf, 112, NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    memset(nonce, 0, crypto_secretbox_NONCEBYTES);
-    memcpy(keyparts, netkey, crypto_auth_KEYBYTES);
-    memcpy(keyparts + crypto_auth_KEYBYTES, secret1, crypto_scalarmult_BYTES);
-#define OFFSET_2 (crypto_auth_KEYBYTES + crypto_scalarmult_BYTES)
-    memcpy(keyparts + OFFSET_2, secret2, crypto_scalarmult_BYTES);
-    if (crypto_hash_sha256(key, keyparts, sizeof(keyparts)) != 0)
-      throw SECRET_FAILED;
-#undef OFFSET_2
-    if (crypto_secretbox_open_easy(buf + crypto_secretbox_MACBYTES, buf, 112,
-                                   nonce, key) != 0)
-      throw SECRET_FAILED;
-    memcpy(detached_signature_a, buf + crypto_secretbox_MACBYTES,
-           crypto_sign_BYTES);
-    memcpy(this->peerkey, buf + crypto_secretbox_MACBYTES + crypto_sign_BYTES,
-           crypto_sign_PUBLICKEYBYTES);
-    memcpy(keyparts + crypto_auth_KEYBYTES, pubkey, crypto_sign_PUBLICKEYBYTES);
-#define OFFSET_2 (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES)
-    if (crypto_hash_sha256(keyparts + OFFSET_2, secret1, sizeof(secret1)) != 0)
-      throw SECRET_FAILED;
-#undef OFFSET_2
-#define MSGLEN                                                                 \
-  (crypto_auth_KEYBYTES + crypto_sign_PUBLICKEYBYTES + crypto_hash_sha256_BYTES)
-    if (crypto_sign_verify_detached(buf + crypto_secretbox_MACBYTES, keyparts,
-                                    MSGLEN, this->peerkey) != 0)
-      throw SECRET_FAILED;
-#undef MSGLEN
-    if (crypto_sign_ed25519_pk_to_curve25519(key, this->peerkey) != 0)
-      throw SECRET_FAILED;
-    if (crypto_scalarmult(secret3, e_seckey, key) != 0)
-      throw SECRET_FAILED;
-#undef OFFSET_2
+  	unsigned char converted[crypto_box_PUBLICKEYBYTES];
+  	if (crypto_sign_ed25519_sk_to_curve25519(converted, this->peerkey) != 0)
+  	  throw SECRET_FAILED;
+  	if (crypto_scalarmult(sharedSecretAb, ephemeralSecret, converted) != 0)
+  	  throw SECRET_FAILED;
   }
-  // Section 4: Server Accept
-  {
-    unsigned char seed[crypto_auth_KEYBYTES + crypto_sign_BYTES +
-                       crypto_sign_PUBLICKEYBYTES + crypto_hash_sha256_BYTES];
-    memcpy(seed, netkey, crypto_auth_KEYBYTES);
-    memcpy(seed + 32, detached_signature_a, crypto_sign_BYTES);
-    memcpy(seed + 32 + crypto_sign_BYTES, this->peerkey,
-           crypto_sign_PUBLICKEYBYTES);
-    if (crypto_hash_sha256(seed + 32 + crypto_sign_BYTES +
-                               crypto_sign_PUBLICKEYBYTES,
-                           secret1, crypto_scalarmult_BYTES) != 0)
-      throw SECRET_FAILED;
-    unsigned char msg[crypto_secretbox_MACBYTES + crypto_sign_BYTES];
-    if (crypto_sign_detached(msg + crypto_secretbox_MACBYTES, NULL, seed,
-                             32 + crypto_sign_BYTES +
-                                 crypto_sign_PUBLICKEYBYTES +
-                                 crypto_hash_sha256_BYTES,
-                             pubkey) != 0)
-      throw SECRET_FAILED;
-    memcpy(seed + 32, secret1, crypto_scalarmult_BYTES);
-    memcpy(seed + 32 + crypto_scalarmult_BYTES, secret2,
-           crypto_scalarmult_BYTES);
-    memcpy(seed + 32 + crypto_scalarmult_BYTES * 2, secret3,
-           crypto_scalarmult_BYTES);
-    unsigned char key[crypto_hash_sha256_BYTES];
-    if (crypto_hash_sha256(key, seed, sizeof(seed)) != 0)
-      throw SECRET_FAILED;
-    unsigned char nonce[crypto_box_NONCEBYTES];
-    memset(nonce, 0, crypto_box_NONCEBYTES);
-    if (crypto_secretbox_easy(msg, msg + crypto_secretbox_MACBYTES,
-                              crypto_sign_BYTES, nonce, key) != 0)
-      throw SECRET_FAILED;
-    if (this->inner->WriteExactly(msg, sizeof(msg), NULL) != B_OK)
-      throw HANDSHAKE_HANGUP;
-    if (crypto_hash_sha256(seed, key, crypto_hash_sha256_BYTES) != 0)
-      throw HANDSHAKE_HANGUP;
-    memcpy(seed + crypto_hash_sha256_BYTES, client_e_key,
-           crypto_box_PUBLICKEYBYTES);
-    if (crypto_hash_sha256(this->sendkey, seed,
-                           crypto_hash_sha256_BYTES +
-                               crypto_secretbox_KEYBYTES) != 0)
-      throw SECRET_FAILED;
-    memcpy(seed + crypto_hash_sha256_BYTES, e_pubkey,
-           crypto_box_PUBLICKEYBYTES);
-    if (crypto_hash_sha256(this->recvkey, seed,
-                           crypto_hash_sha256_BYTES +
-                               crypto_secretbox_KEYBYTES) != 0)
-      throw SECRET_FAILED;
-  }
+  sendServerAccept(this->inner.get(), netkey, myId->pubkey, this->peerkey,
+                   sharedSecretab, sharedSecretaB, sharedSecretAb, signatureA);
+  unsigned char commonStreamKey[crypto_hash_sha256_BYTES];
+  streamKeyCommon(commonStreamKey, netkey, sharedSecretab, sharedSecretaB,
+                  sharedSecretAb);
+  streamKey(this->sendkey, commonStreamKey, this->peerkey);
+  streamKey(this->recvkey, commonStreamKey, myId->pubkey);
 }
 
 static void nonce_inc(unsigned char *nonce) {
