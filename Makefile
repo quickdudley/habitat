@@ -49,10 +49,12 @@ SRCS = \
 TESTABLE_SRCS = \
 	 src/Base64.cpp  \
 	 src/BJSON.cpp  \
+	 src/Connection.cpp \
 	 src/EBT.cpp \
 	 src/JSON.cpp  \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp  \
+	 src/Secret.cpp \
 	 src/SignJSON.cpp  \
 
 TEST_SRCS = \
