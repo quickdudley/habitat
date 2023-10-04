@@ -384,7 +384,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
   if (crypto_box_keypair(ephemeralKey, ephemeralSecret) < 0)
     throw KEYGEN_FAIL;
   unsigned char clientEphemeral[crypto_box_PUBLICKEYBYTES];
-  readHello(this->inner.get(), netkey, clientEphemeral, this->recvnonce);
+  readHello(this->inner.get(), netkey, clientEphemeral, this->sendnonce);
   unsigned char sharedSecretab[crypto_scalarmult_BYTES];
   if (crypto_scalarmult(sharedSecretab, ephemeralSecret, clientEphemeral) != 0)
     throw SECRET_FAILED;
@@ -396,7 +396,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
     if (crypto_scalarmult(sharedSecretaB, converted, clientEphemeral) != 0)
       throw SECRET_FAILED;
   }
-  sendHello(this->inner.get(), netkey, ephemeralKey, this->sendnonce);
+  sendHello(this->inner.get(), netkey, ephemeralKey, this->recvnonce);
   unsigned char signatureA[crypto_sign_BYTES];
   readClientAuth(this->inner.get(), netkey, myId->pubkey, this->peerkey,
                  sharedSecretab, sharedSecretaB, signatureA);
@@ -501,7 +501,6 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
                                    this->recvnonce, this->recvkey) != 0) {
       return B_IO_ERROR;
     }
-    std::cerr.write((const char *)(read_buffer.get() + 16), bodyLength);
     nonce_inc(this->recvnonce);
     unread = bodyLength;
     this->rb_length = bodyLength + 16;
