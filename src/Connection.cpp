@@ -279,7 +279,7 @@ readServerAccept(BDataIO *peer,
 #undef verifyFirstSignature
 #undef verifyNetkey
     if (crypto_sign_verify_detached(detachedSignature, verifyBuffer,
-                                    sizeof(verifyBuffer), clientKey) < 0)
+                                    sizeof(verifyBuffer), serverKey) < 0)
       throw SECRET_FAILED;
   }
 #undef detachedSignature
@@ -340,9 +340,9 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
   if (crypto_box_keypair(ephemeralKey, ephemeralSecret) < 0)
     throw KEYGEN_FAIL;
   memcpy(this->peerkey, srvkey, crypto_sign_PUBLICKEYBYTES);
-  sendHello(this->inner.get(), netkey, ephemeralKey, this->sendnonce);
+  sendHello(this->inner.get(), netkey, ephemeralKey, this->recvnonce);
   unsigned char serverEphemeral[crypto_box_PUBLICKEYBYTES];
-  readHello(this->inner.get(), netkey, serverEphemeral, this->recvnonce);
+  readHello(this->inner.get(), netkey, serverEphemeral, this->sendnonce);
   unsigned char sharedSecretab[crypto_scalarmult_BYTES];
   if (crypto_scalarmult(sharedSecretab, ephemeralSecret, serverEphemeral) < 0)
     throw SECRET_FAILED;
@@ -351,7 +351,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
     unsigned char converted[crypto_scalarmult_BYTES];
     if (crypto_sign_ed25519_pk_to_curve25519(converted, srvkey) < 0)
       throw SECRET_FAILED;
-    if (crypto_scalarmult(sharedSecretaB, ephemeralSecret, serverEphemeral) < 0)
+    if (crypto_scalarmult(sharedSecretaB, ephemeralSecret, converted) < 0)
       throw SECRET_FAILED;
   }
   unsigned char signatureA[crypto_sign_BYTES];
