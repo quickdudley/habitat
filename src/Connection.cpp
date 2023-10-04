@@ -408,7 +408,7 @@ BoxStream::BoxStream(std::unique_ptr<BDataIO> inner,
     if (crypto_scalarmult(sharedSecretAb, ephemeralSecret, converted) != 0)
       throw SECRET_FAILED;
   }
-  sendServerAccept(this->inner.get(), netkey, myId->pubkey, this->peerkey,
+  sendServerAccept(this->inner.get(), netkey, myId->secret, this->peerkey,
                    sharedSecretab, sharedSecretaB, sharedSecretAb, signatureA);
   unsigned char commonStreamKey[crypto_hash_sha256_BYTES];
   streamKeyCommon(commonStreamKey, netkey, sharedSecretab, sharedSecretaB,
@@ -476,7 +476,8 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
     unsigned char *headerMsg = header + crypto_secretbox_MACBYTES;
     status_t err;
     size_t received;
-    if ((err = this->inner->ReadExactly(header, 1, &received)) != B_OK) {
+    if ((err = this->inner->ReadExactly(header, sizeof(header), &received)) !=
+        B_OK) {
       return B_IO_ERROR;
     }
     if (crypto_secretbox_open_easy(headerMsg, header, 34, this->recvnonce,

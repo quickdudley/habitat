@@ -103,14 +103,8 @@ Habitat::Habitat(void)
       BPath path;
       secret.GetPath(&path);
       BFile secretFile(&secret, B_READ_ONLY);
-      char buffer[1024];
-      JSON::Parser parser(std::make_unique<JSON::SecretNode>(this->myId.get()));
-      ssize_t readBytes;
-      while (readBytes = secretFile.Read(buffer, 1024), readBytes > 0) {
-        for (ssize_t i = 0; i < readBytes; i++) {
-          parser.nextChar(buffer[i]);
-        }
-      }
+      JSON::parse(std::make_unique<JSON::SecretNode>(this->myId.get()),
+                  &secretFile);
     } else if (B_ENTRY_NOT_FOUND) {
       // Generate new secret
       BFile secretFile;
