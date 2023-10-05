@@ -186,7 +186,17 @@ Connection::Connection(
   }
 }
 
-Connection::~Connection() { delete_sem(this->ongoingLock); }
+Connection::~Connection() {
+  for (int32 i = 0; i < this->CountHandlers();) {
+    SenderHandler *handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
+    if (handler) {
+      delete handler;
+    } else {
+      i++;
+    }
+  }
+  delete_sem(this->ongoingLock);
+}
 
 thread_id Connection::Run() {
   this->pullThreadID =
@@ -514,7 +524,7 @@ status_t Connection::readOne() {
           this->Unlock();
           BMessenger inbound;
           status_t result = (*this->handlers)[i]->call(
-              this->peer, requestType, &args, BMessenger(replies), &inbound);
+              this, requestType, &args, BMessenger(replies), &inbound);
           if (result == B_OK && requestType == RequestType::DUPLEX) {
             acquire_sem(this->ongoingLock);
             this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});

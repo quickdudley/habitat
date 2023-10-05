@@ -48,13 +48,15 @@ enum struct MethodMatch {
   MATCH,
 };
 
+class Connection;
+
 class Method {
 public:
   virtual MethodMatch
   check(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
         std::vector<BString> &name, RequestType type);
-  virtual status_t call(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                        RequestType type, BMessage *args, BMessenger replyTo,
+  virtual status_t call(Connection *connection, RequestType type,
+                        BMessage *args, BMessenger replyTo,
                         BMessenger *inbound) = 0;
 
 protected:
