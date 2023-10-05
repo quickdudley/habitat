@@ -471,8 +471,14 @@ status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes) {
     if (count <= 0)
       return B_PARTIAL_READ;
     for (int i = 0; i < count; i++) {
-      if ((result = parser.nextChar(buffer[i])) != B_OK)
+      if ((result = parser.nextChar(buffer[i])) != B_OK) {
+        while (remaining > 0 && count > 0) {
+          count = input->Read(
+              buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+          remaining -= count;
+        }
         return result;
+      }
     }
   }
   return B_OK;

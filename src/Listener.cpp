@@ -11,7 +11,26 @@ SSBListener::SSBListener(std::shared_ptr<Ed25519Secret> myId,
     myId(myId),
     broadcaster(broadcaster) {}
 
+namespace {
+class PrintReply : public BHandler {
+  void MessageReceived(BMessage *msg) override;
+};
+
+void PrintReply::MessageReceived(BMessage *msg) {
+  msg->PrintToStream();
+  BHandler::MessageReceived(msg);
+}
+
+std::shared_ptr<std::vector<std::shared_ptr<muxrpc::Method>>> defaultHandlers =
+    std::make_shared<std::vector<std::shared_ptr<muxrpc::Method>>>(
+        std::vector<std::shared_ptr<muxrpc::Method>>());
+} // namespace
+
 int SSBListener::run_() {
+  BHandler *printer = new PrintReply;
+  be_app->Lock();
+  be_app->AddHandler(printer);
+  be_app->Unlock();
   thread_id thisThread = find_thread(NULL);
   this->listenSocket = std::make_unique<BSocket>();
   {
@@ -46,16 +65,18 @@ int SSBListener::run_() {
         delete peer;
         throw;
       }
-      char buffer[1024];
-      ssize_t rbytes;
-      while ((rbytes = shsPeer->Read(buffer, 1024)) > 0) {
-        std::cerr.write(buffer, rbytes);
-        std::cerr.flush();
-      }
-      std::cerr << std::endl;
-      // muxrpc::Connection *rpc = new muxrpc::Connection(std::move(shsPeer));
-      // be_app->RegisterLooper(rpc);
-      // rpc->Run();
+      muxrpc::Connection *rpc =
+          new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
+      be_app->RegisterLooper(rpc);
+      thread_id thread = rpc->Run();
+      std::vector<BString> call = {"blobs", "get"};
+      BMessage args('JSAR');
+      // rpc->request(call, muxrpc::RequestType::ASYNC, &args,
+      // BMessenger(printer), NULL);
+
+      // For initial testing/debugging just do one connection at a time
+      status_t exitValue;
+      wait_for_thread(thread, &exitValue);
     }
   }
   return 0;

@@ -31,6 +31,7 @@ struct Header {
   void setStream(bool value);
   status_t writeToBuffer(unsigned char *buffer);
   status_t readFromBuffer(unsigned char *buffer);
+  BString describe();
 };
 
 enum struct RequestType {
@@ -49,9 +50,10 @@ enum struct MethodMatch {
 
 class Method {
 public:
-  virtual MethodMatch check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                            std::vector<BString> &name, RequestType type);
-  virtual status_t call(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+  virtual MethodMatch
+  check(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+        std::vector<BString> &name, RequestType type);
+  virtual status_t call(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
                         RequestType type, BMessage *args, BMessenger replyTo,
                         BMessenger *inbound) = 0;
 
@@ -106,12 +108,14 @@ struct Inbound {
 
 class Connection : public BLooper {
 public:
-  Connection(std::unique_ptr<BDataIO> inner);
+  Connection(std::unique_ptr<BDataIO> inner,
+             std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers);
   ~Connection();
   thread_id Run() override;
   void Quit() override;
   status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
                    BMessenger replyTo, BMessenger *outbound);
+  BString cypherkey();
 
 private:
   status_t populateHeader(Header *out);

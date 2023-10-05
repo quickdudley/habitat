@@ -1,12 +1,15 @@
 #include "MUXRPC.h"
 #include "BJSON.h"
+#include "Base64.h"
+#include "Connection.h"
 #include "JSON.h"
+#include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
 
 namespace muxrpc {
 
-MethodMatch Method::check(unsigned char peer[crypto_sign_PUBLICKEYBYTES],
+MethodMatch Method::check(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
                           std::vector<BString> &name, RequestType type) {
   if (name == this->name) {
     if (type == this->expectedType) {
@@ -27,7 +30,9 @@ Sender::Sender(BMessenger inner)
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
     :
     requestNumber(requestNumber) {
+  conn->Lock();
   conn->AddHandler(this);
+  conn->Unlock();
 }
 
 Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
@@ -143,6 +148,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     unsigned char headerBytes[9];
     header.writeToBuffer(headerBytes);
     output->WriteExactly(headerBytes, 9);
+    std::cerr << "Sent header: " << header.describe().String() << std::endl;
     output->WriteExactly(content.String(), content.Length());
     return;
   }
@@ -165,9 +171,19 @@ BDataIO *SenderHandler::output() {
   return dynamic_cast<Connection *>(this->Looper())->inner.get();
 }
 
-Connection::Connection(std::unique_ptr<BDataIO> inner) {
+Connection::Connection(
+    std::unique_ptr<BDataIO> inner,
+    std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers)
+    :
+    handlers(handlers) {
   this->inner = std::move(inner);
   this->ongoingLock = create_sem(1, "MUXRPC incoming connections lock");
+  BoxStream *shs = dynamic_cast<BoxStream *>(this->inner.get());
+  if (shs) {
+    shs->getPeerKey(this->peer);
+  } else {
+    randombytes_buf(this->peer, crypto_sign_PUBLICKEYBYTES);
+  }
 }
 
 Connection::~Connection() { delete_sem(this->ongoingLock); }
@@ -250,10 +266,12 @@ int32 Connection::pullLoop() {
     result = readOne();
     if (has_data(this->pullThreadID)) {
       thread_id sender;
-      if (receive_data(&sender, NULL, 0) == 'STOP')
+      if (receive_data(&sender, NULL, 0) == 'STOP') {
         return B_CANCELED;
+      }
     }
   } while (result == B_OK);
+  BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
 }
 
@@ -289,6 +307,29 @@ status_t Header::readFromBuffer(unsigned char *buffer) {
     return last_error;
   }
   return B_OK;
+}
+
+BString Header::describe() {
+  BString result;
+  result << "Request number: " << this->requestNumber
+         << "; Body Length: " << this->bodyLength
+         << "; End or error: " << this->endOrError()
+         << "; Stream: " << this->stream() << "; Body type: ";
+  switch (this->bodyType()) {
+  case BodyType::BINARY:
+    result << "binary";
+    break;
+  case BodyType::UTF8_STRING:
+    result << "UTF-8 String";
+    break;
+  case BodyType::JSON:
+    result << "JSON";
+    break;
+  default:
+    result << "Unknown";
+    break;
+  }
+  return result;
 }
 
 class RequestNameSink : public JSON::NodeSink {
@@ -385,7 +426,12 @@ void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
 
 status_t Connection::readOne() {
   Header header;
-  this->populateHeader(&header);
+  {
+    status_t err;
+    if ((err = this->populateHeader(&header)) != B_OK)
+      return err;
+  }
+  std::cerr << "Received header: " << header.describe().String() << std::endl;
   acquire_sem(this->ongoingLock);
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
@@ -463,6 +509,9 @@ status_t Connection::readOne() {
             delete replies;
             throw;
           }
+          this->Lock();
+          this->AddHandler(replies);
+          this->Unlock();
           BMessenger inbound;
           status_t result = (*this->handlers)[i]->call(
               this->peer, requestType, &args, BMessenger(replies), &inbound);
@@ -471,15 +520,53 @@ status_t Connection::readOne() {
             this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
             release_sem(this->ongoingLock);
           }
+          return B_OK;
         }
       }
+      {
+        SenderHandler *replies;
+        try {
+          replies = new SenderHandler(this, -header.requestNumber);
+        } catch (...) {
+          delete replies;
+          throw;
+        }
+        this->Lock();
+        this->AddHandler(replies);
+        this->Unlock();
+        BMessage errorMessage('JSOB');
+        BString errorText("method:");
+        BString logText = this->cypherkey();
+        logText << " called unknown method ";
+        for (int i = 0; i < name.size(); i++) {
+          if (i > 0) {
+            errorText << ",";
+            logText << ".";
+          }
+          errorText << name[i];
+          logText << name[i];
+        }
+        std::cerr << logText.String() << std::endl;
+        errorText << " is not in the list of allowed methods";
+        errorMessage.AddString("message", errorText);
+        errorMessage.AddString("name", "error");
+        Sender(BMessenger(replies)).send(&errorMessage, true, true, false);
+      }
     } break;
-    default:
+    default: {
       // TODO: send error back
-      break;
+    } break;
     }
   }
   return B_OK;
+}
+
+BString Connection::cypherkey() {
+  BString result("@");
+  result << base64::encode(this->peer, crypto_sign_PUBLICKEYBYTES,
+                           base64::STANDARD);
+  result << ".ed25519";
+  return result;
 }
 
 BodyType Header::bodyType() { return static_cast<BodyType>(this->flags & 3); }
