@@ -9,8 +9,8 @@
 
 namespace muxrpc {
 
-MethodMatch Method::check(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-                          std::vector<BString> &name, RequestType type) {
+MethodMatch Method::check(Connection *conn, std::vector<BString> &name,
+                          RequestType type) {
   if (name == this->name) {
     if (type == this->expectedType) {
       return MethodMatch::MATCH;
@@ -37,7 +37,7 @@ SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
 
 Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
 
-SenderHandler::~SenderHandler() { this->Looper()->RemoveHandler(this); }
+SenderHandler::~SenderHandler() {}
 
 status_t Sender::send(BMessage *content, bool stream, bool error,
                       bool inOrder) {
@@ -150,7 +150,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     output->WriteExactly(headerBytes, 9);
     std::cerr << "Sent header: " << header.describe().String() << std::endl;
     output->WriteExactly(content.String(), content.Length());
-    return;
+    goto cleanup;
   }
 check_for_raw : {
   const void *data;
@@ -165,6 +165,18 @@ check_for_raw : {
     output->WriteExactly(data, length);
   }
 }
+// TODO: do this for inbound messages too.
+cleanup:
+  if (wrapper->GetBool("end", true)) {
+    Connection *conn = dynamic_cast<Connection *>(this->Looper());
+    acquire_sem(conn->ongoingLock);
+    conn->inboundOngoing.erase(-this->requestNumber);
+    release_sem(conn->ongoingLock);
+    conn->Lock();
+    conn->RemoveHandler(this);
+    conn->Unlock();
+    delete this;
+  }
 }
 
 BDataIO *SenderHandler::output() {
@@ -256,7 +268,7 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
       break;
     }
     content.AddMessage("args", args);
-    if (type == RequestType::DUPLEX) {
+    if (type == RequestType::DUPLEX && outbound) {
       *outbound = BMessenger(handler);
     }
     acquire_sem(this->ongoingLock);
@@ -419,7 +431,7 @@ std::unique_ptr<JSON::NodeSink> RequestObjectSink::addArray(BString &rawname,
   if (name == "name") {
     return std::make_unique<RequestNameSink>(this->name);
   } else if (name == "args") {
-    return std::make_unique<JSON::BMessageDocSink>(args);
+    return std::make_unique<JSON::BMessageArrayDocSink>(args);
   } else {
     return JSON::NodeSink::addArray(rawname, name);
   }
@@ -504,7 +516,7 @@ status_t Connection::readOne() {
       MethodMatch overall = MethodMatch::NO_MATCH;
       for (int i = 0; i < this->handlers->size(); i++) {
         MethodMatch match =
-            (*this->handlers)[i]->check(this->peer, name, requestType);
+            (*this->handlers)[i]->check(this, name, requestType);
         switch (match) {
         case MethodMatch::NO_MATCH:
           break;
@@ -560,7 +572,8 @@ status_t Connection::readOne() {
         errorText << " is not in the list of allowed methods";
         errorMessage.AddString("message", errorText);
         errorMessage.AddString("name", "error");
-        Sender(BMessenger(replies)).send(&errorMessage, true, true, false);
+        Sender(BMessenger(replies))
+            .send(&errorMessage, header.stream(), true, false);
       }
     } break;
     default: {

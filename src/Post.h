@@ -22,6 +22,8 @@ struct FeedBuildComparator {
 };
 } // namespace post_private_
 
+class SSBFeed;
+
 class SSBDatabase : public BLooper {
 public:
   SSBDatabase(BDirectory store);
@@ -30,6 +32,8 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *msg) override;
+  status_t findPost(BMessage *post, BString &cypherkey);
+  status_t findFeed(SSBFeed *&result, BString &cypherkey);
 
 private:
   BDirectory store;
@@ -48,6 +52,10 @@ public:
   status_t load();
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
+  status_t findPost(BMessage *post, uint64 sequence);
+  int64 sequence();
+  void notifyChanges();
+  void notifyChanges(BMessenger target);
 
 protected:
   status_t save(BMessage *message, BMessage *reply);

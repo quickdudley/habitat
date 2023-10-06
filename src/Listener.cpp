@@ -27,6 +27,9 @@ std::shared_ptr<std::vector<std::shared_ptr<muxrpc::Method>>> defaultHandlers =
 } // namespace
 
 int SSBListener::run_() {
+  if (defaultHandlers->size() == 0) {
+    //  	defaultHandlers->push_back(std::make_unique<GossipPing>());
+  }
   BHandler *printer = new PrintReply;
   be_app->Lock();
   be_app->AddHandler(printer);
@@ -69,10 +72,12 @@ int SSBListener::run_() {
           new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
       be_app->RegisterLooper(rpc);
       thread_id thread = rpc->Run();
-      std::vector<BString> call = {"blobs", "get"};
-      BMessage args('JSAR');
-      // rpc->request(call, muxrpc::RequestType::ASYNC, &args,
-      // BMessenger(printer), NULL);
+      //      std::vector<BString> call = {"gossip", "ping"};
+      //      BMessage args('JSAR');
+      //      BMessage argsobj('JSOB');
+      //      argsobj.AddDouble("timeout",300000);
+      //      rpc->request(call, muxrpc::RequestType::DUPLEX, &args,
+      //      BMessenger(printer), NULL);
 
       // For initial testing/debugging just do one connection at a time
       status_t exitValue;

@@ -52,9 +52,8 @@ class Connection;
 
 class Method {
 public:
-  virtual MethodMatch
-  check(const unsigned char peer[crypto_sign_PUBLICKEYBYTES],
-        std::vector<BString> &name, RequestType type);
+  virtual MethodMatch check(Connection *connection, std::vector<BString> &name,
+                            RequestType type);
   virtual status_t call(Connection *connection, RequestType type,
                         BMessage *args, BMessenger replyTo,
                         BMessenger *inbound) = 0;
@@ -132,6 +131,7 @@ private:
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
   friend BDataIO *SenderHandler::output();
+  friend void SenderHandler::actuallySend(const BMessage *wrapper);
   static int32 pullThreadFunction(void *data);
 };
 }; // namespace muxrpc

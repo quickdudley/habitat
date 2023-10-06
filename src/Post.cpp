@@ -26,11 +26,11 @@ SSBDatabase::SSBDatabase(BDirectory store)
 
 SSBDatabase::~SSBDatabase() {}
 
-enum { kReplicatedFeed, kAReplicatedFeed };
+enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
 
 static property_info databaseProperties[] = {
     {"ReplicatedFeed",
-     {B_CREATE_PROPERTY, 0},
+     {B_CREATE_PROPERTY, 'USUB', 0},
      {B_DIRECT_SPECIFIER, 0},
      "A known SSB log",
      kReplicatedFeed,
@@ -40,6 +40,12 @@ static property_info databaseProperties[] = {
      {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
      kAReplicatedFeed,
+     {}},
+    {"Post",
+     {B_GET_PROPERTY, 0},
+     {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
+     "An SSB message",
+     kPostByID,
      {}},
     {0}};
 
@@ -66,21 +72,23 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
       int32 sindex;
       error = specifier->FindString("name", &name);
       if (error == B_OK) {
-        for (int32 i = this->CountHandlers(); i >= 0; i--) {
-          SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
-          if (feed && feed->cypherkey() == name) {
-            msg->PopSpecifier();
-            BMessenger(feed).SendMessage(msg);
-            return NULL;
-          }
+        SSBFeed *feed;
+        error = this->findFeed(feed, name);
+        if (error == B_OK && feed != NULL) {
+          msg->PopSpecifier();
+          BMessenger(feed).SendMessage(msg);
+          return NULL;
         }
         error = B_NAME_NOT_FOUND;
       } else if ((error = specifier->FindInt32("index", &sindex)) == B_OK) {
         for (int32 i = 0, j = 0; i < this->CountHandlers(); i++) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
           if (feed) {
-            if (j++ == sindex)
-              return feed;
+            if (j++ == sindex) {
+              msg->PopSpecifier();
+              BMessenger(feed).SendMessage(msg);
+              return NULL;
+            }
           }
         }
         error = B_BAD_INDEX;
@@ -120,6 +128,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       switch (what) {
       case B_COUNT_PROPERTIES:
         // TODO
+        error = B_UNSUPPORTED;
         break;
       case B_CREATE_PROPERTY: {
         unsigned char key[crypto_sign_PUBLICKEYBYTES];
@@ -127,10 +136,24 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         error = msg->FindString("cypherkey", &formatted);
         if (error == B_OK &&
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
-          SSBFeed *feed = new SSBFeed(this->store, key);
+          SSBFeed *feed;
+          if (this->findFeed(feed, formatted) != B_OK)
+            feed = new SSBFeed(this->store, key);
           this->AddHandler(feed);
           feed->load();
           reply.AddMessenger("result", BMessenger(feed));
+        }
+      } break;
+      case 'USUB': {
+        BMessenger target;
+        if ((error = msg->FindMessenger("subscriber", &target)) != B_OK)
+          break;
+        this->StartWatching(target, 'NMSG');
+        for (int32 i = this->CountHandlers(); i >= 0; i--) {
+          SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+          if (feed != NULL) {
+            feed->notifyChanges(target);
+          }
         }
       } break;
       default:
@@ -145,6 +168,36 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     msg->SendReply(&reply);
   }
   return BLooper::MessageReceived(msg);
+}
+
+status_t SSBDatabase::findFeed(SSBFeed *&result, BString &cypherkey) {
+  for (int32 i = this->CountHandlers(); i >= 0; i--) {
+    SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+    if (feed && feed->cypherkey() == cypherkey) {
+      result = feed;
+      return B_OK;
+    }
+  }
+  return B_NAME_NOT_FOUND;
+}
+
+status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
+  status_t error;
+  BQuery query;
+  BVolume volume;
+  this->store.GetVolume(&volume);
+  query.SetVolume(&volume);
+  query.PushAttr("HABITAT:cypherkey");
+  query.PushString(cypherkey.String());
+  query.PushOp(B_EQ);
+  if ((error = query.Fetch()) != B_OK)
+    return error;
+  entry_ref ref;
+  if (query.GetNextRef(&ref) != B_OK)
+    return B_ENTRY_NOT_FOUND;
+  BFile result(&ref, B_READ_ONLY);
+  post->Unflatten(&result);
+  return B_OK;
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -192,8 +245,7 @@ status_t SSBFeed::load() {
   if ((error = this->query.Fetch()) == B_OK) {
     entry_ref ref;
     while (this->query.GetNextRef(&ref) == B_OK) {
-      BEntry entry(&ref);
-      BNode node(&entry);
+      BNode node(&ref);
       int64 sequence;
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
                     sizeof(int64));
@@ -219,15 +271,31 @@ status_t SSBFeed::load() {
       }
     }
   }
+  this->notifyChanges();
   return error;
 }
 
 SSBFeed::~SSBFeed() {}
 
+void SSBFeed::notifyChanges(BMessenger target) {
+  BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+  notif.AddString("feed", this->cypherkey());
+  notif.AddInt64("sequence", this->sequence());
+  target.SendMessage(&notif);
+}
+
+void SSBFeed::notifyChanges() {
+  BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+  notif.AddString("feed", this->cypherkey());
+  notif.AddInt64("sequence", this->sequence());
+  this->Looper()->SendNotices('NMSG', &notif);
+}
+
 enum {
   kFeedCypherkey,
   kFeedLastSequence,
   kFeedLastID,
+  kOnePost,
 };
 
 static property_info ssbFeedProperties[] = {
@@ -247,9 +315,15 @@ static property_info ssbFeedProperties[] = {
     {"Last",
      {B_GET_PROPERTY, 0},
      {B_DIRECT_SPECIFIER, 0},
-     "The Message ID of the last known messag of this feed",
+     "The Message ID of the last known message of this feed",
      kFeedLastID,
      {B_STRING_TYPE}},
+    {"Post",
+     {B_GET_PROPERTY, 0},
+     {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
+     "An SSB message",
+     kOnePost,
+     {}},
     {0},
 };
 
@@ -297,12 +371,50 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     reply.AddString("result", this->previousLink());
     error = B_OK;
     break;
+  case kOnePost: {
+    int32 index;
+    BMessage specifier;
+    int32 spWhat;
+    const char *property;
+    if ((error = msg->GetCurrentSpecifier(&index, &specifier, &what,
+                                          &property)) != B_OK)
+      break;
+    if (spWhat == B_INDEX_SPECIFIER) {
+      if ((error = specifier.FindInt32("index", &index)) != B_OK)
+        break;
+      BMessage post;
+      if ((error = this->findPost(&post, index)) != B_OK)
+        break;
+      reply.AddMessage("result", &post);
+    }
+  } break;
   default:
     return BHandler::MessageReceived(msg);
   }
   reply.AddInt32("error", error);
   reply.AddString("message", strerror(error));
   msg->SendReply(&reply);
+}
+
+status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
+  status_t error;
+  BQuery query;
+  query.SetVolume(&this->volume);
+  query.PushAttr("HABITAT:author");
+  query.PushString(this->cypherkey().String());
+  query.PushOp(B_EQ);
+  query.PushAttr("HABITAT:sequence");
+  query.PushUInt64(sequence);
+  query.PushOp(B_EQ);
+  query.PushOp(B_AND);
+  if ((error = query.Fetch()) != B_OK)
+    return error;
+  entry_ref ref;
+  if (query.GetNextRef(&ref) != B_OK)
+    return B_ENTRY_NOT_FOUND;
+  BFile result(&ref, B_READ_ONLY);
+  post->Unflatten(&result);
+  return B_OK;
 }
 
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
@@ -322,6 +434,8 @@ BString SSBFeed::cypherkey() {
   result.Append(".ed25519");
   return result;
 }
+
+int64 SSBFeed::sequence() { return this->lastSequence; }
 
 BString SSBFeed::previousLink() {
   BString result("%");
@@ -381,6 +495,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   this->lastSequence = attrNum;
+  notifyChanges();
   if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
     if (sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
                        sizeof(int64)) != sizeof(int64))
