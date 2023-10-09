@@ -434,6 +434,10 @@ clean:
 rmapp ::
 	-rm -f $(TARGET)
 
+.PHONY: run
+run: $(TARGET)
+	$(TARGET)
+
 # For embedding the ssb validation dataset into the test executable
 $(TEST_DIR)/ssb_validation_dataset.json:
 	curl -o "$@" https://raw.githubusercontent.com/fraction/ssb-validation-dataset/master/data.json

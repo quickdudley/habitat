@@ -2,9 +2,9 @@
 #include <Message.h>
 
 namespace JSON {
-void fromBMessage(RootSink *target, BMessage *source);
-void fromBMessageArray(RootSink *target, BMessage *source);
-void fromBMessageObject(RootSink *target, BMessage *source);
+void fromBMessage(RootSink *target, const BMessage *source);
+void fromBMessageArray(RootSink *target, const BMessage *source);
+void fromBMessageObject(RootSink *target, const BMessage *source);
 
 class BMessageDocSink : public NodeSink {
 public:

@@ -129,19 +129,84 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
   header.setStream(wrapper->GetBool("stream", true));
   header.requestNumber = this->requestNumber;
   {
+    const void *data;
+    ssize_t length;
+    if (wrapper->FindData("content", B_RAW_TYPE, &data, &length) == B_OK) {
+      header.setBodyType(BodyType::BINARY);
+      header.bodyLength = length;
+      unsigned char headerBytes[9];
+      header.writeToBuffer(headerBytes);
+      BDataIO *output = this->output();
+      output->WriteExactly(headerBytes, 9);
+      output->WriteExactly(data, length);
+      goto cleanup;
+    }
+  }
+  {
     BString content;
-    if (wrapper->FindString("content", &content) == B_OK) {
-      header.setBodyType(BodyType::UTF8_STRING);
-    } else {
-      BMessage inner;
-      if (wrapper->FindMessage("content", &inner) == B_OK) {
-        header.setBodyType(BodyType::JSON);
-        JSON::RootSink rootSink(
-            std::make_unique<JSON::SerializerStart>(&content));
-        JSON::fromBMessage(&rootSink, &inner);
-      } else {
-        goto check_for_raw;
+    class ExtractContent : public JSON::SerializerStart {
+    public:
+      ExtractContent(BString *target, Header *header)
+          :
+          JSON::SerializerStart(target),
+          target(target),
+          header(header) {}
+      void addNumber(BString &rawname, BString &name, BString &raw,
+                     JSON::number value) {
+        if (name == "content") {
+          BString blank;
+          this->header->setBodyType(BodyType::JSON);
+          JSON::SerializerStart::addNumber(blank, blank, raw, value);
+        }
       }
+      void addBool(BString &rawname, BString &name, bool value) {
+        if (name == "content") {
+          BString blank;
+          this->header->setBodyType(BodyType::JSON);
+          JSON::SerializerStart::addBool(blank, blank, value);
+        }
+      }
+      void addNull(BString &rawname, BString &name) {
+        if (name == "content") {
+          BString blank;
+          this->header->setBodyType(BodyType::JSON);
+          JSON::SerializerStart::addNull(blank, blank);
+        }
+      }
+      void addString(BString &rawname, BString &name, BString &raw,
+                     BString &value) {
+        if (name == "content") {
+          this->header->setBodyType(BodyType::UTF8_STRING);
+          *this->target = value;
+        }
+      }
+      std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
+        BString blank;
+        if (name == "content") {
+          this->header->setBodyType(BodyType::JSON);
+          return JSON::SerializerStart::addObject(blank, blank);
+        } else {
+          return JSON::NodeSink::addObject(blank, blank);
+        }
+      }
+      std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+        BString blank;
+        if (name == "content") {
+          this->header->setBodyType(BodyType::JSON);
+          return JSON::SerializerStart::addObject(blank, blank);
+        } else {
+          return JSON::NodeSink::addObject(blank, blank);
+        }
+      }
+
+    private:
+      BString *target;
+      Header *header;
+    };
+    {
+      JSON::RootSink rootsink(
+          std::make_unique<ExtractContent>(&content, &header));
+      JSON::fromBMessageObject(&rootsink, wrapper);
     }
     header.bodyLength = content.Length();
     BDataIO *output = this->output();
@@ -150,28 +215,13 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     output->WriteExactly(headerBytes, 9);
     std::cerr << "Sent header: " << header.describe().String() << std::endl;
     output->WriteExactly(content.String(), content.Length());
+    std::cerr.write(content.String(), content.Length());
+    std::cerr << std::endl;
     goto cleanup;
   }
-check_for_raw : {
-  const void *data;
-  ssize_t length;
-  if (wrapper->FindData("content", B_RAW_TYPE, &data, &length) == B_OK) {
-    header.setBodyType(BodyType::BINARY);
-    header.bodyLength = length;
-    unsigned char headerBytes[9];
-    header.writeToBuffer(headerBytes);
-    BDataIO *output = this->output();
-    output->WriteExactly(headerBytes, 9);
-    output->WriteExactly(data, length);
-  }
-}
-// TODO: do this for inbound messages too.
 cleanup:
-  if (wrapper->GetBool("end", true)) {
+  if (wrapper->GetBool("end", true) || !wrapper->GetBool("stream", true)) {
     Connection *conn = dynamic_cast<Connection *>(this->Looper());
-    acquire_sem(conn->ongoingLock);
-    conn->inboundOngoing.erase(-this->requestNumber);
-    release_sem(conn->ongoingLock);
     conn->Lock();
     conn->RemoveHandler(this);
     conn->Unlock();
@@ -245,6 +295,8 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
   SenderHandler *handler;
   try {
     int32 requestNumber = this->nextRequest++;
+    if (this->nextRequest == INT32_MAX)
+      this->nextRequest = 1;
     handler = new SenderHandler(this, requestNumber);
     BMessage content('JSOB');
     {
@@ -293,6 +345,7 @@ int32 Connection::pullLoop() {
       }
     }
   } while (result == B_OK);
+  std::cerr << "Closing connection: " << strerror(result) << std::endl;
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
 }
@@ -463,13 +516,24 @@ status_t Connection::readOne() {
     case BodyType::JSON: {
       BMessage content;
       {
+        JSON::Parser parser(
+            std::make_unique<JSON::BMessageObjectDocSink>(&wrapper), true);
+        {
+          BString name("content");
+          parser.setPropName(name);
+        }
         status_t result =
-            JSON::parse(std::make_unique<JSON::BMessageDocSink>(&content),
-                        this->inner.get(), header.bodyLength);
+            JSON::parse(&parser, this->inner.get(), header.bodyLength);
         if (result != B_OK)
           return result;
       }
       wrapper.AddMessage("content", &content);
+      JSON::Parser parser(
+          std::make_unique<JSON::BMessageObjectDocSink>(&wrapper));
+      {
+        BString propName("content");
+        parser.setPropName(propName);
+      }
     } break;
     case BodyType::UTF8_STRING: {
       BString content;
@@ -498,7 +562,16 @@ status_t Connection::readOne() {
     wrapper.AddBool("stream", header.stream());
     wrapper.AddBool("end", header.endOrError());
     wrapper.AddUInt32("sequence", search->second.sequence);
-    return search->second.target.SendMessage(&wrapper);
+    BMessenger next = search->second.target;
+    if (header.endOrError() || !header.stream()) {
+      acquire_sem(this->ongoingLock);
+      this->inboundOngoing.erase(header.requestNumber);
+      release_sem(this->ongoingLock);
+    }
+    if (next.IsValid())
+      return next.SendMessage(&wrapper);
+    else
+      return B_OK;
   } else {
     release_sem(this->ongoingLock);
     switch (header.bodyType()) {
@@ -537,12 +610,11 @@ status_t Connection::readOne() {
           BMessenger inbound;
           status_t result = (*this->handlers)[i]->call(
               this, requestType, &args, BMessenger(replies), &inbound);
-          if (result == B_OK && requestType == RequestType::DUPLEX) {
+          if (header.stream() && !header.endOrError()) {
             acquire_sem(this->ongoingLock);
             this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
             release_sem(this->ongoingLock);
           }
-          return B_OK;
         }
       }
       {
@@ -574,6 +646,12 @@ status_t Connection::readOne() {
         errorMessage.AddString("name", "error");
         Sender(BMessenger(replies))
             .send(&errorMessage, header.stream(), true, false);
+        if (header.stream() && !header.endOrError()) {
+          acquire_sem(this->ongoingLock);
+          BMessenger dummy;
+          this->inboundOngoing.insert({header.requestNumber, {dummy, 1}});
+          release_sem(this->ongoingLock);
+        }
       }
     } break;
     default: {

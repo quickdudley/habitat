@@ -5,7 +5,7 @@
 
 namespace JSON {
 
-bool wasArray(BMessage *msg) {
+bool wasArray(const BMessage *msg) {
   if (msg->what == 'JSAR')
     return true;
   if (msg->what == 'JSOB')
@@ -34,8 +34,8 @@ bool wasArray(BMessage *msg) {
   return true;
 }
 
-void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
-                      type_code attrtype) {
+void fromBMessageData(RootSink *target, const BMessage *source,
+                      BString &attrname, type_code attrtype) {
   if (attrname == "specifiers" || attrname == "refs")
     return;
   switch (attrtype) {
@@ -104,7 +104,7 @@ void fromBMessageData(RootSink *target, BMessage *source, BString &attrname,
   }
 }
 
-void fromBMessageObject(RootSink *target, BMessage *source) {
+void fromBMessageObject(RootSink *target, const BMessage *source) {
   char *attrname;
   type_code attrtype;
   int32 index = 0;
@@ -115,7 +115,7 @@ void fromBMessageObject(RootSink *target, BMessage *source) {
   }
 }
 
-void fromBMessage(RootSink *target, BMessage *source) {
+void fromBMessage(RootSink *target, const BMessage *source) {
   BString blank;
   if (wasArray(source)) {
     target->beginArray(blank);
@@ -127,7 +127,7 @@ void fromBMessage(RootSink *target, BMessage *source) {
   target->closeNode();
 }
 
-void fromBMessageArray(RootSink *target, BMessage *source) {
+void fromBMessageArray(RootSink *target, const BMessage *source) {
   for (int32 index = 0;; index++) {
     BString key;
     key << index;

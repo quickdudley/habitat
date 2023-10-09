@@ -83,25 +83,33 @@ private:
   std::vector<std::unique_ptr<NodeSink>> stack;
 };
 
+class Parser;
+
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input);
 status_t parse(NodeSink *target, BDataIO *input);
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes);
 status_t parse(NodeSink *target, BDataIO *input, size_t bytes);
+status_t parse(Parser *target, BDataIO *input);
+status_t parse(Parser *target, BDataIO *input, size_t bytes);
 status_t parse(std::unique_ptr<NodeSink> target, const char *input);
 status_t parse(NodeSink *target, const char *input);
 status_t parse(std::unique_ptr<NodeSink> target, const char *input,
                size_t bytes);
 status_t parse(NodeSink *target, const char *input, size_t bytes);
+status_t parse(Parser *target, const char *input);
+status_t parse(Parser *target, const char *input, size_t bytes);
 status_t parse(std::unique_ptr<NodeSink> target, BString &input);
 status_t parse(NodeSink *target, BString &input);
+status_t parse(Parser *target, BString &input);
 
 class Parser {
 public:
-  Parser(std::unique_ptr<RootSink> target);
-  Parser(RootSink *target);
-  Parser(std::unique_ptr<NodeSink> target);
-  Parser(NodeSink *target);
+  Parser(std::unique_ptr<RootSink> target, bool lax = false);
+  Parser(RootSink *target, bool lax = false);
+  Parser(std::unique_ptr<NodeSink> target, bool lax = false);
+  Parser(NodeSink *target, bool lax = false);
   status_t nextChar(char c);
+  void setPropName(BString &name);
 
 private:
   status_t charInString(char c, int cstate, int estate);
@@ -120,6 +128,7 @@ private:
   BString name;
   std::vector<int> stack;
   long long k = 0, s = 0, e = 0, z = 0;
+  bool lax;
 };
 
 } // namespace JSON

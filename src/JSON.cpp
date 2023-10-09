@@ -1,6 +1,7 @@
 #include "JSON.h"
 #include <cctype>
 #include <cmath>
+#include <iostream>
 #include <utility>
 
 namespace JSON {
@@ -443,11 +444,15 @@ void RootSink::closeNode() {
 
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input) {
   Parser parser(std::move(target));
+  return parse(&parser, input);
+}
+
+status_t parse(Parser *target, BDataIO *input) {
   char buffer[1024];
   ssize_t readBytes;
   while ((readBytes = input->Read(buffer, sizeof(buffer))) > 0) {
     for (int i = 0; i < readBytes; i++) {
-      status_t parseResult = parser.nextChar(buffer[i]);
+      status_t parseResult = target->nextChar(buffer[i]);
       if (parseResult != B_OK)
         return parseResult;
     }
@@ -461,26 +466,34 @@ status_t parse(NodeSink *target, BDataIO *input) {
 
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes) {
   JSON::Parser parser(std::move(target));
+  return parse(&parser, input, bytes);
+}
+
+status_t parse(Parser *target, BDataIO *input, size_t bytes) {
   char buffer[1024];
   status_t result;
   ssize_t remaining = bytes;
   while (remaining > 0) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+    std::cerr.write(buffer, count);
     remaining -= count;
     if (count <= 0)
       return B_PARTIAL_READ;
     for (int i = 0; i < count; i++) {
-      if ((result = parser.nextChar(buffer[i])) != B_OK) {
+      if ((result = target->nextChar(buffer[i])) != B_OK) {
         while (remaining > 0 && count > 0) {
           count = input->Read(
               buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+          std::cerr.write(buffer, count);
           remaining -= count;
         }
+        std::cerr << std::endl;
         return result;
       }
     }
   }
+  std::cerr << std::endl;
   return B_OK;
 }
 
@@ -490,8 +503,12 @@ status_t parse(NodeSink *target, BDataIO *input, size_t bytes) {
 
 status_t parse(std::unique_ptr<NodeSink> target, const char *input) {
   Parser parser(std::move(target));
+  return parse(&parser, input);
+}
+
+status_t parse(Parser *target, const char *input) {
   for (int i = 0; input[i] != 0; i++) {
-    status_t parseResult = parser.nextChar(input[i]);
+    status_t parseResult = target->nextChar(input[i]);
     if (parseResult != B_OK)
       return parseResult;
   }
@@ -505,8 +522,12 @@ status_t parse(NodeSink *target, const char *input) {
 status_t parse(std::unique_ptr<NodeSink> target, const char *input,
                size_t bytes) {
   Parser parser(std::move(target));
+  return parse(&parser, input, bytes);
+}
+
+status_t parse(Parser *target, const char *input, size_t bytes) {
   for (size_t i = 0; i < bytes; i++) {
-    status_t result = parser.nextChar(input[i]);
+    status_t result = target->nextChar(input[i]);
     if (result != B_OK)
       return result;
   }
@@ -519,8 +540,12 @@ status_t parse(NodeSink *target, const char *input, size_t bytes) {
 
 status_t parse(std::unique_ptr<NodeSink> target, BString &input) {
   Parser parser(std::move(target));
+  return parse(&parser, input);
+}
+
+status_t parse(Parser *target, BString &input) {
   for (int i = 0; i < input.Length(); i++) {
-    status_t parseResult = parser.nextChar(input[i]);
+    status_t parseResult = target->nextChar(input[i]);
     if (parseResult != B_OK)
       return parseResult;
   }
@@ -531,24 +556,36 @@ status_t parse(NodeSink *target, BString &input) {
   return parse(std::unique_ptr<NodeSink>(target), input);
 }
 
-Parser::Parser(std::unique_ptr<RootSink> target) {
+Parser::Parser(std::unique_ptr<RootSink> target, bool lax)
+    :
+    lax(lax) {
   this->target = std::move(target);
+  this->stack.push_back(14);
 }
 
-Parser::Parser(RootSink *target) {
+Parser::Parser(RootSink *target, bool lax)
+    :
+    lax(lax) {
   this->target = std::unique_ptr<RootSink>(target);
+  this->stack.push_back(14);
 }
 
-Parser::Parser(std::unique_ptr<NodeSink> target) {
+Parser::Parser(std::unique_ptr<NodeSink> target, bool lax)
+    :
+    lax(lax) {
   this->target = std::make_unique<RootSink>(std::move(target));
+  this->stack.push_back(14);
 }
 
-Parser::Parser(NodeSink *target) {
+Parser::Parser(NodeSink *target, bool lax)
+    :
+    lax(lax) {
   this->target = std::make_unique<RootSink>(std::unique_ptr<NodeSink>(target));
+  this->stack.push_back(14);
 }
 
 status_t Parser::nextChar(char c) {
-  if (this->state == 0) { // Beginning of document
+  if (this->state == 0 && !this->lax) { // Beginning of document
     if (c == '{') {
       BString blank;
       this->state = 1;
@@ -602,7 +639,8 @@ status_t Parser::nextChar(char c) {
     } else if (isspace(c)) {
       return B_OK;
     }
-  } else if (this->state == 2 || this->state == 5) { // Before value
+  } else if (this->state == 2 || this->state == 5 ||
+             (this->lax && this->state == 0)) { // Before value
     if (isspace(c)) {
       return B_OK;
     } else if (c == '{') {
@@ -706,6 +744,11 @@ status_t Parser::nextChar(char c) {
     }
   }
   return B_ILLEGAL_DATA;
+}
+
+void Parser::setPropName(BString &name) {
+  this->name = name;
+  this->rawname = escapeString(name);
 }
 
 status_t Parser::charInBool(const char *t, bool value, char c, int cstate,
