@@ -30,7 +30,7 @@ enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
 
 static property_info databaseProperties[] = {
     {"ReplicatedFeed",
-     {B_CREATE_PROPERTY, 'USUB', 0},
+     {B_GET_PROPERTY, B_CREATE_PROPERTY, 'USUB', 0},
      {B_DIRECT_SPECIFIER, 0},
      "A known SSB log",
      kReplicatedFeed,
@@ -150,6 +150,18 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           this->AddHandler(feed);
           feed->load();
           reply.AddMessenger("result", BMessenger(feed));
+        }
+      } break;
+      case B_GET_PROPERTY: {
+        for (int32 i = this->CountHandlers(); i > 0; i--) {
+          SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+          if (feed) {
+            error = B_OK;
+            BMessage oneResult;
+            oneResult.AddString("cypherkey", feed->cypherkey());
+            oneResult.AddUInt64("sequence", feed->sequence());
+            reply.AddMessage("result", &oneResult);
+          }
         }
       } break;
       case 'USUB': {
