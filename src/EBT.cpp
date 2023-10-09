@@ -16,6 +16,16 @@ double encodeNote(Note &note) {
   return (note.sequence << 1) | (note.receive ? 0 : 1);
 }
 
+RemoteState::RemoteState(double note)
+    :
+    note(decodeNote(note)),
+    updated(std::time(NULL)) {}
+
+RemoteState::RemoteState(const RemoteState &original)
+    :
+    note(original.note),
+    updated(original.updated) {}
+
 Dispatcher::Dispatcher(SSBDatabase *db)
     :
     db(db) {}
@@ -75,13 +85,14 @@ void Link::MessageReceived(BMessage *message) {
           double note;
           if (content.FindDouble(attrname, &note)) {
             const auto &inserted = this->remoteState.insert_or_assign(
-                BString(attrname), decodeNote(note));
+                BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
             dispatcher->checkForMessage(inserted.first->first,
-                                        inserted.first->second.sequence);
-            if (inserted.first->second.receive)
+                                        inserted.first->second.note.sequence);
+            if (inserted.first->second.note.receive)
               dispatcher->checkForMessage(inserted.first->first,
-                                          inserted.first->second.sequence + 1);
+                                          inserted.first->second.note.sequence +
+                                              1);
           }
         }
       }

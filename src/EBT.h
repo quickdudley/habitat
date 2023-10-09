@@ -3,6 +3,7 @@
 
 #include "MUXRPC.h"
 #include "Post.h"
+#include <ctime>
 #include <map>
 #include <queue>
 #include <set>
@@ -17,6 +18,13 @@ struct Note {
 Note decodeNote(double note);
 double encodeNote(Note &note);
 
+struct RemoteState {
+  Note note;
+  std::time_t updated;
+  RemoteState(double note);
+  RemoteState(const RemoteState &original);
+};
+
 class Dispatcher;
 
 class Link : public BHandler {
@@ -27,7 +35,7 @@ public:
 private:
   SSBDatabase *db();
   muxrpc::Sender sender;
-  std::map<BString, Note> remoteState;
+  std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
   std::set<BString> unsent;
