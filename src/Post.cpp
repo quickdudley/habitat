@@ -98,6 +98,14 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
     default:
       return this;
     }
+  } else {
+    BString author;
+    if (msg->FindString("author", &author) == B_OK) {
+      SSBFeed *feed;
+      error = this->findFeed(feed, author);
+      if (error == B_OK)
+        return feed;
+    }
   }
   if (error == B_OK)
     return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
@@ -351,8 +359,23 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->Looper()->RemoveHandler(this);
       delete this;
       error = B_OK;
-    } else
-      return BHandler::MessageReceived(msg);
+    } else {
+      BString author;
+      if (msg->FindString("author", &author) && author == this->cypherkey()) {
+        BString lastID = this->previousLink();
+        BString blank;
+        // TODO: Enqueue any that we get out of order.
+        if ((error = post::validate(msg, this->lastSequence, lastID, false,
+                                    blank)) == B_OK) {
+          BMessage reply;
+          if ((error = this->save(msg, &reply)) == B_OK) {
+            msg->SendReply(&reply);
+            return;
+          }
+        }
+      } else
+        return BHandler::MessageReceived(msg);
+    }
   }
   BPropertyInfo propertyInfo(ssbFeedProperties);
   if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <

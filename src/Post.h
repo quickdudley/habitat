@@ -67,7 +67,7 @@ protected:
   BVolume volume;
   BQuery query;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
-  int64 lastSequence = -1;
+  int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
 };
 

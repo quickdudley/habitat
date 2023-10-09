@@ -257,6 +257,7 @@ Connection::~Connection() {
       i++;
     }
   }
+  // TODO: Send termination notices to `inboundOngoing`
   delete_sem(this->ongoingLock);
 }
 
