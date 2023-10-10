@@ -4,6 +4,7 @@
 #include "Secret.h"
 #include <Directory.h>
 #include <Looper.h>
+#include <PropertyInfo.h>
 #include <Query.h>
 #include <Volume.h>
 #include <queue>
@@ -23,6 +24,8 @@ struct FeedBuildComparator {
 } // namespace post_private_
 
 class SSBFeed;
+
+extern property_info databaseProperties[];
 
 class SSBDatabase : public BLooper {
 public:

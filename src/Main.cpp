@@ -134,14 +134,21 @@ Habitat::Habitat(void)
 
 status_t Habitat::GetSupportedSuites(BMessage *data) {
   data->AddString("suites", "suite/x-vnd.habitat");
-  BPropertyInfo propertyInfo(habitatProperties);
-  data->AddFlat("messages", &propertyInfo);
+  {
+    BPropertyInfo propertyInfo(habitatProperties);
+    data->AddFlat("messages", &propertyInfo);
+  }
+  {
+    BPropertyInfo propertyInfo(databaseProperties);
+    data->AddFlat("messages", &propertyInfo);
+  }
   return BApplication::GetSupportedSuites(data);
 }
 
 BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
+  BPropertyInfo databaseInfo(databaseProperties);
   BPropertyInfo propertyInfo(habitatProperties);
   uint32 match;
   if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
@@ -151,6 +158,11 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
       return NULL;
     } else
       return this;
+  }
+  if (databaseInfo.FindMatch(msg, index, specifier, what, property, &match) >=
+      0) {
+    BMessenger(this->databaseLooper).SendMessage(msg);
+    return NULL;
   }
   return BApplication::ResolveSpecifier(msg, index, specifier, what, property);
 }

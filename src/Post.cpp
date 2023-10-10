@@ -4,7 +4,6 @@
 #include "SignJSON.h"
 #include <File.h>
 #include <Path.h>
-#include <PropertyInfo.h>
 #include <cstring>
 #include <ctime>
 #include <unicode/utf8.h>
@@ -28,7 +27,7 @@ SSBDatabase::~SSBDatabase() {}
 
 enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
 
-static property_info databaseProperties[] = {
+property_info databaseProperties[] = {
     {"ReplicatedFeed",
      {B_GET_PROPERTY, B_CREATE_PROPERTY, 'USUB', 0},
      {B_DIRECT_SPECIFIER, 0},
@@ -486,7 +485,7 @@ BString SSBFeed::previousLink() {
 status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in) {
   // TODO: Also parse URL format
-  if (!in.StartsWith("@") && in.EndsWith(".ed25519")) {
+  if (in.StartsWith("@") && in.EndsWith(".ed25519")) {
     BString substring;
     in.CopyInto(substring, 1, in.Length() - 9);
     auto raw = base64::decode(substring);
