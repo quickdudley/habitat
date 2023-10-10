@@ -39,6 +39,7 @@ private:
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
   std::set<BString> unsent;
+
   friend class Dispatcher;
 };
 
@@ -52,7 +53,9 @@ public:
 
 private:
   void checkForMessage(const BString &author, uint64 sequence);
+  void startNotesTimer(bigtime_t delay);
   SSBDatabase *db;
+  bool buildingNotes = false;
   friend class Link;
 };
 
