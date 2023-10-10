@@ -275,6 +275,7 @@ status_t SSBFeed::load() {
       }
       while (!this->pending.empty() &&
              this->pending.top().sequence == this->lastSequence + 1) {
+        sequence = this->pending.top().sequence;
         BEntry processingEntry(&this->pending.top().ref);
         BNode processingNode(&processingEntry);
         BString cypherkey;
@@ -287,6 +288,7 @@ status_t SSBFeed::load() {
         }
         std::vector<unsigned char> hash =
             base64::decode(b64.String(), b64.Length());
+        this->lastSequence = sequence;
         memcpy(this->lastHash, &hash[0],
                std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
       }
