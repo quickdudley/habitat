@@ -14,7 +14,7 @@ Note decodeNote(double note) {
 double encodeNote(Note &note) {
   if (!note.replicate)
     return -1;
-  return (note.sequence << 1) | (note.receive ? 0 : 1);
+  return (note.sequence << 1) | (note.receive ? 1 : 0);
 }
 
 RemoteState::RemoteState(double note)
@@ -280,7 +280,21 @@ void Link::MessageReceived(BMessage *message) {
     if (!this->unsent.empty())
       dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
   }
-  // TODO: Check for end-of-stream flags
+  if (!message->GetBool("stream", true) || message->GetBool("end", false)) {
+    Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
+    if (this->Looper())
+      this->Looper()->RemoveHandler(this);
+    if (dispatcher) {
+      for (auto state : this->ourState) {
+        if (state.second.receive) {
+          BMessage refind('CKSR');
+          refind.AddString("cypherkey", state.first);
+          BMessenger(dispatcher).SendMessage(&refind);
+        }
+      }
+    }
+    delete this;
+  }
 }
 
 void Link::loadState() {

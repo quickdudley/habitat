@@ -279,6 +279,12 @@ void Connection::Quit() {
     if (BHandler *handler = this->HandlerAt(i); handler != this)
       delete handler;
   }
+  for (auto link : this->inboundOngoing) {
+    BMessage stop('MXRP');
+    stop.AddBool("content", false);
+    stop.AddBool("end", true);
+    link.second.target.SendMessage(&stop);
+  }
   BLooper::Quit();
 }
 
