@@ -153,7 +153,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       } break;
       case B_GET_PROPERTY: {
-        for (int32 i = this->CountHandlers(); i > 0; i--) {
+        for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
           if (feed) {
             error = B_OK;
@@ -169,7 +169,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         if ((error = msg->FindMessenger("subscriber", &target)) != B_OK)
           break;
         this->StartWatching(target, 'NMSG');
-        for (int32 i = this->CountHandlers(); i >= 0; i--) {
+        for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
           if (feed != NULL) {
             feed->notifyChanges(target);
@@ -191,7 +191,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, BString &cypherkey) {
-  for (int32 i = this->CountHandlers(); i >= 0; i--) {
+  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
     SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
     if (feed && feed->cypherkey() == cypherkey) {
       result = feed;

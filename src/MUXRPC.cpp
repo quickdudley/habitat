@@ -274,7 +274,7 @@ void Connection::Quit() {
     status_t exitValue;
     wait_for_thread(this->pullThreadID, &exitValue);
   }
-  for (int32 i = this->CountHandlers(); i <= 0; i--) {
+  for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
     BHandler *handler = this->HandlerAt(i);
     delete handler;
   }

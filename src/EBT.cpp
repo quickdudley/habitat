@@ -43,7 +43,34 @@ BHandler *Dispatcher::ResolveSpecifier(BMessage *msg, int32 index,
 }
 
 void Dispatcher::MessageReceived(BMessage *msg) {
-  // TODO
+  {
+    BMessage result;
+    if (msg->FindMessage("result", &result) == B_OK) {
+      BString author;
+      JSON::number sequence;
+      if (result.FindDouble("sequence", &sequence) == B_OK &&
+          result.FindString("author", &author) == B_OK) {
+        uint64 actualSequence = sequence;
+        bool sentAny = false;
+        for (int i = this->CountHandlers() - 1; i >= 0; i--) {
+          if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
+            if (auto state = link->remoteState.find(author);
+                state != link->remoteState.end()) {
+              if (state->second.note.sequence + 1 == sequence) {
+                link->sender.send(&result, true, false, false);
+                state->second.note.sequence++;
+                sentAny = true;
+              }
+            }
+          }
+        }
+        if (sentAny) {
+          this->checkForMessage(author, actualSequence + 1);
+        }
+        return;
+      }
+    }
+  }
   return BLooper::MessageReceived(msg);
 }
 
