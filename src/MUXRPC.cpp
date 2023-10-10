@@ -237,9 +237,10 @@ Connection::Connection(
     std::unique_ptr<BDataIO> inner,
     std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers)
     :
+    BLooper("MUXRPC sender"),
     handlers(handlers) {
   this->inner = std::move(inner);
-  this->ongoingLock = create_sem(1, "MUXRPC incoming connections lock");
+  this->ongoingLock = create_sem(1, "MUXRPC incoming streams lock");
   BoxStream *shs = dynamic_cast<BoxStream *>(this->inner.get());
   if (shs) {
     shs->getPeerKey(this->peer);
@@ -275,8 +276,8 @@ void Connection::Quit() {
     wait_for_thread(this->pullThreadID, &exitValue);
   }
   for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
-    BHandler *handler = this->HandlerAt(i);
-    delete handler;
+    if (BHandler *handler = this->HandlerAt(i); handler != this)
+      delete handler;
   }
   BLooper::Quit();
 }
@@ -616,6 +617,7 @@ status_t Connection::readOne() {
             this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
             release_sem(this->ongoingLock);
           }
+          return B_OK;
         }
       }
       {

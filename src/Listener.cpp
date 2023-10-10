@@ -1,6 +1,5 @@
 #include "Listener.h"
 #include "Connection.h"
-#include "MUXRPC.h"
 #include <Application.h>
 #include <Handler.h>
 #include <iostream>
@@ -25,6 +24,10 @@ std::shared_ptr<std::vector<std::shared_ptr<muxrpc::Method>>> defaultHandlers =
     std::make_shared<std::vector<std::shared_ptr<muxrpc::Method>>>(
         std::vector<std::shared_ptr<muxrpc::Method>>());
 } // namespace
+
+void registerMethod(std::shared_ptr<muxrpc::Method> method) {
+  defaultHandlers->push_back(method);
+}
 
 int SSBListener::run_() {
   if (defaultHandlers->size() == 0) {

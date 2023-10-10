@@ -31,6 +31,7 @@ class Link : public BHandler {
 public:
   Link(muxrpc::Sender sender);
   void MessageReceived(BMessage *message) override;
+  void loadState();
 
 private:
   SSBDatabase *db();
@@ -39,7 +40,6 @@ private:
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
   std::set<BString> unsent;
-
   friend class Dispatcher;
 };
 
@@ -63,6 +63,8 @@ class Begin : public muxrpc::Method {
 public:
   Begin(Dispatcher *dispatcher);
   ~Begin();
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo, BMessenger *inbound);
 
 private:
   Dispatcher *dispatcher;

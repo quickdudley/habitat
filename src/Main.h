@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "EBT.h"
 #include "Lan.h"
 #include "Listener.h"
 #include "Post.h"
@@ -32,6 +33,7 @@ private:
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;
+  ebt::Dispatcher *ebt;
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;

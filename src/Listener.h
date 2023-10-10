@@ -1,6 +1,7 @@
 #ifndef LISTENER_H
 #define LISTENER_H
 
+#include "MUXRPC.h"
 #include "Secret.h"
 #include <Messenger.h>
 #include <Socket.h>
@@ -21,5 +22,7 @@ private:
   std::unique_ptr<BAbstractSocket> listenSocket;
   BMessenger broadcaster;
 };
+
+void registerMethod(std::shared_ptr<muxrpc::Method> method);
 
 #endif // LISTENER_H

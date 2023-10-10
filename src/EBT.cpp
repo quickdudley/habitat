@@ -1,5 +1,6 @@
 #include "EBT.h"
 #include <MessageRunner.h>
+#include <iostream>
 
 namespace ebt {
 
@@ -28,6 +29,7 @@ RemoteState::RemoteState(const RemoteState &original)
 
 Dispatcher::Dispatcher(SSBDatabase *db)
     :
+    BLooper("EBT"),
     db(db) {}
 
 status_t Dispatcher::GetSupportedSuites(BMessage *data) {
@@ -85,14 +87,15 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       bool gotSequence = false;
       for (int32 i = 0; request.SetCurrentSpecifier(i) == B_OK; i++) {
         if (request.GetCurrentSpecifier(&index, &specifier, NULL, &property) ==
-                B_OK &&
-            BString(property) == "ReplicatedFeed") {
-          BString feedId;
-          if (specifier.FindString("name", &feedId) == B_OK) {
-            cypherkey = feedId;
-          }
-        } else if (BString(property) == "Sequence")
-          gotSequence = true;
+            B_OK) {
+          if (BString(property) == "ReplicatedFeed") {
+            BString feedId;
+            if (specifier.FindString("name", &feedId) == B_OK) {
+              cypherkey = feedId;
+            }
+          } else if (BString(property) == "Sequence")
+            gotSequence = true;
+        }
       }
       if (gotSequence) {
         BMessage timerMsg('CKSR');
@@ -175,6 +178,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     }
     if (anyRemaining)
       BMessenger(this).SendMessage(msg);
+    else
+      this->buildingNotes = false;
     return;
   }
   {
@@ -210,8 +215,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
 
 void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
   BMessage message(B_GET_PROPERTY);
-  message.AddSpecifier("ReplicatedFeed", author);
   message.AddSpecifier("Post", (int32)sequence);
+  message.AddSpecifier("ReplicatedFeed", author);
   BMessenger(this->db).SendMessage(&message, BMessenger(this));
 }
 
@@ -244,7 +249,7 @@ void Link::MessageReceived(BMessage *message) {
                                     &attrtype)) != B_BAD_INDEX) {
         if (err == B_OK) {
           double note;
-          if (content.FindDouble(attrname, &note)) {
+          if (content.FindDouble(attrname, &note) == B_OK) {
             const auto &inserted = this->remoteState.insert_or_assign(
                 BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
@@ -256,23 +261,35 @@ void Link::MessageReceived(BMessage *message) {
                                               1);
           }
         }
+        index++;
       }
     }
-  } else if (message->FindMessage("result", &content) == B_OK) {
-    for (int32 index = 0;
-        message->FindMessage("result", index, &content) == B_OK; index++) {
+  } else {
+    int32 i = 0;
+    while (message->FindMessage("result", i, &content) == B_OK) {
       BString feedId;
       uint64 sequence;
       if (content.FindUInt64("sequence", &sequence) == B_OK &&
-          content.FindString("cypherkey", &feedId)) {
+          content.FindString("cypherkey", &feedId) == B_OK) {
         this->ourState.insert({feedId, {true, false, sequence}});
         this->unsent.emplace(feedId);
+        this->sendSequence.push(feedId);
       }
+      i++;
     }
     if (!this->unsent.empty())
       dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
   }
   // TODO: Check for end-of-stream flags
+}
+
+void Link::loadState() {
+  SSBDatabase *db = this->db();
+  if (db) {
+    BMessage request(B_GET_PROPERTY);
+    request.AddSpecifier("ReplicatedFeed");
+    BMessenger(db).SendMessage(&request, BMessenger(this));
+  }
 }
 
 void Dispatcher::startNotesTimer(bigtime_t delay) {
@@ -291,4 +308,21 @@ SSBDatabase *Link::db() {
     return NULL;
 }
 
+status_t Begin::call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                     BMessage *args, BMessenger replyTo, BMessenger *inbound) {
+  BMessage argsObject;
+  if (args->FindMessage("0", &argsObject) != B_OK)
+    return B_ERROR;
+  if (argsObject.GetDouble("version", 3) != 3)
+    return B_ERROR;
+  if (BString("classic") != argsObject.GetString("format", "classic"))
+    return B_ERROR;
+  Link *link = new Link(muxrpc::Sender(replyTo));
+  this->dispatcher->Lock();
+  this->dispatcher->AddHandler(link);
+  *inbound = BMessenger(link);
+  link->loadState();
+  this->dispatcher->Unlock();
+  return B_OK;
+}
 } // namespace ebt

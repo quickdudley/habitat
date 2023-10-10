@@ -216,6 +216,10 @@ void Habitat::ReadyToRun() {
   this->ipListener = std::make_unique<SSBListener>(
       this->myId, BMessenger(this->lanBroadcaster.get()));
   this->ipListener->run();
+  this->ebt = new ebt::Dispatcher(this->databaseLooper);
+  this->ebt->Run();
+  this->RegisterLooper(this->ebt);
+  registerMethod(std::make_shared<ebt::Begin>(this->ebt));
 }
 
 void Habitat::Quit() {

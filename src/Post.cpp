@@ -94,7 +94,7 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
         error = B_BAD_INDEX;
       } else
         break;
-    }
+    } break;
     default:
       return this;
     }
@@ -133,7 +133,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     propertyInfo.FindMatch(msg, index, &specifier, what, property, &match);
     switch (match) {
     case kReplicatedFeed:
-      switch (what) {
+      switch (msg->what) {
       case B_COUNT_PROPERTIES:
         // TODO
         error = B_UNSUPPORTED;
@@ -186,6 +186,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     msg->SendReply(&reply);
+    return;
   }
   return BLooper::MessageReceived(msg);
 }
@@ -411,7 +412,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     BMessage specifier;
     int32 spWhat;
     const char *property;
-    if ((error = msg->GetCurrentSpecifier(&index, &specifier, &what,
+    if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
                                           &property)) != B_OK)
       break;
     if (spWhat == B_INDEX_SPECIFIER) {
@@ -620,7 +621,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     rootSink.beginObject(key);
     key.SetTo("previous");
     BString value;
-    if (this->lastSequence >= 0) {
+    if (this->lastSequence > 0) {
       value = this->previousLink();
       rootSink.addString(key, value);
     } else {
@@ -632,7 +633,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     key.SetTo("sequence");
     rootSink.addNumber(key, (JSON::number)(++this->lastSequence));
     key.SetTo("timestamp");
-    rootSink.addNumber(key, (JSON::number)std::time(NULL));
+    rootSink.addNumber(key, (JSON::number)std::time(NULL) * 1000);
     key.SetTo("hash");
     value.SetTo("sha256");
     rootSink.addString(key, value);
