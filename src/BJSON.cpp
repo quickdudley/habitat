@@ -128,6 +128,7 @@ void fromBMessage(RootSink *target, const BMessage *source) {
 }
 
 void fromBMessageArray(RootSink *target, const BMessage *source) {
+  source->PrintToStream();
   for (int32 index = 0;; index++) {
     BString key;
     key << index;
@@ -151,7 +152,7 @@ private:
   BString key;
 };
 
-class BMessageArrayChild : public BMessageObjectDocSink {
+class BMessageArrayChild : public BMessageArrayDocSink {
 public:
   BMessageArrayChild(BMessage *parent, BString &key);
   ~BMessageArrayChild();
@@ -176,7 +177,7 @@ BMessageObjectChild::~BMessageObjectChild() {
 
 BMessageArrayChild::BMessageArrayChild(BMessage *parent, BString &key)
     :
-    BMessageObjectDocSink(&target),
+    BMessageArrayDocSink(&target),
     parent(parent),
     key(key) {
   this->target.what = 'JSAR';

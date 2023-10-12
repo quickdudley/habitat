@@ -167,7 +167,14 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         BMessenger target;
         if ((error = msg->FindMessenger("subscriber", &target)) != B_OK)
           break;
-        this->StartWatching(target, 'NMSG');
+        // StartWatching operates in the opposite direction than expected
+        // so I'm using knownledge of Haiku internals.
+        {
+          BMessage obs('_OBS');
+          obs.AddMessenger("be:observe_target", target);
+          obs.AddInt32(B_OBSERVE_WHAT_CHANGE, 'NMSG');
+          BHandler::MessageReceived(&obs);
+        }
         for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
           if (feed != NULL) {
@@ -185,6 +192,12 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     msg->SendReply(&reply);
+    return;
+  } else if (BString author; msg->FindString("author", &author) == B_OK) {
+    SSBFeed *feed;
+    if (this->findFeed(feed, author) == B_OK) {
+      BMessenger(feed).SendMessage(msg);
+    }
     return;
   }
   return BLooper::MessageReceived(msg);
@@ -357,80 +370,80 @@ status_t SSBFeed::GetSupportedSuites(BMessage *data) {
 }
 
 void SSBFeed::MessageReceived(BMessage *msg) {
-  if (!msg->HasSpecifiers()) {
-    msg->PrintToStream();
-    return BHandler::MessageReceived(msg);
-  }
-  BMessage reply(B_REPLY);
-  status_t error = B_ERROR;
-  int32 index;
-  BMessage specifier;
-  int32 what;
-  const char *property;
-  uint32 match;
-  if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) != B_OK) {
-    if (msg->what == B_DELETE_PROPERTY) {
-      this->Looper()->RemoveHandler(this);
-      delete this;
-      error = B_OK;
-    } else {
-      BString author;
-      if (msg->FindString("author", &author) && author == this->cypherkey()) {
-        BString lastID = this->previousLink();
-        BString blank;
-        // TODO: Enqueue any that we get out of order.
-        if ((error = post::validate(msg, this->lastSequence, lastID, false,
-                                    blank)) == B_OK) {
-          BMessage reply;
-          if ((error = this->save(msg, &reply)) == B_OK) {
-            msg->SendReply(&reply);
-            return;
-          }
-        }
-      } else
-        return BHandler::MessageReceived(msg);
-    }
-  }
-  BPropertyInfo propertyInfo(ssbFeedProperties);
-  if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
-      0)
-    return BHandler::MessageReceived(msg);
-  switch (match) {
-  case kFeedCypherkey:
-    reply.AddString("result", this->cypherkey());
-    error = B_OK;
-    break;
-  case kFeedLastSequence:
-    reply.AddInt64("result", this->lastSequence);
-    error = B_OK;
-    break;
-  case kFeedLastID:
-    reply.AddString("result", this->previousLink());
-    error = B_OK;
-    break;
-  case kOnePost: {
+  if (msg->HasSpecifiers()) {
+
+    BMessage reply(B_REPLY);
+    status_t error = B_ERROR;
     int32 index;
     BMessage specifier;
-    int32 spWhat;
+    int32 what;
     const char *property;
-    if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
-                                          &property)) != B_OK)
-      break;
-    if (spWhat == B_INDEX_SPECIFIER) {
-      if ((error = specifier.FindInt32("index", &index)) != B_OK)
-        break;
-      BMessage post;
-      if ((error = this->findPost(&post, index)) != B_OK)
-        break;
-      reply.AddMessage("result", &post);
+    uint32 match;
+    if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
+        B_OK) {
+      if (msg->what == B_DELETE_PROPERTY) {
+        this->Looper()->RemoveHandler(this);
+        delete this;
+        error = B_OK;
+      } else {
+        return BHandler::MessageReceived(msg);
+      }
     }
-  } break;
-  default:
+    BPropertyInfo propertyInfo(ssbFeedProperties);
+    if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
+        0)
+      return BHandler::MessageReceived(msg);
+    switch (match) {
+    case kFeedCypherkey:
+      reply.AddString("result", this->cypherkey());
+      error = B_OK;
+      break;
+    case kFeedLastSequence:
+      reply.AddInt64("result", this->lastSequence);
+      error = B_OK;
+      break;
+    case kFeedLastID:
+      reply.AddString("result", this->previousLink());
+      error = B_OK;
+      break;
+    case kOnePost: {
+      int32 index;
+      BMessage specifier;
+      int32 spWhat;
+      const char *property;
+      if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
+                                            &property)) != B_OK)
+        break;
+      if (spWhat == B_INDEX_SPECIFIER) {
+        if ((error = specifier.FindInt32("index", &index)) != B_OK)
+          break;
+        BMessage post;
+        if ((error = this->findPost(&post, index)) != B_OK)
+          break;
+        reply.AddMessage("result", &post);
+      }
+    } break;
+    default:
+      return BHandler::MessageReceived(msg);
+    }
+    reply.AddInt32("error", error);
+    reply.AddString("message", strerror(error));
+    msg->SendReply(&reply);
+  } else if (BString author; msg->FindString("author", &author) == B_OK &&
+                             author == this->cypherkey()) {
+    BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
+    BString blank;
+    // TODO: Enqueue any that we get out of order.
+    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
+      BMessage reply;
+      if (this->save(msg, &reply) == B_OK) {
+        msg->SendReply(&reply);
+        return;
+      }
+    }
+  } else {
     return BHandler::MessageReceived(msg);
   }
-  reply.AddInt32("error", error);
-  reply.AddString("message", strerror(error));
-  msg->SendReply(&reply);
 }
 
 status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
@@ -532,7 +545,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   this->lastSequence = attrNum;
-  notifyChanges();
+  this->notifyChanges();
   if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
     if (sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
                        sizeof(int64)) != sizeof(int64))
@@ -815,22 +828,17 @@ static inline status_t validateSize(BMessage *message) {
 status_t validate(BMessage *message, int lastSequence, BString &lastID,
                   bool useHmac, BString &hmacKey) {
   status_t result;
-  if ((result = validateHash(message)) != B_OK)
-    return result;
-  if ((result = validateSequence(message, lastSequence)) != B_OK)
-    return result;
-  if ((result = validatePrevious(message, lastID)) != B_OK)
-    return result;
-  if ((result = validateOrder(message)) != B_OK)
-    return result;
-  if ((result = validateEitherContent(message)) != B_OK)
-    return result;
-  if ((result = validateOrder(message)) != B_OK)
-    return result;
-  if ((result = validateSize(message)) != B_OK)
-    return result;
-  if ((result = validateSignature(message, useHmac, hmacKey)) != B_OK)
-    return result;
+#define CHECK(c)                                                               \
+  if ((result = c) != B_OK)                                                    \
+  return result
+  CHECK(validateHash(message));
+  CHECK(validateSequence(message, lastSequence));
+  CHECK(validatePrevious(message, lastID));
+  CHECK(validateOrder(message));
+  CHECK(validateEitherContent(message));
+  CHECK(validateSize(message));
+  CHECK(validateSignature(message, useHmac, hmacKey));
+#undef CHECK
   return B_OK;
 }
 } // namespace post

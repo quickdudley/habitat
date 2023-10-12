@@ -1,7 +1,6 @@
 #include "JSON.h"
 #include <cctype>
 #include <cmath>
-#include <iostream>
 #include <utility>
 
 namespace JSON {
@@ -35,6 +34,8 @@ BString escapeString(BString &src) {
 }
 
 BString stringifyNumber(number value) {
+  if (value == 0)
+    return BString("0");
   BString raw;
   number av = std::abs(value);
   if (std::isnan(value) || std::isinf(value)) {
@@ -298,6 +299,7 @@ void ArraySerializer::item() {
   } else {
     this->nonempty = true;
   }
+  this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
 }
 
@@ -476,7 +478,6 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
   while (remaining > 0) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
-    std::cerr.write(buffer, count);
     remaining -= count;
     if (count <= 0)
       return B_PARTIAL_READ;
@@ -485,15 +486,12 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
         while (remaining > 0 && count > 0) {
           count = input->Read(
               buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
-          std::cerr.write(buffer, count);
           remaining -= count;
         }
-        std::cerr << std::endl;
         return result;
       }
     }
   }
-  std::cerr << std::endl;
   return B_OK;
 }
 

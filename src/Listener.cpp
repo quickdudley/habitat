@@ -81,10 +81,6 @@ int SSBListener::run_() {
       //      argsobj.AddDouble("timeout",300000);
       //      rpc->request(call, muxrpc::RequestType::DUPLEX, &args,
       //      BMessenger(printer), NULL);
-
-      // For initial testing/debugging just do one connection at a time
-      status_t exitValue;
-      wait_for_thread(thread, &exitValue);
     }
   }
   return 0;

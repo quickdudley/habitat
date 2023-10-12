@@ -213,7 +213,6 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     unsigned char headerBytes[9];
     header.writeToBuffer(headerBytes);
     output->WriteExactly(headerBytes, 9);
-    std::cerr << "Sent header: " << header.describe().String() << std::endl;
     output->WriteExactly(content.String(), content.Length());
     std::cerr.write(content.String(), content.Length());
     std::cerr << std::endl;
@@ -514,7 +513,6 @@ status_t Connection::readOne() {
     if ((err = this->populateHeader(&header)) != B_OK)
       return err;
   }
-  std::cerr << "Received header: " << header.describe().String() << std::endl;
   acquire_sem(this->ongoingLock);
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {

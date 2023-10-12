@@ -1,6 +1,7 @@
 #include "SignJSON.h"
 #include "Base64.h"
 #include <cstring>
+#include <iostream>
 #include <unicode/utf8.h>
 #include <utility>
 #include <vector>
@@ -171,6 +172,10 @@ VerifySignature::~VerifySignature() {
     *this->target = crypto_sign_verify_detached(
                         this->signature, (unsigned char *)this->body.String(),
                         this->body.Length(), this->author) == 0;
+    if (!*this->target) {
+      std::cerr << "Unverified signature:" << std::endl
+                << this->body.String() << std::endl;
+    }
   }
 }
 

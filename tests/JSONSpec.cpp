@@ -228,3 +228,13 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   REQUIRE(results.f2 == true);
   REQUIRE(results.extra == false);
 }
+
+TEST_CASE("Correctly serialises 0", "[JSON]") {
+  BString target;
+  {
+    JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&target));
+    BString blank;
+    rootSink.addNumber(blank, 0);
+  }
+  REQUIRE(target == "0");
+}
