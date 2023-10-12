@@ -214,8 +214,6 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(headerBytes);
     output->WriteExactly(headerBytes, 9);
     output->WriteExactly(content.String(), content.Length());
-    std::cerr.write(content.String(), content.Length());
-    std::cerr << std::endl;
     goto cleanup;
   }
 cleanup:
@@ -352,7 +350,8 @@ int32 Connection::pullLoop() {
       }
     }
   } while (result == B_OK);
-  std::cerr << "Closing connection: " << strerror(result) << std::endl;
+  std::cerr << "Closing connection to " << this->cypherkey() << ": "
+            << strerror(result) << std::endl;
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
 }

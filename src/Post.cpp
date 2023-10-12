@@ -470,7 +470,6 @@ status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
-  msg->PrintToStream();
   BPropertyInfo propertyInfo(ssbFeedProperties);
   if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
     return this;
@@ -657,7 +656,6 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     rootSink.closeNode();
     rootSink.closeNode();
   }
-  full.PrintToStream();
   return this->save(&full, reply);
 }
 

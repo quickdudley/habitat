@@ -128,7 +128,6 @@ void fromBMessage(RootSink *target, const BMessage *source) {
 }
 
 void fromBMessageArray(RootSink *target, const BMessage *source) {
-  source->PrintToStream();
   for (int32 index = 0;; index++) {
     BString key;
     key << index;
