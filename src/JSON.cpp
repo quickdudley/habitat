@@ -892,16 +892,19 @@ status_t Parser::charInString(char c, int cstate, int estate) {
       this->unescaped.Append(c, 1);
       break;
     case 'b':
-      this->unescaped.Append('\b', 1);
+      this->unescaped.Append((char)0x08, 1);
       break;
     case 'f':
-      this->unescaped.Append('\f', 1);
+      this->unescaped.Append((char)0x0C, 1);
       break;
     case 'n':
-      this->unescaped.Append('\n', 1);
+      this->unescaped.Append((char)0x0A, 1);
+      break;
+    case 'r':
+      this->unescaped.Append((char)0x0D, 1);
       break;
     case 't':
-      this->unescaped.Append('\t', 1);
+      this->unescaped.Append((char)0x0B, 1);
       break;
     case 'u':
       this->state2 = 2;
