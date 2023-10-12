@@ -231,13 +231,13 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
 
 TEST_CASE("Correctly serialises numbers", "[JSON]") {
   BString target;
-#define EX(n) \
-  target = ""; \
-  { \
+#define EX(n)                                                                  \
+  target = "";                                                                 \
+  {                                                                            \
     JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&target)); \
-    BString blank; \
-    rootSink.addNumber(blank, n); \
-  } \
+    BString blank;                                                             \
+    rootSink.addNumber(blank, n);                                              \
+  }                                                                            \
   REQUIRE(target == #n)
   EX(0);
   EX(1);
@@ -249,10 +249,14 @@ TEST_CASE("Correctly serialises numbers", "[JSON]") {
 TEST_CASE("Correctly parses escaped tab", "[JSON]") {
   class StringSink : public JSON::NodeSink {
   public:
-    StringSink(BString *target) : target(target) {}
-    void addString(BString &rawname, BString &name, BString &raw, BString &value) {
-	  *this->target = value;
+    StringSink(BString *target)
+        :
+        target(target) {}
+    void addString(BString &rawname, BString &name, BString &raw,
+                   BString &value) {
+      *this->target = value;
     }
+
   private:
     BString *target;
   };
