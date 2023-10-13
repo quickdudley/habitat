@@ -3,11 +3,46 @@
 #include "Base64.h"
 #include "SignJSON.h"
 #include <File.h>
+#include <MessageRunner.h>
 #include <Path.h>
 #include <cstring>
 #include <ctime>
+#include <iostream>
 #include <unicode/utf8.h>
 #include <vector>
+
+namespace {
+status_t postAttrs(BNode *sink, BMessage *message, const unsigned char *prehashed = NULL);
+
+class AttrCheck : public BHandler {
+public:
+  AttrCheck(BDirectory dir);
+  void MessageReceived(BMessage *msg);
+private:
+  BDirectory dir;
+};
+
+AttrCheck::AttrCheck(BDirectory dir) : dir(dir) {
+  this->dir.Rewind();
+}
+
+void AttrCheck::MessageReceived(BMessage *msg) {
+  if (msg->what == 'TICK') {
+  	BMessage tick('TICK');
+  	if(BEntry entry; this->dir.GetNextEntry(&entry, true) == B_OK) {
+  	  BFile file(&entry, B_READ_ONLY);
+  	  if (BMessage contents; file.IsReadable() && contents.Unflatten(&file) == B_OK) {
+	    postAttrs(&file, &contents);
+  	  }
+  	  BMessageRunner::StartSending(this, &tick, 250000, 1);
+  	} else {
+  	  this->dir.Rewind();
+  	  BMessageRunner::StartSending(this, &tick, 300000000, 1); // 5 minutes
+  	}
+  } else
+    BHandler::MessageReceived(msg);
+} 
+}
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   BString result("%");
@@ -21,7 +56,11 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
 SSBDatabase::SSBDatabase(BDirectory store)
     :
     BLooper("SSB message database"),
-    store(store) {}
+    store(store) {
+  BHandler *check = new AttrCheck(store);
+  this->AddHandler(check);
+  BMessenger(check).SendMessage('TICK');
+}
 
 SSBDatabase::~SSBDatabase() {}
 
@@ -509,6 +548,66 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
   return B_ERROR;
 }
 
+namespace {
+// TODO: Use something more flexible
+const char *contextAttrs[] = {
+  "link", "fork", "root", "project", "repo"
+};
+
+status_t contextLink(BString *out, BString &type, BMessage *message) {
+  for (int i = -1; i < (int)(sizeof(contextAttrs) / sizeof(char *)); i++) {
+  	const char* attrName = i >= 0 ? contextAttrs[i] : type.String();
+  	if (BString value; message->FindString(attrName, &value) == B_OK) {
+  	  *out = value;
+  	  return B_OK;
+  	} else if(BMessage inner; message->FindMessage(attrName, &inner) == B_OK) {
+  	  if (contextLink(out, type, &inner) == B_OK)
+  	    return B_OK;
+  	} 
+  }
+  return B_NAME_NOT_FOUND;
+}
+
+status_t postAttrs(BNode *sink, BMessage *message, const unsigned char *prehashed) {
+  status_t status;
+  unsigned char msgHash[crypto_hash_sha256_BYTES];
+  if (prehashed)
+    memcpy(msgHash, prehashed, crypto_hash_sha256_BYTES);
+  else {
+  	JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+    JSON::fromBMessage(&rootSink, message);
+  }
+  BString attrString = messageCypherkey(msgHash);
+  if ((status = sink->WriteAttrString("HABITAT:cypherkey", &attrString)) != B_OK)
+    return status;
+  int64 attrNum;
+  if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
+    if (sink->WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
+                       sizeof(int64)) != sizeof(int64))
+      return B_IO_ERROR;
+  }
+  if ((status = message->FindString("author", &attrString)) != B_OK)
+    return status;
+  if ((status = sink->WriteAttrString("HABITAT:author", &attrString)) != B_OK)
+    return status;
+  if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
+    if (sink->WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
+                       sizeof(int64)) != sizeof(int64))
+      return B_IO_ERROR;
+  }
+  if (BMessage content; message->FindMessage("content", &content) == B_OK) {
+  	if (BString type; content.FindString("type", &type) == B_OK) {
+  	  sink->WriteAttrString("HABITAT:type", &type);
+  	  if (BString context; contextLink(&context, type, &content) == B_OK)
+  	    sink->WriteAttrString("HABITAT:context", &context);
+  	  else
+  	    sink->RemoveAttr("HABITAT:context");
+  	}
+  }
+  return B_OK;
+}
+}
+
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
@@ -524,32 +623,19 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     return status;
   if ((status = message->Flatten(&sink)) != B_OK)
     return status;
-  BString attrString = messageCypherkey(msgHash);
-  if ((status = sink.WriteAttrString("HABITAT:cypherkey", &attrString)) != B_OK)
-    return status;
   BMessage result;
   entry_ref ref;
   BEntry entry(&this->store, filename.String());
   entry.GetRef(&ref);
   result.AddRef("ref", &ref);
-  result.AddString("cypherkey", attrString);
-  attrString = this->cypherkey();
-  if ((status = sink.WriteAttrString("HABITAT:author", &attrString)) != B_OK)
-    return status;
-  int64 attrNum;
-  if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
-    if (sink.WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
-                       sizeof(int64)) != sizeof(int64))
-      return B_IO_ERROR;
-  }
+  result.AddString("cypherkey", messageCypherkey(msgHash));
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
-  this->lastSequence = attrNum;
+  int64 attrNum;
+  if (eitherNumber(&attrNum, message, "sequence") == B_OK)
+    this->lastSequence = attrNum;
+  if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
+    return status;
   this->notifyChanges();
-  if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
-    if (sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
-                       sizeof(int64)) != sizeof(int64))
-      return B_IO_ERROR;
-  }
   if (reply != NULL) {
     reply->AddMessage("result", &result);
   }

@@ -16,6 +16,7 @@ static RequiredIndex requiredIndices[] = {{"HABITAT:cypherkey", B_STRING_TYPE},
                                           {"HABITAT:sequence", B_INT64_TYPE},
                                           {"HABITAT:author", B_STRING_TYPE},
                                           {"HABITAT:timestamp", B_INT64_TYPE},
+                                          {"HABITAT:type", B_STRING_TYPE},
                                           {"HABITAT:context", B_STRING_TYPE}};
 namespace {
 struct IndexDirDeleter {
