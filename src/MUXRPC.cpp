@@ -123,16 +123,16 @@ void SenderHandler::MessageReceived(BMessage *msg) {
 void SenderHandler::actuallySend(const BMessage *wrapper) {
   Header header;
   if (this->canceled) {
-  	header.setBodyType(BodyType::JSON);
-  	header.bodyLength = 4;
-  	header.requestNumber = this->requestNumber;
-  	header.setEndOrError(true);
-  	header.setStream(true);
-  	unsigned char packet[13];
-  	header.writeToBuffer(packet);
-  	memcpy(packet + 9, "true", 4);
-  	this->output()->WriteExactly(packet, 13);
-  	goto cleanup;
+    header.setBodyType(BodyType::JSON);
+    header.bodyLength = 4;
+    header.requestNumber = this->requestNumber;
+    header.setEndOrError(true);
+    header.setStream(true);
+    unsigned char packet[13];
+    header.writeToBuffer(packet);
+    memcpy(packet + 9, "true", 4);
+    this->output()->WriteExactly(packet, 13);
+    goto cleanup;
   }
   header.setEndOrError(wrapper->GetBool("end", true));
   header.setStream(wrapper->GetBool("stream", true));
@@ -226,7 +226,8 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     goto cleanup;
   }
 cleanup:
-  if (this->canceled || wrapper->GetBool("end", true) || !wrapper->GetBool("stream", true)) {
+  if (this->canceled || wrapper->GetBool("end", true) ||
+      !wrapper->GetBool("stream", true)) {
     auto conn = this->Looper();
     conn->Lock();
     conn->RemoveHandler(this);
@@ -583,12 +584,12 @@ status_t Connection::readOne() {
       release_sem(this->ongoingLock);
       this->Lock();
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-      	if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
-      	  handler && handler->requestNumber == -header.requestNumber) {
-      	  handler->canceled = true;
-      	  BMessenger(handler).SendMessage('SEND');
-      	  break;
-      	}
+        if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
+            handler && handler->requestNumber == -header.requestNumber) {
+          handler->canceled = true;
+          BMessenger(handler).SendMessage('SEND');
+          break;
+        }
       }
       this->Unlock();
     }
