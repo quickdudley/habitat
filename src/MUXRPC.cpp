@@ -115,9 +115,6 @@ void SenderHandler::MessageReceived(BMessage *msg) {
     }
     break;
   }
-  case 'DEL_':
-    delete this;
-    break;
   default:
     BHandler::MessageReceived(msg);
   }
@@ -125,6 +122,18 @@ void SenderHandler::MessageReceived(BMessage *msg) {
 
 void SenderHandler::actuallySend(const BMessage *wrapper) {
   Header header;
+  if (this->canceled) {
+  	header.setBodyType(BodyType::JSON);
+  	header.bodyLength = 4;
+  	header.requestNumber = this->requestNumber;
+  	header.setEndOrError(true);
+  	header.setStream(true);
+  	unsigned char packet[13];
+  	header.writeToBuffer(packet);
+  	memcpy(packet + 9, "true", 4);
+  	this->output()->WriteExactly(packet, 13);
+  	goto cleanup;
+  }
   header.setEndOrError(wrapper->GetBool("end", true));
   header.setStream(wrapper->GetBool("stream", true));
   header.requestNumber = this->requestNumber;
@@ -217,8 +226,8 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     goto cleanup;
   }
 cleanup:
-  if (wrapper->GetBool("end", true) || !wrapper->GetBool("stream", true)) {
-    Connection *conn = dynamic_cast<Connection *>(this->Looper());
+  if (this->canceled || wrapper->GetBool("end", true) || !wrapper->GetBool("stream", true)) {
+    auto conn = this->Looper();
     conn->Lock();
     conn->RemoveHandler(this);
     conn->Unlock();
@@ -572,6 +581,16 @@ status_t Connection::readOne() {
       acquire_sem(this->ongoingLock);
       this->inboundOngoing.erase(header.requestNumber);
       release_sem(this->ongoingLock);
+      this->Lock();
+      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+      	if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
+      	  handler && handler->requestNumber == -header.requestNumber) {
+      	  handler->canceled = true;
+      	  BMessenger(handler).SendMessage('SEND');
+      	  break;
+      	}
+      }
+      this->Unlock();
     }
     if (next.IsValid())
       return next.SendMessage(&wrapper);

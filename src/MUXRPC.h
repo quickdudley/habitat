@@ -99,6 +99,7 @@ private:
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
   uint32 sentSequence = 0;
+  bool canceled = false;
   friend class Connection;
 };
 
