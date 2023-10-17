@@ -356,8 +356,6 @@ int32 Connection::pullLoop() {
   	logtext << this->cypherkey() << ": " << strerror(result);
   	writeLog('MXRP', logtext);
   }
-  std::cerr << "Closing connection to " << this->cypherkey() << ": "
-            << strerror(result) << std::endl;
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
 }

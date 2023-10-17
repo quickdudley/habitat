@@ -6,15 +6,10 @@
 
 void writeLog(int32 category, BString &text) {
   BMessage logMessage('LOG_');
+  logMessage.AddUInt64("time", time(NULL));
   logMessage.AddInt32("category", category);
   logMessage.AddString("text", text);
-  be_app->Lock();
-  for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
-  	if (Logger *logger = dynamic_cast<Logger *>(be_app->HandlerAt(i)); logger != NULL) {
-	  BMessenger(logger).SendMessage(&logMessage);
-  	}
-  }
-  be_app->Unlock();
+  BMessenger(be_app).SendMessage(&logMessage);
 }
 
 Logger::Logger() {}
@@ -22,7 +17,7 @@ Logger::Logger() {}
 void Logger::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'LOG_': {
-    time_t now = time(NULL);
+    time_t now = message->GetUInt64("time", time(NULL));
     if (int32 category;
         message->FindInt32("category", &category) == B_OK &&
         this->categories.find(category) != this->categories.end()) {
