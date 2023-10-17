@@ -1,5 +1,7 @@
+#include "Logging.h"
 #include "Main.h"
 #include "Indices.h"
+#include <ByteOrder.h>
 #include <Catalog.h>
 #include <File.h>
 #include <FindDirectory.h>
@@ -30,7 +32,7 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
-enum { kTimeZone, kCypherkey, kCreatePost };
+enum { kTimeZone, kCypherkey, kCreatePost, kLogCategory };
 
 static property_info habitatProperties[] = {
     {"Timezone",
@@ -51,11 +53,19 @@ static property_info habitatProperties[] = {
      "Create a post on our own feed",
      kCreatePost,
      {}},
+    {"LogCategory",
+     {B_CREATE_PROPERTY, B_DELETE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "An enabled category of log entries",
+     kLogCategory,
+     {}},
     {0}};
 
+// TODO: Move most of this into ReadyToRun
 Habitat::Habitat(void)
     :
     BApplication("application/x-vnd.habitat") {
+  this->AddHandler(new Logger());
   // Set timezone
   {
     BTimeZone defaultTimeZone;
@@ -168,8 +178,17 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
 }
 
 void Habitat::MessageReceived(BMessage *msg) {
-  if (!msg->HasSpecifiers())
-    return BApplication::MessageReceived(msg);
+  if (!msg->HasSpecifiers()) {
+  	if (msg->what == 'LOG_') {
+  	  for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
+  	  	if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i)); logger != NULL) {
+	      BMessenger(logger).SendMessage(msg);
+  	  	}
+  	  }
+  	  return;
+  	} else
+      return BApplication::MessageReceived(msg);
+  }
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
   int32 index;
@@ -207,6 +226,31 @@ void Habitat::MessageReceived(BMessage *msg) {
     reply.AddString("result", this->myId->getCypherkey());
     error = B_OK;
     break;
+  case kLogCategory: {
+  	int32 category;
+  	if (BString cascii; msg->FindString("category", &cascii) == B_OK) {
+  	  if (cascii.Length() != 4) {
+  	  	error = B_BAD_VALUE;
+  	  	break;
+  	  }
+  	  category = *((int32 *)cascii.String());
+  	  category = B_BENDIAN_TO_HOST_INT32(category);
+  	} else if(msg->FindInt32("category", &category) != B_OK) {
+      error = B_BAD_VALUE;
+      break;
+  	}
+  	for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+  	  if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i)); logger != NULL) {
+	    if (msg->what == B_CREATE_PROPERTY) {
+	      logger->enableCategory(category);
+	      error = B_OK;
+	    } else if (msg->what == B_DELETE_PROPERTY) {
+	      logger->disableCategory(category);
+	      error = B_OK;
+	    }
+  	  }
+  	}
+  } break;
   default:
     return BApplication::MessageReceived(msg);
   }
