@@ -3,6 +3,7 @@
 #include "Base64.h"
 #include "Connection.h"
 #include "JSON.h"
+#include "Logging.h"
 #include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -350,6 +351,11 @@ int32 Connection::pullLoop() {
       }
     }
   } while (result == B_OK);
+  {
+  	BString logtext("Closing connection to ");
+  	logtext << this->cypherkey() << ": " << strerror(result);
+  	writeLog('MXRP', logtext);
+  }
   std::cerr << "Closing connection to " << this->cypherkey() << ": "
             << strerror(result) << std::endl;
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
@@ -646,7 +652,7 @@ status_t Connection::readOne() {
           errorText << name[i];
           logText << name[i];
         }
-        std::cerr << logText.String() << std::endl;
+        writeLog('MNOR', logText);
         errorText << " is not in the list of allowed methods";
         errorMessage.AddString("message", errorText);
         errorMessage.AddString("name", "error");

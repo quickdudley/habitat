@@ -46,7 +46,7 @@ int SSBListener::run_() {
     this->listenSocket->Listen();
     this->listenSocket->SetTimeout(5000000);
     local = this->listenSocket->Local();
-    std::cerr << "Listening on port " << local.Port() << std::endl;
+    std::cout << "Listening on port " << local.Port() << std::endl;
     BMessage message('BEGN');
     message.AddUInt16("port", local.Port());
     this->broadcaster.SendMessage(&message);
