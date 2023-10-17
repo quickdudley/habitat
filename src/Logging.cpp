@@ -8,11 +8,13 @@ void writeLog(int32 category, BString &text) {
   BMessage logMessage('LOG_');
   logMessage.AddInt32("category", category);
   logMessage.AddString("text", text);
+  be_app.Lock();
   for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
   	if (Logger *logger = dynamic_cast<Logger *>(be_app->HandlerAt(i)); logger != NULL) {
 	  BMessenger(logger).SendMessage(&logMessage);
   	}
   }
+  be_app.Unlock();
 }
 
 Logger::Logger() {}
