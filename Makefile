@@ -40,6 +40,7 @@ SRCS = \
 	 src/JSON.cpp  \
 	 src/Lan.cpp  \
 	 src/Listener.cpp  \
+	 src/Logging.cpp \
 	 src/Main.cpp  \
 	 src/MUXRPC.cpp  \
 	 src/Post.cpp  \
