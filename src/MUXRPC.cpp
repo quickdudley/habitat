@@ -311,6 +311,8 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
   SenderHandler *handler;
   try {
     int32 requestNumber = this->nextRequest++;
+    // TODO: This will probably never actually reach INT32_MAX, but
+    // we should ensure request numbers still in use are skipped if it does
     if (this->nextRequest == INT32_MAX)
       this->nextRequest = 1;
     handler = new SenderHandler(this, requestNumber);
@@ -362,9 +364,9 @@ int32 Connection::pullLoop() {
     }
   } while (result == B_OK);
   {
-  	BString logtext("Closing connection to ");
-  	logtext << this->cypherkey() << ": " << strerror(result);
-  	writeLog('MXRP', logtext);
+    BString logtext("Closing connection to ");
+    logtext << this->cypherkey() << ": " << strerror(result);
+    writeLog('MXRP', logtext);
   }
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
@@ -669,6 +671,23 @@ status_t Connection::readOne() {
           }
           errorText << name[i];
           logText << name[i];
+        }
+        switch (requestType) {
+        case RequestType::SOURCE:
+          logText << " (source)";
+          break;
+        case RequestType::DUPLEX:
+          logText << " (duplex)";
+          break;
+        case RequestType::ASYNC:
+          logText << " (async)";
+          break;
+        }
+        logText << " ";
+        {
+          JSON::RootSink rootSink(
+              std::make_unique<JSON::SerializerStart>(&logText));
+          JSON::fromBMessage(&rootSink, &args);
         }
         writeLog('MNOR', logText);
         errorText << " is not in the list of allowed methods";

@@ -1,6 +1,6 @@
-#include "Logging.h"
 #include "Main.h"
 #include "Indices.h"
+#include "Logging.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
 #include <File.h>
@@ -179,14 +179,15 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
 
 void Habitat::MessageReceived(BMessage *msg) {
   if (!msg->HasSpecifiers()) {
-  	if (msg->what == 'LOG_') {
-  	  for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
-  	  	if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i)); logger != NULL) {
-	      BMessenger(logger).SendMessage(msg);
-  	  	}
-  	  }
-  	  return;
-  	} else
+    if (msg->what == 'LOG_') {
+      for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
+        if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i));
+            logger != NULL) {
+          BMessenger(logger).SendMessage(msg);
+        }
+      }
+      return;
+    } else
       return BApplication::MessageReceived(msg);
   }
   BMessage reply(B_REPLY);
@@ -227,29 +228,30 @@ void Habitat::MessageReceived(BMessage *msg) {
     error = B_OK;
     break;
   case kLogCategory: {
-  	int32 category;
-  	if (BString cascii; msg->FindString("category", &cascii) == B_OK) {
-  	  if (cascii.Length() != 4) {
-  	  	error = B_BAD_VALUE;
-  	  	break;
-  	  }
-  	  category = *((int32 *)cascii.String());
-  	  category = B_BENDIAN_TO_HOST_INT32(category);
-  	} else if(msg->FindInt32("category", &category) != B_OK) {
+    int32 category;
+    if (BString cascii; msg->FindString("category", &cascii) == B_OK) {
+      if (cascii.Length() != 4) {
+        error = B_BAD_VALUE;
+        break;
+      }
+      category = *((int32 *)cascii.String());
+      category = B_BENDIAN_TO_HOST_INT32(category);
+    } else if (msg->FindInt32("category", &category) != B_OK) {
       error = B_BAD_VALUE;
       break;
-  	}
-  	for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-  	  if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i)); logger != NULL) {
-	    if (msg->what == B_CREATE_PROPERTY) {
-	      logger->enableCategory(category);
-	      error = B_OK;
-	    } else if (msg->what == B_DELETE_PROPERTY) {
-	      logger->disableCategory(category);
-	      error = B_OK;
-	    }
-  	  }
-  	}
+    }
+    for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+      if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i));
+          logger != NULL) {
+        if (msg->what == B_CREATE_PROPERTY) {
+          logger->enableCategory(category);
+          error = B_OK;
+        } else if (msg->what == B_DELETE_PROPERTY) {
+          logger->disableCategory(category);
+          error = B_OK;
+        }
+      }
+    }
   } break;
   default:
     return BApplication::MessageReceived(msg);
