@@ -83,9 +83,24 @@ private:
   Wanted *registry;
 };
 
+class WantSource : public BHandler {
+public:
+  WantSource(BMessenger sender, Wanted *registry);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  muxrpc::Sender sender;
+  Wanted *registry;
+};
+
 WantSink::WantSink(muxrpc::Connection *connection, Wanted *registry)
     :
     connection(connection),
+    registry(registry) {}
+
+WantSource::WantSource(BMessenger sender, Wanted *registry)
+    :
+    sender(sender),
     registry(registry) {}
 
 void WantSink::MessageReceived(BMessage *message) {
@@ -144,7 +159,36 @@ void WantSink::MessageReceived(BMessage *message) {
   } else
     BHandler::MessageReceived(message);
 }
+
+void WantSource::MessageReceived(BMessage *message) {}
 } // namespace
+
+status_t CreateWants::call(muxrpc::Connection *connection,
+                           muxrpc::RequestType type, BMessage *args,
+                           BMessenger replyTo, BMessenger *inbound) {
+  BMessage createCrossTalk(B_CREATE_PROPERTY);
+  createCrossTalk.AddSpecifier("CrossTalk");
+  BLooper *looper = this->wanted->Looper();
+  looper->Lock();
+  WantSource *source;
+  try {
+    source = new WantSource(replyTo, this->wanted.get());
+    looper->AddHandler(source);
+  } catch (...) {
+    looper->RemoveHandler(source);
+    looper->Unlock();
+    delete source;
+    throw;
+  }
+  createCrossTalk.AddMessenger("messenger", BMessenger(source));
+  createCrossTalk.AddString("name", "WantedBlob");
+  *inbound = BMessenger(source);
+  BMessenger(connection).SendMessage(&createCrossTalk);
+  this->wanted->sendWants(BMessenger(source));
+  looper->Unlock();
+  // TODO: Send added wants, send IDs of blobs we have
+  return B_OK;
+}
 
 void Wanted::pullWants(muxrpc::Connection *connection) {
   std::vector<BString> name = {"blobs", "createWants"};
@@ -157,5 +201,14 @@ void Wanted::pullWants(muxrpc::Connection *connection) {
   BMessage args('JSAR');
   connection->request(name, muxrpc::RequestType::SOURCE, &args,
                       BMessenger(sink), &outbound);
+}
+
+void Wanted::sendWants(BMessenger target) {
+  for (auto &want : this->wanted) {
+    BMessage message('WANT');
+    message.AddString("cypherkey", std::get<0>(want));
+    message.AddInt8("distance", std::get<1>(want));
+    target.SendMessage(&message);
+  }
 }
 } // namespace blob

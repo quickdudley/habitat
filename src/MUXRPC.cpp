@@ -4,6 +4,7 @@
 #include "Connection.h"
 #include "JSON.h"
 #include "Logging.h"
+#include <PropertyInfo.h>
 #include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -294,6 +295,90 @@ void Connection::Quit() {
     link.second.target.SendMessage(&stop);
   }
   BLooper::Quit();
+}
+
+enum { kCrossTalk, kCreateCrossTalk };
+
+static property_info connectionProperties[] = {
+    {"CrossTalk",
+     {B_GET_PROPERTY, B_DELETE_PROPERTY, 0},
+     {B_NAME_SPECIFIER, 0},
+     "A messenger set up by a MUXRPC handler for coordination with other "
+     "handlers",
+     kCrossTalk,
+     {B_MESSENGER_TYPE}},
+    {"CrossTalk",
+     {B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A messenger set up by a MUXRPC handler for coordination with other "
+     "handlers",
+     kCreateCrossTalk,
+     {B_MESSENGER_TYPE}},
+    {0}};
+
+status_t Connection::GetSupportedSuites(BMessage *data) {
+  data->AddString("suites", "suite/x-vnd.habitat+muxrpc-connection");
+  BPropertyInfo propertyInfo(connectionProperties);
+  data->AddFlat("messages", &propertyInfo);
+  return BLooper::GetSupportedSuites(data);
+}
+
+void Connection::MessageReceived(BMessage *message) {
+  if (!message->HasSpecifiers())
+    return BLooper::MessageReceived(message);
+  BMessage reply(B_REPLY);
+  status_t error = B_ERROR;
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  uint32 match;
+  if (message->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
+      B_OK)
+    return BLooper::MessageReceived(message);
+  BPropertyInfo propertyInfo(connectionProperties);
+  propertyInfo.FindMatch(message, index, &specifier, what, property, &match);
+  switch (match) {
+  case kCrossTalk: {
+    BString name;
+    if (specifier.FindString("name", &name) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    switch (what) {
+    case B_DELETE_PROPERTY: {
+      error = B_OK;
+      this->crossTalk.erase(name);
+    } break;
+    case B_GET_PROPERTY: {
+      if (auto messenger = this->crossTalk.find(name);
+          messenger != this->crossTalk.end()) {
+        error = B_OK;
+        reply.AddMessenger("result", messenger->second);
+      } else
+        error = B_NAME_NOT_FOUND;
+    } break;
+    }
+  } break;
+  case kCreateCrossTalk: {
+    BString name;
+    BMessenger messenger;
+    if (message->FindString("name", &name) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    if (message->FindMessenger("messenger", &messenger) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    this->crossTalk.insert_or_assign(name, messenger);
+    error = B_OK;
+  } break;
+  }
+  reply.AddInt32("error", error);
+  if (error != B_OK)
+    reply.AddString("message", strerror(error));
+  message->SendReply(&reply);
 }
 
 status_t Connection::populateHeader(Header *out) {

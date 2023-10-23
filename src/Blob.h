@@ -18,6 +18,9 @@ class GetSlice : public muxrpc::Method {};
 class CreateWants : public muxrpc::Method {
 public:
   CreateWants(std::shared_ptr<Wanted> wanted);
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
 
 private:
   std::shared_ptr<Wanted> wanted;
@@ -30,6 +33,7 @@ public:
   void addWant(BString &cypherkey, int8 distance,
                BMessenger replyTo = BMessenger());
   void pullWants(muxrpc::Connection *connection);
+  void sendWants(BMessenger target);
 
 private:
   std::vector<std::tuple<BString, int8, BQuery, std::vector<BMessenger>>>

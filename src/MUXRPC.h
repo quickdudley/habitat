@@ -115,6 +115,8 @@ public:
   ~Connection();
   thread_id Run() override;
   void Quit() override;
+  status_t GetSupportedSuites(BMessage *data) override;
+  void MessageReceived(BMessage *message) override;
   status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
                    BMessenger replyTo, BMessenger *outbound);
   BString cypherkey();
@@ -131,6 +133,7 @@ private:
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
+  std::map<BString, BMessenger> crossTalk;
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);
   static int32 pullThreadFunction(void *data);
