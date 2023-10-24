@@ -259,7 +259,8 @@ void Habitat::MessageReceived(BMessage *msg) {
   reply.AddInt32("error", error);
   if (error != B_OK)
     reply.AddString("message", strerror(error));
-  msg->SendReply(&reply);
+  if (msg->IsSourceWaiting())
+    msg->SendReply(&reply);
 }
 
 thread_id Habitat::Run() {

@@ -112,7 +112,8 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
     BMessage reply(B_MESSAGE_NOT_UNDERSTOOD);
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
-    msg->SendReply(&reply);
+    if (msg->IsSourceWaiting())
+      msg->SendReply(&reply);
     return NULL;
   }
 }
@@ -191,7 +192,8 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     }
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
-    msg->SendReply(&reply);
+    if (msg->IsSourceWaiting())
+      msg->SendReply(&reply);
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     SSBFeed *feed;
@@ -428,7 +430,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     }
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
-    msg->SendReply(&reply);
+    if (msg->IsSourceWaiting())
+      msg->SendReply(&reply);
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
                              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
@@ -437,7 +440,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
       BMessage reply;
       if (this->save(msg, &reply) == B_OK) {
-        msg->SendReply(&reply);
+        if (msg->IsSourceWaiting())
+          msg->SendReply(&reply);
         return;
       }
     }
@@ -598,7 +602,8 @@ void OwnFeed::MessageReceived(BMessage *msg) {
   }
   reply.AddInt32("error", error);
   reply.AddString("message", strerror(error));
-  msg->SendReply(&reply);
+  if (msg->IsSourceWaiting())
+    msg->SendReply(&reply);
 }
 
 BHandler *OwnFeed::ResolveSpecifier(BMessage *msg, int32 index,
