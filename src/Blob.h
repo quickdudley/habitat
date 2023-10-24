@@ -34,6 +34,7 @@ public:
                BMessenger replyTo = BMessenger());
   void pullWants(muxrpc::Connection *connection);
   void sendWants(BMessenger target);
+  void propagateWant(BString &cypherkey, int8 distance);
 
 private:
   std::vector<std::tuple<BString, int8, BQuery, std::vector<BMessenger>>>

@@ -44,34 +44,6 @@ void Wanted::MessageReceived(BMessage *message) {
   }
 }
 
-void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
-  for (auto &item : this->wanted) {
-    BString &existingKey = std::get<0>(item);
-    if (existingKey == cypherkey) {
-      std::get<1>(item) = std::min(std::get<1>(item), distance);
-      std::vector<BMessenger> &replyTargets = std::get<3>(item);
-      std::remove_if(
-          std::get<3>(item).begin(), std::get<3>(item).end(),
-          [](auto existingTarget) { return !existingTarget.IsValid(); });
-      if (replyTo.IsValid())
-        std::get<3>(item).push_back(replyTo);
-      return;
-    }
-  }
-  {
-    BQuery query;
-    query.SetVolume(&this->volume);
-    query.PushAttr("HABITAT:cypherkey");
-    query.PushString(cypherkey.String());
-    query.PushOp(B_EQ);
-    if (this->Looper())
-      query.SetTarget(BMessenger(this));
-    // TODO: Handle the case where we already have the blob.
-    if (query.Fetch() == B_OK)
-      this->wanted.push_back({cypherkey, distance, query, {replyTo}});
-  }
-}
-
 namespace {
 class WantSink : public BHandler {
 public:
@@ -160,8 +132,65 @@ void WantSink::MessageReceived(BMessage *message) {
     BHandler::MessageReceived(message);
 }
 
-void WantSource::MessageReceived(BMessage *message) {}
+void WantSource::MessageReceived(BMessage *message) {
+  switch (message->what) {
+  case 'WANT': {
+    BMessage forward('JSOB');
+    BString blobID;
+    int8 distance;
+    if (message->FindString("cypherkey", &blobID) != B_OK)
+      break;
+    if (message->FindInt8("distance", &distance) != B_OK)
+      break;
+    forward.AddDouble(blobID, (double)distance);
+    this->sender.send(&forward, true, false, false);
+  } break;
+  }
+  return BHandler::MessageReceived(message);
+}
 } // namespace
+
+void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
+  for (auto &item : this->wanted) {
+    BString &existingKey = std::get<0>(item);
+    if (existingKey == cypherkey) {
+      if (distance < std::get<1>(item)) {
+        std::get<1>(item) = distance;
+        this->propagateWant(cypherkey, distance);
+      }
+      std::get<1>(item) = std::min(std::get<1>(item), distance);
+      std::vector<BMessenger> &replyTargets = std::get<3>(item);
+      std::remove_if(
+          std::get<3>(item).begin(), std::get<3>(item).end(),
+          [](auto existingTarget) { return !existingTarget.IsValid(); });
+      if (replyTo.IsValid())
+        std::get<3>(item).push_back(replyTo);
+      return;
+    }
+  }
+  {
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(cypherkey.String());
+    query.PushOp(B_EQ);
+    if (this->Looper())
+      query.SetTarget(BMessenger(this));
+    if (query.Fetch() == B_OK) {
+      entry_ref ref;
+      while (query.GetNextRef(&ref) == B_OK) {
+        BMessage mimic(B_QUERY_UPDATE);
+        mimic.AddInt32("opcode", B_ENTRY_CREATED);
+        mimic.AddInt32("device", ref.device);
+        mimic.AddInt64("directory", ref.directory);
+        mimic.AddString("name", ref.name);
+        BMessenger(this).SendMessage(&mimic);
+      }
+      this->wanted.push_back({cypherkey, distance, query, {replyTo}});
+      this->propagateWant(cypherkey, distance);
+    }
+  }
+}
 
 status_t CreateWants::call(muxrpc::Connection *connection,
                            muxrpc::RequestType type, BMessage *args,
@@ -209,6 +238,24 @@ void Wanted::sendWants(BMessenger target) {
     message.AddString("cypherkey", std::get<0>(want));
     message.AddInt8("distance", std::get<1>(want));
     target.SendMessage(&message);
+  }
+}
+
+void Wanted::propagateWant(BString &cypherkey, int8 distance) {
+  if (BLooper *looper = this->Looper(); looper) {
+    std::vector<WantSource *> targets;
+    looper->Lock();
+    for (int32 i = looper->CountHandlers() - 1; i >= 0; i--) {
+      if (WantSource *source = dynamic_cast<WantSource *>(looper->HandlerAt(i));
+          source)
+        targets.push_back(source);
+    }
+    looper->Unlock();
+    BMessage message('WANT');
+    message.AddString("cypherkey", cypherkey);
+    message.AddInt8("distance", distance);
+    for (auto target : targets)
+      BMessenger(target).SendMessage(&message);
   }
 }
 } // namespace blob
