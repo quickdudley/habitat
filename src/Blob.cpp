@@ -4,6 +4,73 @@
 
 namespace blob {
 
+Get::Get(BLooper *looper, BVolume volume)
+    :
+    looper(looper),
+    volume(volume) {}
+
+namespace {
+class GetSender : public BHandler {
+public:
+  GetSender(std::unique_ptr<BDataIO> source, BMessenger sink);
+  void MessageReceived(BMessage *message);
+
+private:
+  std::unique_ptr<BDataIO> source;
+  muxrpc::Sender sink;
+};
+
+GetSender::GetSender(std::unique_ptr<BDataIO> source, BMessenger sink)
+    :
+    source(std::move(source)),
+    sink(sink) {}
+
+void GetSender::MessageReceived(BMessage *message) {
+  unsigned char chunk[65536];
+  ssize_t read = this->source->Read(chunk, sizeof(chunk));
+  if (read > 0) {
+    this->sink.send(chunk, (uint32)read, true, false, true);
+    BMessenger(this).SendMessage('TICK');
+  } else {
+    this->sink.send(true, true, true, true);
+    BLooper *looper = this->Looper();
+    looper->Lock();
+    looper->RemoveHandler(this);
+    looper->Unlock();
+    delete this;
+  }
+}
+} // namespace
+
+status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                   BMessage *args, BMessenger replyTo, BMessenger *inbound) {
+  BString cypherkey;
+  if (args->FindString("0", &cypherkey) == B_OK) {
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(cypherkey.String());
+    query.PushOp(B_EQ);
+    if (query.Fetch() == B_OK) {
+      entry_ref ref;
+      if (query.GetNextRef(&ref) == B_OK) {
+        auto sender =
+            new GetSender(std::make_unique<BFile>(&ref, B_READ_ONLY), replyTo);
+        this->looper->AddHandler(sender);
+        BMessenger(sender).SendMessage('TICK');
+        return B_OK;
+      }
+    }
+  }
+  {
+    BMessage reply('JSOB');
+    reply.AddString("message", "could not get blob");
+    reply.AddString("name", "Error");
+    muxrpc::Sender(replyTo).send(&reply, true, true, false);
+  }
+  return B_ERROR;
+}
+
 CreateWants::CreateWants(std::shared_ptr<Wanted> wanted)
     :
     wanted(wanted) {

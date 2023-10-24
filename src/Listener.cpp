@@ -75,12 +75,12 @@ int SSBListener::run_() {
           new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
       be_app->RegisterLooper(rpc);
       thread_id thread = rpc->Run();
-      //      std::vector<BString> call = {"gossip", "ping"};
-      //      BMessage args('JSAR');
-      //      BMessage argsobj('JSOB');
-      //      argsobj.AddDouble("timeout",300000);
-      //      rpc->request(call, muxrpc::RequestType::DUPLEX, &args,
-      //      BMessenger(printer), NULL);
+      std::vector<BString> call = {"blobs", "get"};
+      BMessage args('JSAR');
+      args.AddString("0",
+                     "&opAMOaQQ674De6DiUGi55ZEMiGk3xerWQLXE5nzRdlU=.sha256");
+      rpc->request(call, muxrpc::RequestType::SOURCE, &args,
+                   BMessenger(printer), NULL);
     }
   }
   return 0;

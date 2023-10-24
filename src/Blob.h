@@ -11,7 +11,17 @@
 namespace blob {
 class Wanted;
 
-class Get : public muxrpc::Method {};
+class Get : public muxrpc::Method {
+public:
+  Get(BLooper *looper, BVolume volume);
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
+
+private:
+  BLooper *looper;
+  BVolume volume;
+};
 
 class GetSlice : public muxrpc::Method {};
 

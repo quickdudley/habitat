@@ -41,6 +41,23 @@ Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
 
 SenderHandler::~SenderHandler() {}
 
+// TODO: Use a macro
+status_t Sender::send(bool content, bool stream, bool error, bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddBool("content", content);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    uint32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddUInt32("sequence", sequence);
+  }
+  return this->inner.SendMessage(&wrapper);
+}
+
 status_t Sender::send(BMessage *content, bool stream, bool error,
                       bool inOrder) {
   BMessage wrapper('SEND');
