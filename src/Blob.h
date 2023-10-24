@@ -15,6 +15,8 @@ class Get : public muxrpc::Method {};
 
 class GetSlice : public muxrpc::Method {};
 
+class Has : public muxrpc::Method {};
+
 class CreateWants : public muxrpc::Method {
 public:
   CreateWants(std::shared_ptr<Wanted> wanted);

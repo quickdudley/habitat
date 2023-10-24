@@ -87,6 +87,7 @@ void WantSink::MessageReceived(BMessage *message) {
     while ((status = message->GetInfo(B_DOUBLE_TYPE, index, &attrName,
                                       &attrType)) != B_BAD_INDEX) {
       // TODO: Make distance threshold user-configurable
+      // TODO: For positive numbers, get the blob if we want it
       if (double distance; status == B_OK &&
                            message->FindDouble(attrName, &distance) == B_OK &&
                            distance < 0 && distance >= -2) {
@@ -119,13 +120,35 @@ void WantSink::MessageReceived(BMessage *message) {
         BString cypherkey;
         if (node.ReadAttrString("cypherkey", &cypherkey) != B_OK)
           return;
-        BMessage arg0('JSAR');
-        arg0.AddString("0", cypherkey);
-        BMessage args('JSAR');
-        args.AddMessage("0", &arg0);
-        std::vector<BString> name = {"blobs", "has"};
-        this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
-                                  BMessenger(this), NULL);
+        BMessenger wantStream;
+        status_t wsStatus;
+        {
+          BMessage getMessenger(B_GET_PROPERTY);
+          getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
+          BMessage msgReply;
+          BMessenger(this->connection).SendMessage(&getMessenger, &msgReply);
+          wsStatus = msgReply.FindMessenger("result", &wantStream);
+        }
+        if (wsStatus == B_OK && wantStream.IsValid()) {
+          BMessage toSend('MXRP');
+          BMessage content('JSOB');
+          off_t size;
+          if (node.GetSize(&size) != B_OK)
+            return;
+          content.AddDouble(cypherkey, (double)size);
+          toSend.AddMessage("content", &content);
+          toSend.AddBool("end", false);
+          toSend.AddBool("stream", true);
+          wantStream.SendMessage(&toSend);
+        } else {
+          BMessage arg0('JSAR');
+          arg0.AddString("0", cypherkey);
+          BMessage args('JSAR');
+          args.AddMessage("0", &arg0);
+          std::vector<BString> name = {"blobs", "has"};
+          this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
+                                    BMessenger(this), NULL);
+        }
       }
     }
   } else
@@ -215,7 +238,7 @@ status_t CreateWants::call(muxrpc::Connection *connection,
   BMessenger(connection).SendMessage(&createCrossTalk);
   this->wanted->sendWants(BMessenger(source));
   looper->Unlock();
-  // TODO: Send added wants, send IDs of blobs we have
+  // TODO: send IDs of blobs we have
   return B_OK;
 }
 

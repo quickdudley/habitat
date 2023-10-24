@@ -227,6 +227,9 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     output->WriteExactly(content.String(), content.Length());
     goto cleanup;
   }
+  // TODO: Reply to the message if it's waiting
+  // (Useful when we want to match something's send rate to the rate we can
+  // send)
 cleanup:
   if (this->canceled || wrapper->GetBool("end", true) ||
       !wrapper->GetBool("stream", true)) {
