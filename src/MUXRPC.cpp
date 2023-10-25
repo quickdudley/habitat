@@ -41,55 +41,31 @@ Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
 
 SenderHandler::~SenderHandler() {}
 
-// TODO: Use a macro
-status_t Sender::send(bool content, bool stream, bool error, bool inOrder) {
-  BMessage wrapper('SEND');
-  wrapper.AddBool("content", content);
-  wrapper.AddBool("stream", stream);
-  wrapper.AddBool("end", error);
-  if (inOrder) {
-    status_t result;
-    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
-      return result;
-    uint32 sequence = this->sequence++;
-    release_sem(this->sequenceSemaphore);
-    wrapper.AddUInt32("sequence", sequence);
+#define SEND_FUNCTION(type, msgMethod)                                         \
+  status_t Sender::send(type content, bool stream, bool error, bool inOrder) { \
+    BMessage wrapper('SEND');                                                  \
+    wrapper.msgMethod("content", content);                                     \
+    wrapper.AddBool("stream", stream);                                         \
+    wrapper.AddBool("end", error);                                             \
+    if (inOrder) {                                                             \
+      status_t result;                                                         \
+      if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)        \
+        return result;                                                         \
+      uint32 sequence = this->sequence++;                                      \
+      release_sem(this->sequenceSemaphore);                                    \
+      wrapper.AddUInt32("sequence", sequence);                                 \
+    }                                                                          \
+    return this->inner.SendMessage(&wrapper);                                  \
   }
-  return this->inner.SendMessage(&wrapper);
-}
 
-status_t Sender::send(BMessage *content, bool stream, bool error,
-                      bool inOrder) {
-  BMessage wrapper('SEND');
-  wrapper.AddMessage("content", content);
-  wrapper.AddBool("stream", stream);
-  wrapper.AddBool("end", error);
-  if (inOrder) {
-    status_t result;
-    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
-      return result;
-    uint32 sequence = this->sequence++;
-    release_sem(this->sequenceSemaphore);
-    wrapper.AddUInt32("sequence", sequence);
-  }
-  return this->inner.SendMessage(&wrapper);
-}
+SEND_FUNCTION(bool, AddBool)
 
-status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
-  BMessage wrapper('SEND');
-  wrapper.AddString("content", content);
-  wrapper.AddBool("stream", stream);
-  wrapper.AddBool("end", error);
-  if (inOrder) {
-    status_t result;
-    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
-      return result;
-    uint32 sequence = this->sequence++;
-    release_sem(this->sequenceSemaphore);
-    wrapper.AddUInt32("sequence", sequence);
-  }
-  return this->inner.SendMessage(&wrapper);
-}
+SEND_FUNCTION(double, AddDouble)
+
+SEND_FUNCTION(BMessage *, AddMessage)
+
+SEND_FUNCTION(BString &, AddString)
+#undef SEND_FUNCTION
 
 status_t Sender::send(unsigned char *content, uint32 length, bool stream,
                       bool error, bool inOrder) {

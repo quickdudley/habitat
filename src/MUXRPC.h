@@ -76,6 +76,7 @@ public:
   Sender(BMessenger inner);
   ~Sender();
   status_t send(bool content, bool stream, bool error, bool inOrder = true);
+  status_t send(double content, bool stream, bool error, bool inOrder = true);
   status_t send(BMessage *content, bool stream, bool error,
                 bool inOrder = true);
   status_t send(BString &content, bool stream, bool error, bool inOrder = true);
