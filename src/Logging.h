@@ -6,7 +6,7 @@
 #include <memory>
 #include <set>
 
-void writeLog(int32 category, BString &text);
+void writeLog(int32 category, const BString &text);
 
 class Logger : public BHandler {
 public:

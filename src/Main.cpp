@@ -137,6 +137,18 @@ Habitat::Habitat(void)
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);
+  // Setup blobs
+  {
+    BDirectory blobsDir;
+    if (this->settings->CreateDirectory("blobs", &blobsDir) == B_FILE_EXISTS) {
+      BEntry entry;
+      this->settings->FindEntry("blobs", &entry, true);
+      blobsDir = BDirectory(&entry);
+    }
+    this->wantedBlobs = new blob::Wanted(blobsDir);
+  }
+  this->databaseLooper->AddHandler(this->wantedBlobs);
+  this->wantedBlobs->registerMethods();
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();

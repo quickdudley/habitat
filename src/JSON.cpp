@@ -851,7 +851,7 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     number p10 = (this->state2 == 4 ? this->e : -this->e) - this->k;
     this->token.Truncate(this->token.Length() - 1);
     this->target->addNumber(this->rawname, this->name, this->token,
-                            s * std::pow(10, p10));
+                            (neg ? -s : s) * std::pow(10, p10));
     this->rawname = "";
     this->name = "";
     this->token = "";

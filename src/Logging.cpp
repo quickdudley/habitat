@@ -5,7 +5,7 @@
 #include <ctime>
 #include <iostream>
 
-void writeLog(int32 category, BString &text) {
+void writeLog(int32 category, const BString &text) {
   BMessage logMessage('LOG_');
   logMessage.AddUInt64("time", time(NULL));
   logMessage.AddInt32("category", category);

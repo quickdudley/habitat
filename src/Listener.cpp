@@ -23,10 +23,18 @@ void PrintReply::MessageReceived(BMessage *msg) {
 std::shared_ptr<std::vector<std::shared_ptr<muxrpc::Method>>> defaultHandlers =
     std::make_shared<std::vector<std::shared_ptr<muxrpc::Method>>>(
         std::vector<std::shared_ptr<muxrpc::Method>>());
+
+std::shared_ptr<std::vector<std::shared_ptr<DefaultCall>>> defaultCalls =
+    std::make_shared<std::vector<std::shared_ptr<DefaultCall>>>(
+        std::vector<std::shared_ptr<DefaultCall>>());
 } // namespace
 
 void registerMethod(std::shared_ptr<muxrpc::Method> method) {
   defaultHandlers->push_back(method);
+}
+
+void registerDefaultCall(std::shared_ptr<DefaultCall> call) {
+  defaultCalls->push_back(call);
 }
 
 int SSBListener::run_() {
@@ -75,6 +83,9 @@ int SSBListener::run_() {
           new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
       be_app->RegisterLooper(rpc);
       thread_id thread = rpc->Run();
+      for (auto call : *defaultCalls) {
+        call->call(rpc);
+      }
       std::vector<BString> call = {"blobs", "get"};
       BMessage args('JSAR');
       args.AddString("0",

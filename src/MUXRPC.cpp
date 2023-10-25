@@ -617,7 +617,6 @@ status_t Connection::readOne() {
     BMessage wrapper('MXRP');
     switch (header.bodyType()) {
     case BodyType::JSON: {
-      BMessage content;
       {
         JSON::Parser parser(
             std::make_unique<JSON::BMessageObjectDocSink>(&wrapper), true);
@@ -629,13 +628,6 @@ status_t Connection::readOne() {
             JSON::parse(&parser, this->inner.get(), header.bodyLength);
         if (result != B_OK)
           return result;
-      }
-      wrapper.AddMessage("content", &content);
-      JSON::Parser parser(
-          std::make_unique<JSON::BMessageObjectDocSink>(&wrapper));
-      {
-        BString propName("content");
-        parser.setPropName(propName);
       }
     } break;
     case BodyType::UTF8_STRING: {

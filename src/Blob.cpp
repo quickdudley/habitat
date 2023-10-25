@@ -1,8 +1,17 @@
 #include "Blob.h"
+#include "Listener.h"
+#include "Logging.h"
 #include <NodeMonitor.h>
 #include <algorithm>
+#include <iostream>
 
 namespace blob {
+
+Wanted::Wanted(BDirectory dir)
+    :
+    dir(dir) {
+  std::cerr << strerror(this->dir.GetVolume(&this->volume)) << std::endl;
+}
 
 Get::Get(BLooper *looper, BVolume volume)
     :
@@ -71,7 +80,7 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
   return B_ERROR;
 }
 
-CreateWants::CreateWants(std::shared_ptr<Wanted> wanted)
+CreateWants::CreateWants(Wanted *wanted)
     :
     wanted(wanted) {
   this->name = {"blob", "createWants"};
@@ -143,7 +152,7 @@ WantSource::WantSource(BMessenger sender, Wanted *registry)
     registry(registry) {}
 
 void WantSink::MessageReceived(BMessage *message) {
-  if (message->what == 'MXRP') {
+  if (message->what == 'JSOB') {
     int32 index = 0;
     char *attrName;
     type_code attrType;
@@ -151,12 +160,12 @@ void WantSink::MessageReceived(BMessage *message) {
     BMessage content;
     if (message->FindMessage("content", &content) != B_OK)
       goto cleanup;
-    while ((status = message->GetInfo(B_DOUBLE_TYPE, index, &attrName,
-                                      &attrType)) != B_BAD_INDEX) {
+    while ((status = content.GetInfo(B_DOUBLE_TYPE, index, &attrName,
+                                     &attrType)) != B_BAD_INDEX) {
       // TODO: Make distance threshold user-configurable
       // TODO: For positive numbers, get the blob if we want it
       if (double distance; status == B_OK &&
-                           message->FindDouble(attrName, &distance) == B_OK &&
+                           content.FindDouble(attrName, &distance) == B_OK &&
                            distance < 0 && distance >= -2) {
         BString cypherkey(attrName);
         this->registry->addWant(cypherkey, (int8)(-distance) + 1,
@@ -218,8 +227,10 @@ void WantSink::MessageReceived(BMessage *message) {
         }
       }
     }
-  } else
+  } else {
     BHandler::MessageReceived(message);
+    message->PrintToStream();
+  }
 }
 
 void WantSource::MessageReceived(BMessage *message) {
@@ -266,7 +277,8 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
     query.PushOp(B_EQ);
     if (this->Looper())
       query.SetTarget(BMessenger(this));
-    if (query.Fetch() == B_OK) {
+    status_t result;
+    if ((result = query.Fetch()) == B_OK) {
       entry_ref ref;
       while (query.GetNextRef(&ref) == B_OK) {
         BMessage mimic(B_QUERY_UPDATE);
@@ -278,7 +290,8 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
       }
       this->wanted.push_back({cypherkey, distance, query, {replyTo}});
       this->propagateWant(cypherkey, distance);
-    }
+    } else
+      writeLog('QRST', strerror(result));
   }
 }
 
@@ -291,7 +304,7 @@ status_t CreateWants::call(muxrpc::Connection *connection,
   looper->Lock();
   WantSource *source;
   try {
-    source = new WantSource(replyTo, this->wanted.get());
+    source = new WantSource(replyTo, this->wanted);
     looper->AddHandler(source);
   } catch (...) {
     looper->RemoveHandler(source);
@@ -347,5 +360,21 @@ void Wanted::propagateWant(BString &cypherkey, int8 distance) {
     for (auto target : targets)
       BMessenger(target).SendMessage(&message);
   }
+}
+
+void Wanted::registerMethods() {
+  class CallCreateWants : public DefaultCall {
+  public:
+    CallCreateWants(Wanted *registry)
+        :
+        registry(registry) {}
+    void call(muxrpc::Connection *rpc) { registry->pullWants(rpc); }
+
+  private:
+    Wanted *registry;
+  };
+  registerDefaultCall(std::make_shared<CallCreateWants>(this));
+  registerMethod(std::make_shared<Get>(this->Looper(), this->volume));
+  registerMethod(std::make_shared<CreateWants>(this));
 }
 } // namespace blob
