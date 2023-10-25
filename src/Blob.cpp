@@ -10,7 +10,7 @@ namespace blob {
 Wanted::Wanted(BDirectory dir)
     :
     dir(dir) {
-  std::cerr << strerror(this->dir.GetVolume(&this->volume)) << std::endl;
+  this->dir.GetVolume(&this->volume);
 }
 
 Get::Get(BLooper *looper, BVolume volume)
@@ -103,7 +103,7 @@ void Wanted::MessageReceived(BMessage *message) {
       if (entry.InitCheck() == B_OK && entry.Exists()) {
         BNode node(&ref);
         BString cypherkey;
-        if (node.ReadAttrString("cypherkey", &cypherkey) != B_OK)
+        if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
           return;
         for (auto item = this->wanted.begin(); item != this->wanted.end();
             item++) {
@@ -194,7 +194,7 @@ void WantSink::MessageReceived(BMessage *message) {
       if (entry.InitCheck() == B_OK && entry.Exists()) {
         BNode node(&ref);
         BString cypherkey;
-        if (node.ReadAttrString("cypherkey", &cypherkey) != B_OK)
+        if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
           return;
         BMessenger wantStream;
         status_t wsStatus;
@@ -259,7 +259,6 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
         std::get<1>(item) = distance;
         this->propagateWant(cypherkey, distance);
       }
-      std::get<1>(item) = std::min(std::get<1>(item), distance);
       std::vector<BMessenger> &replyTargets = std::get<3>(item);
       std::remove_if(
           std::get<3>(item).begin(), std::get<3>(item).end(),
@@ -270,7 +269,8 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
     }
   }
   {
-    BQuery query;
+    this->wanted.push_back({cypherkey, distance, BQuery(), {replyTo}});
+    BQuery &query = std::get<2>(this->wanted.back());
     query.SetVolume(&this->volume);
     query.PushAttr("HABITAT:cypherkey");
     query.PushString(cypherkey.String());
@@ -288,7 +288,6 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
         mimic.AddString("name", ref.name);
         BMessenger(this).SendMessage(&mimic);
       }
-      this->wanted.push_back({cypherkey, distance, query, {replyTo}});
       this->propagateWant(cypherkey, distance);
     } else
       writeLog('QRST', strerror(result));
