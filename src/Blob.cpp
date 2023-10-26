@@ -1,9 +1,11 @@
 #include "Blob.h"
+#include "Base64.h"
 #include "Listener.h"
 #include "Logging.h"
 #include <NodeMonitor.h>
 #include <algorithm>
 #include <iostream>
+#include <sodium.h>
 
 namespace blob {
 
@@ -406,6 +408,25 @@ propagate:
     for (auto target : targets)
       BMessenger(target).SendMessage(&message);
   }
+}
+
+status_t Wanted::hashFile(entry_ref *ref) {
+  ssize_t readBytes;
+  BFile file(ref, B_READ_ONLY);
+  unsigned char buffer[1024];
+  crypto_hash_sha256_state state;
+  crypto_hash_sha256_init(&state);
+  while ((readBytes = file.Read(buffer, sizeof(buffer))) > 0) {
+    if (crypto_hash_sha256_update(&state, buffer, readBytes) < 0)
+      return B_ERROR;
+  }
+  if (crypto_hash_sha256_final(&state, buffer) < 0)
+    return B_ERROR;
+  BString attr("&");
+  attr.Append(
+      base64::encode(buffer, crypto_hash_sha256_BYTES, base64::STANDARD));
+  attr.Append(".sha256");
+  return file.WriteAttrString("HABITAT:cypherkey", &attr);
 }
 
 void Wanted::registerMethods() {

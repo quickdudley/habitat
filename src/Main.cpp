@@ -32,7 +32,7 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
-enum { kTimeZone, kCypherkey, kCreatePost, kLogCategory };
+enum { kTimeZone, kCypherkey, kCreateBlob, kCreatePost, kLogCategory };
 
 static property_info habitatProperties[] = {
     {"Timezone",
@@ -52,6 +52,12 @@ static property_info habitatProperties[] = {
      {B_DIRECT_SPECIFIER, 0},
      "Create a post on our own feed",
      kCreatePost,
+     {}},
+    {"Blob",
+     {B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "Create a blob or register the fact we want one",
+     kCreateBlob,
      {}},
     {"LogCategory",
      {B_CREATE_PROPERTY, B_DELETE_PROPERTY, 0},
@@ -238,6 +244,15 @@ void Habitat::MessageReceived(BMessage *msg) {
   case kCypherkey: // Cypherkey
     reply.AddString("result", this->myId->getCypherkey());
     error = B_OK;
+    break;
+  case kCreateBlob:
+    if (entry_ref ref; msg->FindRef("file", &ref) == B_OK) {
+      // TODO: Include the cypherkey in the response
+      error = this->wantedBlobs->hashFile(&ref);
+      break;
+    }
+    error = B_OK;
+    msg->PrintToStream();
     break;
   case kLogCategory: {
     int32 category;

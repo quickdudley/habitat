@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace blob {
+
 class Wanted;
 
 class Get : public muxrpc::Method {
@@ -50,6 +51,7 @@ public:
   void sendWants(BMessenger target);
   void propagateWant(BString &cypherkey, int8 distance);
   void registerMethods();
+  status_t hashFile(entry_ref *ref);
 
 private:
   std::vector<std::tuple<BString, int8, std::unique_ptr<BQuery>,
