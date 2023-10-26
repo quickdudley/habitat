@@ -250,7 +250,6 @@ void WantSink::MessageReceived(BMessage *message) {
     }
   } else {
     BHandler::MessageReceived(message);
-    message->PrintToStream();
   }
 }
 
