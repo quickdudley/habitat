@@ -16,7 +16,10 @@ Wanted::Wanted(BDirectory dir)
 Get::Get(BLooper *looper, BVolume volume)
     :
     looper(looper),
-    volume(volume) {}
+    volume(volume) {
+  this->name = {"blobs", "get"};
+  this->expectedType = muxrpc::RequestType::SOURCE;
+}
 
 namespace {
 class GetSender : public BHandler {
@@ -54,7 +57,18 @@ void GetSender::MessageReceived(BMessage *message) {
 status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
                    BMessage *args, BMessenger replyTo, BMessenger *inbound) {
   BString cypherkey;
+  int64 maxSize = INT64_MAX;
+  {
+    BMessage arg0;
+    if (args->FindMessage("0", &arg0) == B_OK) {
+      if (double size; arg0.FindDouble("max", &size))
+        maxSize = (int64)size;
+      if (arg0.FindString("key", &cypherkey) == B_OK)
+        goto beginSend;
+    }
+  }
   if (args->FindString("0", &cypherkey) == B_OK) {
+  beginSend:
     BQuery query;
     query.SetVolume(&this->volume);
     query.PushAttr("HABITAT:cypherkey");
@@ -63,27 +77,36 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
     if (query.Fetch() == B_OK) {
       entry_ref ref;
       if (query.GetNextRef(&ref) == B_OK) {
+        {
+          BNode node(&ref);
+          off_t size;
+          node.GetSize(&size);
+          if (size > maxSize)
+            goto failed;
+        }
         auto sender =
             new GetSender(std::make_unique<BFile>(&ref, B_READ_ONLY), replyTo);
+        this->looper->Lock();
         this->looper->AddHandler(sender);
+        this->looper->Unlock();
         BMessenger(sender).SendMessage('TICK');
         return B_OK;
       }
     }
   }
-  {
-    BMessage reply('JSOB');
-    reply.AddString("message", "could not get blob");
-    reply.AddString("name", "Error");
-    muxrpc::Sender(replyTo).send(&reply, true, true, false);
-  }
+failed : {
+  BMessage reply('JSOB');
+  reply.AddString("message", "could not get blob");
+  reply.AddString("name", "Error");
+  muxrpc::Sender(replyTo).send(&reply, true, true, false);
+}
   return B_ERROR;
 }
 
 CreateWants::CreateWants(Wanted *wanted)
     :
     wanted(wanted) {
-  this->name = {"blob", "createWants"};
+  this->name = {"blobs", "createWants"};
   this->expectedType = muxrpc::RequestType::SOURCE;
 }
 
@@ -152,7 +175,7 @@ WantSource::WantSource(BMessenger sender, Wanted *registry)
     registry(registry) {}
 
 void WantSink::MessageReceived(BMessage *message) {
-  if (message->what == 'JSOB') {
+  if (message->what == 'JSOB' || message->what == 'MXRP') {
     int32 index = 0;
     char *attrName;
     type_code attrType;
@@ -206,25 +229,21 @@ void WantSink::MessageReceived(BMessage *message) {
           wsStatus = msgReply.FindMessenger("result", &wantStream);
         }
         if (wsStatus == B_OK && wantStream.IsValid()) {
-          BMessage toSend('MXRP');
-          BMessage content('JSOB');
+          BMessage toSend('HAVE');
           off_t size;
           if (node.GetSize(&size) != B_OK)
             return;
-          content.AddDouble(cypherkey, (double)size);
-          toSend.AddMessage("content", &content);
-          toSend.AddBool("end", false);
-          toSend.AddBool("stream", true);
+          toSend.AddString("cypherkey", cypherkey);
+          toSend.AddInt64("size", size);
           wantStream.SendMessage(&toSend);
-        } else {
-          BMessage arg0('JSAR');
-          arg0.AddString("0", cypherkey);
-          BMessage args('JSAR');
-          args.AddMessage("0", &arg0);
-          std::vector<BString> name = {"blobs", "has"};
-          this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
-                                    BMessenger(this), NULL);
         }
+        BMessage arg0('JSAR');
+        arg0.AddString("0", cypherkey);
+        BMessage args('JSAR');
+        args.AddMessage("0", &arg0);
+        std::vector<BString> name = {"blobs", "has"};
+        this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
+                                  BMessenger(), NULL);
       }
     }
   } else {
@@ -243,7 +262,18 @@ void WantSource::MessageReceived(BMessage *message) {
       break;
     if (message->FindInt8("distance", &distance) != B_OK)
       break;
-    forward.AddDouble(blobID, (double)distance);
+    forward.AddDouble(blobID, -(double)distance);
+    this->sender.send(&forward, true, false, false);
+  } break;
+  case 'HAVE': {
+    int64 size;
+    BString blobID;
+    if (message->FindString("cypherkey", &blobID) != B_OK)
+      break;
+    if (message->FindInt64("size", &size) != B_OK)
+      break;
+    BMessage forward('JSOB');
+    forward.AddInt64(blobID.String(), size);
     this->sender.send(&forward, true, false, false);
   } break;
   }
@@ -260,17 +290,21 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
         this->propagateWant(cypherkey, distance);
       }
       std::vector<BMessenger> &replyTargets = std::get<3>(item);
-      std::remove_if(
-          std::get<3>(item).begin(), std::get<3>(item).end(),
-          [](auto existingTarget) { return !existingTarget.IsValid(); });
+      std::remove_if(std::get<3>(item).begin(), std::get<3>(item).end(),
+                     [&replyTo](auto existingTarget) {
+                       return !existingTarget.IsValid() ||
+                              existingTarget == replyTo;
+                     });
       if (replyTo.IsValid())
         std::get<3>(item).push_back(replyTo);
       return;
     }
   }
   {
-    this->wanted.push_back({cypherkey, distance, BQuery(), {replyTo}});
-    BQuery &query = std::get<2>(this->wanted.back());
+    this->wanted.push_back(std::tuple(BString(cypherkey), distance,
+                                      std::make_unique<BQuery>(),
+                                      std::vector<BMessenger>{replyTo}));
+    BQuery &query = *std::get<2>(this->wanted.back());
     query.SetVolume(&this->volume);
     query.PushAttr("HABITAT:cypherkey");
     query.PushString(cypherkey.String());
@@ -344,6 +378,19 @@ void Wanted::sendWants(BMessenger target) {
 }
 
 void Wanted::propagateWant(BString &cypherkey, int8 distance) {
+  {
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(cypherkey.String());
+    query.PushOp(B_EQ);
+    if (query.Fetch() != B_OK)
+      goto propagate;
+    entry_ref ref;
+    if (query.GetNextRef(&ref) == B_OK)
+      return;
+  }
+propagate:
   if (BLooper *looper = this->Looper(); looper) {
     std::vector<WantSource *> targets;
     looper->Lock();

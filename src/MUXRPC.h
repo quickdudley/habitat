@@ -118,6 +118,8 @@ public:
   thread_id Run() override;
   void Quit() override;
   status_t GetSupportedSuites(BMessage *data) override;
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property) override;
   void MessageReceived(BMessage *message) override;
   status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
                    BMessenger replyTo, BMessenger *outbound);

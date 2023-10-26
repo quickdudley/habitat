@@ -52,7 +52,8 @@ public:
   void registerMethods();
 
 private:
-  std::vector<std::tuple<BString, int8, BQuery, std::vector<BMessenger>>>
+  std::vector<std::tuple<BString, int8, std::unique_ptr<BQuery>,
+                         std::vector<BMessenger>>>
       wanted;
   BDirectory dir;
   BVolume volume;

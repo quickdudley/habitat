@@ -27,7 +27,8 @@ MethodMatch Method::check(Connection *conn, std::vector<BString> &name,
 Sender::Sender(BMessenger inner)
     :
     inner(inner),
-    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")) {}
+    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")),
+    sequence(1) {}
 
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
     :
@@ -85,6 +86,7 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
 }
 
 void SenderHandler::MessageReceived(BMessage *msg) {
+  bool finished = false;
   switch (msg->what) {
   case 'SEND': {
     uint32 sequence;
@@ -94,12 +96,14 @@ void SenderHandler::MessageReceived(BMessage *msg) {
         this->sentSequence = sequence;
         nextSequence = sequence + 1;
         this->actuallySend(msg);
+        finished = finished || msg->GetBool("end", false);
         while (!this->outOfOrder.empty() &&
                (sequence = this->outOfOrder.top().GetUInt32("sequence", 0)) <=
                    nextSequence) {
           this->sentSequence = sequence;
           nextSequence = sequence + 1;
           this->actuallySend(&this->outOfOrder.top());
+          finished = finished || this->outOfOrder.top().GetBool("end", false);
           this->outOfOrder.pop();
         }
       } else {
@@ -107,11 +111,19 @@ void SenderHandler::MessageReceived(BMessage *msg) {
       }
     } else {
       this->actuallySend(msg);
+      finished = finished || msg->GetBool("end", false);
     }
     break;
   }
   default:
     BHandler::MessageReceived(msg);
+  }
+  if (this->canceled || finished || !msg->GetBool("stream", true)) {
+    auto conn = this->Looper();
+    conn->Lock();
+    conn->RemoveHandler(this);
+    conn->Unlock();
+    delete this;
   }
 }
 
@@ -127,7 +139,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(packet);
     memcpy(packet + 9, "true", 4);
     this->output()->WriteExactly(packet, 13);
-    goto cleanup;
+    return;
   }
   header.setEndOrError(wrapper->GetBool("end", true));
   header.setStream(wrapper->GetBool("stream", true));
@@ -143,7 +155,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
       BDataIO *output = this->output();
       output->WriteExactly(headerBytes, 9);
       output->WriteExactly(data, length);
-      goto cleanup;
+      return;
     }
   }
   {
@@ -218,20 +230,11 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(headerBytes);
     output->WriteExactly(headerBytes, 9);
     output->WriteExactly(content.String(), content.Length());
-    goto cleanup;
+    return;
   }
   // TODO: Reply to the message if it's waiting
   // (Useful when we want to match something's send rate to the rate we can
   // send)
-cleanup:
-  if (this->canceled || wrapper->GetBool("end", true) ||
-      !wrapper->GetBool("stream", true)) {
-    auto conn = this->Looper();
-    conn->Lock();
-    conn->RemoveHandler(this);
-    conn->Unlock();
-    delete this;
-  }
 }
 
 BDataIO *SenderHandler::output() {
@@ -319,6 +322,15 @@ status_t Connection::GetSupportedSuites(BMessage *data) {
   return BLooper::GetSupportedSuites(data);
 }
 
+BHandler *Connection::ResolveSpecifier(BMessage *msg, int32 index,
+                                       BMessage *specifier, int32 what,
+                                       const char *property) {
+  BPropertyInfo propertyInfo(connectionProperties);
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
+    return this;
+  return BHandler::ResolveSpecifier(msg, index, specifier, what, property);
+}
+
 void Connection::MessageReceived(BMessage *message) {
   if (!message->HasSpecifiers())
     return BLooper::MessageReceived(message);
@@ -341,7 +353,7 @@ void Connection::MessageReceived(BMessage *message) {
       error = B_BAD_DATA;
       break;
     }
-    switch (what) {
+    switch (message->what) {
     case B_DELETE_PROPERTY: {
       error = B_OK;
       this->crossTalk.erase(name);
