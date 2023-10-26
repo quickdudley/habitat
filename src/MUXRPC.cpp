@@ -3,6 +3,8 @@
 #include "Base64.h"
 #include "Connection.h"
 #include "JSON.h"
+#include "Logging.h"
+#include <PropertyInfo.h>
 #include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -25,7 +27,8 @@ MethodMatch Method::check(Connection *conn, std::vector<BString> &name,
 Sender::Sender(BMessenger inner)
     :
     inner(inner),
-    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")) {}
+    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")),
+    sequence(1) {}
 
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
     :
@@ -39,38 +42,31 @@ Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
 
 SenderHandler::~SenderHandler() {}
 
-status_t Sender::send(BMessage *content, bool stream, bool error,
-                      bool inOrder) {
-  BMessage wrapper('SEND');
-  wrapper.AddMessage("content", content);
-  wrapper.AddBool("stream", stream);
-  wrapper.AddBool("end", error);
-  if (inOrder) {
-    status_t result;
-    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
-      return result;
-    uint32 sequence = this->sequence++;
-    release_sem(this->sequenceSemaphore);
-    wrapper.AddUInt32("sequence", sequence);
+#define SEND_FUNCTION(type, msgMethod)                                         \
+  status_t Sender::send(type content, bool stream, bool error, bool inOrder) { \
+    BMessage wrapper('SEND');                                                  \
+    wrapper.msgMethod("content", content);                                     \
+    wrapper.AddBool("stream", stream);                                         \
+    wrapper.AddBool("end", error);                                             \
+    if (inOrder) {                                                             \
+      status_t result;                                                         \
+      if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)        \
+        return result;                                                         \
+      uint32 sequence = this->sequence++;                                      \
+      release_sem(this->sequenceSemaphore);                                    \
+      wrapper.AddUInt32("sequence", sequence);                                 \
+    }                                                                          \
+    return this->inner.SendMessage(&wrapper);                                  \
   }
-  return this->inner.SendMessage(&wrapper);
-}
 
-status_t Sender::send(BString &content, bool stream, bool error, bool inOrder) {
-  BMessage wrapper('SEND');
-  wrapper.AddString("content", content);
-  wrapper.AddBool("stream", stream);
-  wrapper.AddBool("end", error);
-  if (inOrder) {
-    status_t result;
-    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
-      return result;
-    uint32 sequence = this->sequence++;
-    release_sem(this->sequenceSemaphore);
-    wrapper.AddUInt32("sequence", sequence);
-  }
-  return this->inner.SendMessage(&wrapper);
-}
+SEND_FUNCTION(bool, AddBool)
+
+SEND_FUNCTION(double, AddDouble)
+
+SEND_FUNCTION(BMessage *, AddMessage)
+
+SEND_FUNCTION(BString &, AddString)
+#undef SEND_FUNCTION
 
 status_t Sender::send(unsigned char *content, uint32 length, bool stream,
                       bool error, bool inOrder) {
@@ -90,6 +86,7 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
 }
 
 void SenderHandler::MessageReceived(BMessage *msg) {
+  bool finished = false;
   switch (msg->what) {
   case 'SEND': {
     uint32 sequence;
@@ -99,12 +96,14 @@ void SenderHandler::MessageReceived(BMessage *msg) {
         this->sentSequence = sequence;
         nextSequence = sequence + 1;
         this->actuallySend(msg);
+        finished = finished || msg->GetBool("end", false);
         while (!this->outOfOrder.empty() &&
                (sequence = this->outOfOrder.top().GetUInt32("sequence", 0)) <=
                    nextSequence) {
           this->sentSequence = sequence;
           nextSequence = sequence + 1;
           this->actuallySend(&this->outOfOrder.top());
+          finished = finished || this->outOfOrder.top().GetBool("end", false);
           this->outOfOrder.pop();
         }
       } else {
@@ -112,19 +111,36 @@ void SenderHandler::MessageReceived(BMessage *msg) {
       }
     } else {
       this->actuallySend(msg);
+      finished = finished || msg->GetBool("end", false);
     }
     break;
   }
-  case 'DEL_':
-    delete this;
-    break;
   default:
     BHandler::MessageReceived(msg);
+  }
+  if (this->canceled || finished || !msg->GetBool("stream", true)) {
+    auto conn = this->Looper();
+    conn->Lock();
+    conn->RemoveHandler(this);
+    conn->Unlock();
+    delete this;
   }
 }
 
 void SenderHandler::actuallySend(const BMessage *wrapper) {
   Header header;
+  if (this->canceled) {
+    header.setBodyType(BodyType::JSON);
+    header.bodyLength = 4;
+    header.requestNumber = this->requestNumber;
+    header.setEndOrError(true);
+    header.setStream(true);
+    unsigned char packet[13];
+    header.writeToBuffer(packet);
+    memcpy(packet + 9, "true", 4);
+    this->output()->WriteExactly(packet, 13);
+    return;
+  }
   header.setEndOrError(wrapper->GetBool("end", true));
   header.setStream(wrapper->GetBool("stream", true));
   header.requestNumber = this->requestNumber;
@@ -139,7 +155,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
       BDataIO *output = this->output();
       output->WriteExactly(headerBytes, 9);
       output->WriteExactly(data, length);
-      goto cleanup;
+      return;
     }
   }
   {
@@ -214,16 +230,11 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(headerBytes);
     output->WriteExactly(headerBytes, 9);
     output->WriteExactly(content.String(), content.Length());
-    goto cleanup;
+    return;
   }
-cleanup:
-  if (wrapper->GetBool("end", true) || !wrapper->GetBool("stream", true)) {
-    Connection *conn = dynamic_cast<Connection *>(this->Looper());
-    conn->Lock();
-    conn->RemoveHandler(this);
-    conn->Unlock();
-    delete this;
-  }
+  // TODO: Reply to the message if it's waiting
+  // (Useful when we want to match something's send rate to the rate we can
+  // send)
 }
 
 BDataIO *SenderHandler::output() {
@@ -285,6 +296,100 @@ void Connection::Quit() {
   BLooper::Quit();
 }
 
+enum { kCrossTalk, kCreateCrossTalk };
+
+static property_info connectionProperties[] = {
+    {"CrossTalk",
+     {B_GET_PROPERTY, B_DELETE_PROPERTY, 0},
+     {B_NAME_SPECIFIER, 0},
+     "A messenger set up by a MUXRPC handler for coordination with other "
+     "handlers",
+     kCrossTalk,
+     {B_MESSENGER_TYPE}},
+    {"CrossTalk",
+     {B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A messenger set up by a MUXRPC handler for coordination with other "
+     "handlers",
+     kCreateCrossTalk,
+     {B_MESSENGER_TYPE}},
+    {0}};
+
+status_t Connection::GetSupportedSuites(BMessage *data) {
+  data->AddString("suites", "suite/x-vnd.habitat+muxrpc-connection");
+  BPropertyInfo propertyInfo(connectionProperties);
+  data->AddFlat("messages", &propertyInfo);
+  return BLooper::GetSupportedSuites(data);
+}
+
+BHandler *Connection::ResolveSpecifier(BMessage *msg, int32 index,
+                                       BMessage *specifier, int32 what,
+                                       const char *property) {
+  BPropertyInfo propertyInfo(connectionProperties);
+  if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
+    return this;
+  return BHandler::ResolveSpecifier(msg, index, specifier, what, property);
+}
+
+void Connection::MessageReceived(BMessage *message) {
+  if (!message->HasSpecifiers())
+    return BLooper::MessageReceived(message);
+  BMessage reply(B_REPLY);
+  status_t error = B_ERROR;
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  uint32 match;
+  if (message->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
+      B_OK)
+    return BLooper::MessageReceived(message);
+  BPropertyInfo propertyInfo(connectionProperties);
+  propertyInfo.FindMatch(message, index, &specifier, what, property, &match);
+  switch (match) {
+  case kCrossTalk: {
+    BString name;
+    if (specifier.FindString("name", &name) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    switch (message->what) {
+    case B_DELETE_PROPERTY: {
+      error = B_OK;
+      this->crossTalk.erase(name);
+    } break;
+    case B_GET_PROPERTY: {
+      if (auto messenger = this->crossTalk.find(name);
+          messenger != this->crossTalk.end()) {
+        error = B_OK;
+        reply.AddMessenger("result", messenger->second);
+      } else
+        error = B_NAME_NOT_FOUND;
+    } break;
+    }
+  } break;
+  case kCreateCrossTalk: {
+    BString name;
+    BMessenger messenger;
+    if (message->FindString("name", &name) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    if (message->FindMessenger("messenger", &messenger) != B_OK) {
+      error = B_BAD_DATA;
+      break;
+    }
+    this->crossTalk.insert_or_assign(name, messenger);
+    error = B_OK;
+  } break;
+  }
+  reply.AddInt32("error", error);
+  if (error != B_OK)
+    reply.AddString("message", strerror(error));
+  if (message->IsSourceWaiting())
+    message->SendReply(&reply);
+}
+
 status_t Connection::populateHeader(Header *out) {
   unsigned char buffer[9];
   status_t last_error;
@@ -300,6 +405,8 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
   SenderHandler *handler;
   try {
     int32 requestNumber = this->nextRequest++;
+    // TODO: This will probably never actually reach INT32_MAX, but
+    // we should ensure request numbers still in use are skipped if it does
     if (this->nextRequest == INT32_MAX)
       this->nextRequest = 1;
     handler = new SenderHandler(this, requestNumber);
@@ -350,8 +457,11 @@ int32 Connection::pullLoop() {
       }
     }
   } while (result == B_OK);
-  std::cerr << "Closing connection to " << this->cypherkey() << ": "
-            << strerror(result) << std::endl;
+  {
+    BString logtext("Closing connection to ");
+    logtext << this->cypherkey() << ": " << strerror(result);
+    writeLog('MXRP', logtext);
+  }
   BMessenger(this).SendMessage(B_QUIT_REQUESTED);
   return result;
 }
@@ -519,7 +629,6 @@ status_t Connection::readOne() {
     BMessage wrapper('MXRP');
     switch (header.bodyType()) {
     case BodyType::JSON: {
-      BMessage content;
       {
         JSON::Parser parser(
             std::make_unique<JSON::BMessageObjectDocSink>(&wrapper), true);
@@ -531,13 +640,6 @@ status_t Connection::readOne() {
             JSON::parse(&parser, this->inner.get(), header.bodyLength);
         if (result != B_OK)
           return result;
-      }
-      wrapper.AddMessage("content", &content);
-      JSON::Parser parser(
-          std::make_unique<JSON::BMessageObjectDocSink>(&wrapper));
-      {
-        BString propName("content");
-        parser.setPropName(propName);
       }
     } break;
     case BodyType::UTF8_STRING: {
@@ -572,6 +674,16 @@ status_t Connection::readOne() {
       acquire_sem(this->ongoingLock);
       this->inboundOngoing.erase(header.requestNumber);
       release_sem(this->ongoingLock);
+      this->Lock();
+      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+        if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
+            handler && handler->requestNumber == -header.requestNumber) {
+          handler->canceled = true;
+          BMessenger(handler).SendMessage('SEND');
+          break;
+        }
+      }
+      this->Unlock();
     }
     if (next.IsValid())
       return next.SendMessage(&wrapper);
@@ -646,7 +758,24 @@ status_t Connection::readOne() {
           errorText << name[i];
           logText << name[i];
         }
-        std::cerr << logText.String() << std::endl;
+        switch (requestType) {
+        case RequestType::SOURCE:
+          logText << " (source)";
+          break;
+        case RequestType::DUPLEX:
+          logText << " (duplex)";
+          break;
+        case RequestType::ASYNC:
+          logText << " (async)";
+          break;
+        }
+        logText << " ";
+        {
+          JSON::RootSink rootSink(
+              std::make_unique<JSON::SerializerStart>(&logText));
+          JSON::fromBMessage(&rootSink, &args);
+        }
+        writeLog('MNOR', logText);
         errorText << " is not in the list of allowed methods";
         errorMessage.AddString("message", errorText);
         errorMessage.AddString("name", "error");

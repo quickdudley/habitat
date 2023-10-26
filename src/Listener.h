@@ -1,12 +1,18 @@
 #ifndef LISTENER_H
 #define LISTENER_H
 
+#include "Blob.h"
 #include "MUXRPC.h"
 #include "Secret.h"
 #include <Messenger.h>
 #include <Socket.h>
 #include <memory>
 #include <sodium.h>
+
+class DefaultCall {
+public:
+  virtual void call(muxrpc::Connection *rpc) = 0;
+};
 
 class SSBListener {
 public:
@@ -24,5 +30,6 @@ private:
 };
 
 void registerMethod(std::shared_ptr<muxrpc::Method> method);
+void registerDefaultCall(std::shared_ptr<DefaultCall> call);
 
 #endif // LISTENER_H

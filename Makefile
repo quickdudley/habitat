@@ -32,30 +32,33 @@ APP_MIME_SIG = application/x-vnd.habitat
 #	same name (source.c or source.cpp) are included from different directories.
 #	Also note that spaces in folder names do not work well with this Makefile.
 SRCS = \
-	 src/Base64.cpp  \
-	 src/BJSON.cpp  \
-	 src/Connection.cpp  \
-	 src/EBT.cpp \
-	 src/Indices.cpp  \
-	 src/JSON.cpp  \
-	 src/Lan.cpp  \
-	 src/Listener.cpp  \
-	 src/Main.cpp  \
-	 src/MUXRPC.cpp  \
-	 src/Post.cpp  \
-	 src/Secret.cpp  \
-	 src/SignJSON.cpp  \
-
-TESTABLE_SRCS = \
-	 src/Base64.cpp  \
-	 src/BJSON.cpp  \
+	 src/Base64.cpp \
+	 src/BJSON.cpp \
+	 src/Blob.cpp \
 	 src/Connection.cpp \
 	 src/EBT.cpp \
-	 src/JSON.cpp  \
+	 src/Indices.cpp \
+	 src/JSON.cpp \
+	 src/Lan.cpp \
+	 src/Listener.cpp \
+	 src/Logging.cpp \
+	 src/Main.cpp \
 	 src/MUXRPC.cpp \
-	 src/Post.cpp  \
+	 src/Post.cpp \
 	 src/Secret.cpp \
-	 src/SignJSON.cpp  \
+	 src/SignJSON.cpp \
+
+TESTABLE_SRCS = \
+	 src/Base64.cpp \
+	 src/BJSON.cpp \
+	 src/Connection.cpp \
+	 src/EBT.cpp \
+	 src/JSON.cpp \
+	 src/Logging.cpp \
+	 src/MUXRPC.cpp \
+	 src/Post.cpp \
+	 src/Secret.cpp \
+	 src/SignJSON.cpp \
 
 TEST_SRCS = \
 	 $(wildcard  \

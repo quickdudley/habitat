@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "Blob.h"
 #include "EBT.h"
 #include "Lan.h"
 #include "Listener.h"
@@ -34,6 +35,7 @@ private:
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;
   ebt::Dispatcher *ebt;
+  blob::Wanted *wantedBlobs;
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;

@@ -1,4 +1,5 @@
 #include "EBT.h"
+#include "Logging.h"
 #include <MessageRunner.h>
 #include <iostream>
 
@@ -61,6 +62,12 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     int64 sequence;
     if (msg->FindString("feed", &cypherkey) == B_OK &&
         msg->FindInt64("sequence", &sequence) == B_OK) {
+      {
+        BString logText("Observer notice for ");
+        logText << cypherkey;
+        logText << ": sequence = " << sequence;
+        writeLog('EBT_', logText);
+      }
       bool changed = false;
       bool justOne = !this->polyLink();
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {

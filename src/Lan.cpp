@@ -63,7 +63,8 @@ void LanBroadcaster::MessageReceived(BMessage *message) {
   reply.AddInt32("error", error);
   if (error != B_OK)
     reply.AddString("message", strerror(error));
-  message->SendReply(&reply);
+  if (message->IsSourceWaiting())
+    message->SendReply(&reply);
 }
 
 status_t LanBroadcaster::sendBroadcast() {

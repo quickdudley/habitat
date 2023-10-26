@@ -75,6 +75,8 @@ class Sender {
 public:
   Sender(BMessenger inner);
   ~Sender();
+  status_t send(bool content, bool stream, bool error, bool inOrder = true);
+  status_t send(double content, bool stream, bool error, bool inOrder = true);
   status_t send(BMessage *content, bool stream, bool error,
                 bool inOrder = true);
   status_t send(BString &content, bool stream, bool error, bool inOrder = true);
@@ -99,6 +101,7 @@ private:
   std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
   int32 requestNumber;
   uint32 sentSequence = 0;
+  bool canceled = false;
   friend class Connection;
 };
 
@@ -114,6 +117,10 @@ public:
   ~Connection();
   thread_id Run() override;
   void Quit() override;
+  status_t GetSupportedSuites(BMessage *data) override;
+  BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
+                             int32 what, const char *property) override;
+  void MessageReceived(BMessage *message) override;
   status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
                    BMessenger replyTo, BMessenger *outbound);
   BString cypherkey();
@@ -130,6 +137,7 @@ private:
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
+  std::map<BString, BMessenger> crossTalk;
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);
   static int32 pullThreadFunction(void *data);

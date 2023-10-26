@@ -54,6 +54,29 @@ TEST_CASE("Correctly parses decimal with trailing 0",
   REQUIRE(result == 10.00);
 }
 
+TEST_CASE("Correctly parses negative number", "[JSON][parsing][number]") {
+  class AExpect : public JSON::NodeSink {
+  public:
+    AExpect(double *target)
+        :
+        target(target) {}
+    void addNumber(BString &rawname, BString &name, BString &raw,
+                   JSON::number value) {
+      *(this->target) = value;
+    }
+    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+      return std::unique_ptr<NodeSink>(std::make_unique<AExpect>(this->target));
+    }
+
+  private:
+    double *target;
+  };
+  char example[] = "[-10.00]";
+  double result;
+  REQUIRE(JSON::parse(std::make_unique<AExpect>(&result), example) == B_OK);
+  REQUIRE(result == -10.00);
+}
+
 TEST_CASE("Successfully parses object with empty array as properties",
           "[JSON][parsing]") {
   char example[] = "{\"a\": [], \"b\": []}";
