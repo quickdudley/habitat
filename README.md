@@ -8,7 +8,7 @@ A Secure Scuttlebutt client for Haiku.
 
 - Libsodium: `pkgman install devel:libsodium`
 - ICU: `pkgman install icu66_devel`
-- Catch2 (only needed for unit tests) `pkgman install catch2`
+- Catch2 (only needed for unit tests) `pkgman install catch2_devel`
 
 ## Building
 
