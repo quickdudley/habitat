@@ -6,6 +6,7 @@
 #include <File.h>
 #include <FindDirectory.h>
 #include <LocaleRoster.h>
+#include <MenuItem.h>
 #include <PropertyInfo.h>
 #include <TimeZone.h>
 #include <iostream>
@@ -359,6 +360,15 @@ void Habitat::Quit() {
 MainWindow::MainWindow(void)
     :
     BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
-            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {}
+            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
+  BRect mbarRect(this->Bounds());
+  mbarRect.bottom = 20;
+  this->menuBar = new BMenuBar(mbarRect, "menubar");
+  BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
+  appMenu->AddItem(
+      new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
+  this->menuBar->AddItem(appMenu);
+  this->AddChild(this->menuBar);
+}
 
 #undef B_TRANSLATION_CONTEXT

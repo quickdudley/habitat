@@ -9,6 +9,7 @@
 #include "Secret.h"
 #include <Application.h>
 #include <Directory.h>
+#include <MenuBar.h>
 #include <Path.h>
 #include <Window.h>
 #include <memory>
@@ -17,6 +18,9 @@
 class MainWindow : public BWindow {
 public:
   MainWindow(void);
+
+private:
+  BMenuBar *menuBar;
 };
 
 class Habitat : public BApplication {
