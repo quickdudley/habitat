@@ -184,8 +184,9 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
     if (match == kCreatePost) {
       BMessenger(this->ownFeed).SendMessage(msg);
       return NULL;
-    } else
+    } else {
       return this;
+    }
   }
   if (databaseInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
@@ -205,8 +206,9 @@ void Habitat::MessageReceived(BMessage *msg) {
         }
       }
       return;
-    } else
+    } else {
       return BApplication::MessageReceived(msg);
+    }
   }
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
@@ -298,6 +300,7 @@ thread_id Habitat::Run() {
 }
 
 void Habitat::ReadyToRun() {
+  this->loadSettings();
   this->AddHandler(this->lanBroadcaster.get());
   this->ipListener = std::make_unique<SSBListener>(
       this->myId, BMessenger(this->lanBroadcaster.get()));
@@ -308,7 +311,47 @@ void Habitat::ReadyToRun() {
   registerMethod(std::make_shared<ebt::Begin>(this->ebt));
 }
 
+void Habitat::loadSettings() {
+  if (BEntry entry; this->settings->FindEntry("preferences", &entry) == B_OK) {
+    BMessage settings;
+    {
+      BFile file(&entry, B_READ_ONLY);
+      if (settings.Unflatten(&file) != B_OK)
+        return;
+    }
+    {
+      int32 logCategory;
+      for (int32 i = 0;
+        settings.FindInt32("LogCategory", i, &logCategory) == B_OK; i++) {
+        BMessage start(B_CREATE_PROPERTY);
+        start.AddSpecifier("LogCategory");
+        start.AddInt32("category", logCategory);
+        BMessenger(this).SendMessage(&start);
+      }
+    }
+  }
+}
+
+void Habitat::saveSettings() {
+  BMessage settings;
+  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+    if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i));
+        logger != NULL) {
+      logger->storeCategories(&settings);
+    }
+  }
+  BFile output;
+  if (this->settings->CreateFile("preferences~", &output, false) != B_OK)
+    return;
+  if (settings.Flatten(&output) == B_OK) {
+    BEntry entry;
+    if (this->settings->FindEntry("preferences~", &entry) == B_OK)
+      entry.Rename("preferences", true);
+  }
+}
+
 void Habitat::Quit() {
+  this->saveSettings();
   this->ipListener->halt();
   BApplication::Quit();
 }

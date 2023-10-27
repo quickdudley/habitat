@@ -31,6 +31,8 @@ public:
   void Quit();
 
 private:
+  void loadSettings();
+  void saveSettings();
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;
