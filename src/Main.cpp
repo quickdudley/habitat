@@ -1,6 +1,7 @@
 #include "Main.h"
 #include "Indices.h"
 #include "Logging.h"
+#include "SettingsWindow.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
 #include <File.h>
@@ -367,8 +368,20 @@ MainWindow::MainWindow(void)
   BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
   appMenu->AddItem(
       new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
+  appMenu->SetTargetForItems(this);
   this->menuBar->AddItem(appMenu);
   this->AddChild(this->menuBar);
+}
+
+void MainWindow::MessageReceived(BMessage *message) {
+  switch (message->what) {
+  case 'PRFS': {
+    SettingsWindow *window = new SettingsWindow();
+    window->Show();
+  } break;
+  default:
+    BWindow::MessageReceived(message);
+  }
 }
 
 #undef B_TRANSLATION_CONTEXT

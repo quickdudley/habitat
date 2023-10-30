@@ -46,6 +46,7 @@ SRCS = \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
+	 src/SettingsWindow.cpp \
 	 src/SignJSON.cpp \
 
 TESTABLE_SRCS = \
@@ -63,8 +64,6 @@ TESTABLE_SRCS = \
 TEST_SRCS = \
 	 $(wildcard  \
 	 tests/*.cpp)  \
-
-
 
 #	Specify the resource definition files to use. Full or relative paths can be
 #	used.

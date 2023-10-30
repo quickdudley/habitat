@@ -18,6 +18,7 @@
 class MainWindow : public BWindow {
 public:
   MainWindow(void);
+  void MessageReceived(BMessage *message) override;
 
 private:
   BMenuBar *menuBar;
