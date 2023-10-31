@@ -21,6 +21,11 @@ static inline BRect ourFrame() {
 SettingsWindow::SettingsWindow()
     :
     BWindow(ourFrame(), B_TRANSLATE("Habitat Settings"), B_UNTYPED_WINDOW, 0,
-            B_CURRENT_WORKSPACE) {}
+            B_CURRENT_WORKSPACE) {
+  this->tabView = new BTabView(this->Bounds(), "settingsTabView");
+  this->AddChild(tabView);
+}
+
+SettingsWindow::~SettingsWindow() {}
 
 #undef B_TRANSLATION_CONTEXT

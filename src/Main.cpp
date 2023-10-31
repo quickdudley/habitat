@@ -368,7 +368,6 @@ MainWindow::MainWindow(void)
   BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
   appMenu->AddItem(
       new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
-  appMenu->SetTargetForItems(this);
   this->menuBar->AddItem(appMenu);
   this->AddChild(this->menuBar);
 }
