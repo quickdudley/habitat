@@ -62,9 +62,8 @@ int SSBListener::run_() {
   while (true) {
     if (has_data(thisThread)) {
       thread_id sender;
-      if (receive_data(&sender, NULL, 0) == 'STOP') {
+      if (receive_data(&sender, NULL, 0) == 'STOP')
         break; // TODO: prevent leaked thread ID
-      }
     }
     BAbstractSocket *peer;
     if (this->listenSocket->Accept(peer) == B_OK) {
@@ -83,9 +82,8 @@ int SSBListener::run_() {
           new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
       be_app->RegisterLooper(rpc);
       thread_id thread = rpc->Run();
-      for (auto call : *defaultCalls) {
+      for (auto call : *defaultCalls)
         call->call(rpc);
-      }
       std::vector<BString> call = {"blobs", "get"};
       BMessage args('JSAR');
       args.AddString("0",
@@ -109,9 +107,8 @@ thread_id SSBListener::run() {
 
 void SSBListener::halt() {
   int skt = this->listenSocket->Socket();
-  if (skt > 0) {
+  if (skt > 0)
     shutdown(skt, SHUT_RDWR);
-  }
   if (this->task > 0) {
     send_data(this->task, 'STOP', NULL, 0);
     status_t exitValue;

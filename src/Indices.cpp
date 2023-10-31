@@ -44,9 +44,8 @@ void ensureIndices(const char *path) {
       break;
     }
     index_info info;
-    if (fs_stat_index(device, index->d_name, &info) != B_OK) {
+    if (fs_stat_index(device, index->d_name, &info) != B_OK)
       throw errno;
-    }
     for (int i = 0; i < HABITAT_INDEX_COUNT; i++) {
       if (strcmp(requiredIndices[i].name, index->d_name) == 0)
         exists[i] = true;

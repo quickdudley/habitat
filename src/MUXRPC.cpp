@@ -14,11 +14,10 @@ namespace muxrpc {
 MethodMatch Method::check(Connection *conn, std::vector<BString> &name,
                           RequestType type) {
   if (name == this->name) {
-    if (type == this->expectedType) {
+    if (type == this->expectedType)
       return MethodMatch::MATCH;
-    } else {
+    else
       return MethodMatch::WRONG_TYPE;
-    }
   } else {
     return MethodMatch::NO_MATCH;
   }
@@ -250,21 +249,19 @@ Connection::Connection(
   this->inner = std::move(inner);
   this->ongoingLock = create_sem(1, "MUXRPC incoming streams lock");
   BoxStream *shs = dynamic_cast<BoxStream *>(this->inner.get());
-  if (shs) {
+  if (shs)
     shs->getPeerKey(this->peer);
-  } else {
+  else
     randombytes_buf(this->peer, crypto_sign_PUBLICKEYBYTES);
-  }
 }
 
 Connection::~Connection() {
   for (int32 i = 0; i < this->CountHandlers();) {
     SenderHandler *handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
-    if (handler) {
+    if (handler)
       delete handler;
-    } else {
+    else
       i++;
-    }
   }
   // TODO: Send termination notices to `inboundOngoing`
   delete_sem(this->ongoingLock);
@@ -342,8 +339,9 @@ void Connection::MessageReceived(BMessage *message) {
   const char *property;
   uint32 match;
   if (message->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
-      B_OK)
+      B_OK) {
     return BLooper::MessageReceived(message);
+  }
   BPropertyInfo propertyInfo(connectionProperties);
   propertyInfo.FindMatch(message, index, &specifier, what, property, &match);
   switch (match) {
@@ -363,8 +361,9 @@ void Connection::MessageReceived(BMessage *message) {
           messenger != this->crossTalk.end()) {
         error = B_OK;
         reply.AddMessenger("result", messenger->second);
-      } else
+      } else {
         error = B_NAME_NOT_FOUND;
+      }
     } break;
     }
   } break;
@@ -393,9 +392,8 @@ void Connection::MessageReceived(BMessage *message) {
 status_t Connection::populateHeader(Header *out) {
   unsigned char buffer[9];
   status_t last_error;
-  if ((last_error = this->inner->ReadExactly(buffer, 9)) != B_OK) {
+  if ((last_error = this->inner->ReadExactly(buffer, 9)) != B_OK)
     return last_error;
-  }
   return out->readFromBuffer(buffer);
 }
 
@@ -432,9 +430,8 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
       break;
     }
     content.AddMessage("args", args);
-    if (type == RequestType::DUPLEX && outbound) {
+    if (type == RequestType::DUPLEX && outbound)
       *outbound = BMessenger(handler);
-    }
     acquire_sem(this->ongoingLock);
     this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
     release_sem(this->ongoingLock);
@@ -452,9 +449,8 @@ int32 Connection::pullLoop() {
     result = readOne();
     if (has_data(this->pullThreadID)) {
       thread_id sender;
-      if (receive_data(&sender, NULL, 0) == 'STOP') {
+      if (receive_data(&sender, NULL, 0) == 'STOP')
         return B_CANCELED;
-      }
     }
   } while (result == B_OK);
   {
@@ -474,9 +470,8 @@ SenderHandler *Connection::findSend(uint32 requestNumber) {
   this->Lock();
   for (int32 i = 0; i < this->CountHandlers(); i++) {
     SenderHandler *handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
-    if (handler != NULL && handler->requestNumber == requestNumber) {
+    if (handler != NULL && handler->requestNumber == requestNumber)
       return handler;
-    }
   }
   return NULL;
 }
@@ -597,13 +592,12 @@ void RequestObjectSink::addString(BString &rawname, BString &name, BString &raw,
 
 std::unique_ptr<JSON::NodeSink> RequestObjectSink::addArray(BString &rawname,
                                                             BString &name) {
-  if (name == "name") {
+  if (name == "name")
     return std::make_unique<RequestNameSink>(this->name);
-  } else if (name == "args") {
+  else if (name == "args")
     return std::make_unique<JSON::BMessageArrayDocSink>(args);
-  } else {
+  else
     return JSON::NodeSink::addArray(rawname, name);
-  }
 }
 
 RequestNameSink::RequestNameSink(std::vector<BString> *name)
@@ -816,19 +810,17 @@ void Header::setBodyType(BodyType value) {
 }
 
 void Header::setEndOrError(bool value) {
-  if (value) {
+  if (value)
     this->flags |= 4;
-  } else {
+  else
     this->flags &= ~4;
-  }
 }
 
 void Header::setStream(bool value) {
-  if (value) {
+  if (value)
     this->flags |= 8;
-  } else {
+  else
     this->flags &= ~8;
-  }
 }
 
 status_t Header::writeToBuffer(unsigned char *buffer) {

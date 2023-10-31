@@ -17,11 +17,10 @@ bool wasArray(const BMessage *msg) {
   while (msg->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
     int built = 0;
     for (int i = 0; attrname[i] != 0; i++) {
-      if (attrname[i] >= '0' && attrname[i] <= '9') {
+      if (attrname[i] >= '0' && attrname[i] <= '9')
         built = built * 10 + (attrname[i] - '0');
-      } else {
+      else
         return false;
-      }
     }
     collected.insert(built);
   }
@@ -132,11 +131,10 @@ void fromBMessageArray(RootSink *target, const BMessage *source) {
     BString key;
     key << index;
     type_code attrtype;
-    if (source->GetInfo(key.String(), &attrtype) == B_OK) {
+    if (source->GetInfo(key.String(), &attrtype) == B_OK)
       fromBMessageData(target, source, key, attrtype);
-    } else {
+    else
       break;
-    }
   }
 }
 

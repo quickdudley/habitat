@@ -91,8 +91,9 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
           }
         }
         error = B_BAD_INDEX;
-      } else
+      } else {
         break;
+      }
     } break;
     default:
       return this;
@@ -106,9 +107,9 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
         return feed;
     }
   }
-  if (error == B_OK)
+  if (error == B_OK) {
     return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
-  else {
+  } else {
     BMessage reply(B_MESSAGE_NOT_UNDERSTOOD);
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
@@ -178,9 +179,8 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
         for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
           SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
-          if (feed != NULL) {
+          if (feed != NULL)
             feed->notifyChanges(target);
-          }
         }
       } break;
       default:
@@ -197,9 +197,8 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     SSBFeed *feed;
-    if (this->findFeed(feed, author) == B_OK) {
+    if (this->findFeed(feed, author) == B_OK)
       BMessenger(feed).SendMessage(msg);
-    }
     return;
   }
   return BLooper::MessageReceived(msg);
@@ -284,9 +283,8 @@ status_t SSBFeed::load() {
       int64 sequence;
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
                     sizeof(int64));
-      if (sequence > this->lastSequence) {
+      if (sequence > this->lastSequence)
         this->pending.push({sequence, ref});
-      }
       while (!this->pending.empty() &&
              this->pending.top().sequence == this->lastSequence + 1) {
         sequence = this->pending.top().sequence;
@@ -297,9 +295,8 @@ status_t SSBFeed::load() {
         this->pending.pop();
         BString b64;
         // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
-        for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++) {
+        for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
           b64.Append(cypherkey[i], 1);
-        }
         std::vector<unsigned char> hash =
             base64::decode(b64.String(), b64.Length());
         this->lastSequence = sequence;
@@ -393,8 +390,9 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     }
     BPropertyInfo propertyInfo(ssbFeedProperties);
     if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
-        0)
+        0) {
       return BHandler::MessageReceived(msg);
+    }
     switch (match) {
     case kFeedCypherkey:
       reply.AddString("result", this->cypherkey());
@@ -414,8 +412,9 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       int32 spWhat;
       const char *property;
       if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
-                                            &property)) != B_OK)
+                                            &property)) != B_OK) {
         break;
+      }
       if (spWhat == B_INDEX_SPECIFIER) {
         if ((error = specifier.FindInt32("index", &index)) != B_OK)
           break;
@@ -433,7 +432,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (msg->ReturnAddress().IsValid())
       msg->SendReply(&reply);
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
-                             author == this->cypherkey()) {
+             author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
     // TODO: Enqueue any that we get out of order.
@@ -524,8 +523,9 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   BString filename =
       base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
   if ((status = this->store.CreateFile(filename.String(), &sink, false)) !=
-      B_OK)
+      B_OK) {
     return status;
+  }
   if ((status = message->Flatten(&sink)) != B_OK)
     return status;
   BString attrString = messageCypherkey(msgHash);
@@ -543,20 +543,21 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   int64 attrNum;
   if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
     if (sink.WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
-                       sizeof(int64)) != sizeof(int64))
+                       sizeof(int64)) != sizeof(int64)) {
       return B_IO_ERROR;
+    }
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   this->lastSequence = attrNum;
   this->notifyChanges();
   if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
     if (sink.WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
-                       sizeof(int64)) != sizeof(int64))
+                       sizeof(int64)) != sizeof(int64)) {
       return B_IO_ERROR;
+    }
   }
-  if (reply != NULL) {
+  if (reply != NULL)
     reply->AddMessage("result", &result);
-  }
   return B_OK;
 }
 
@@ -684,9 +685,8 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
 
 static inline status_t validateSequence(BMessage *message, int lastSequence) {
   double sequence;
-  if (message->FindDouble("sequence", &sequence) != B_OK) {
+  if (message->FindDouble("sequence", &sequence) != B_OK)
     return B_NOT_ALLOWED;
-  }
   if (!((lastSequence <= 0 && sequence == 1) ||
         (int(sequence) - 1 == lastSequence))) {
     return B_NOT_ALLOWED;
@@ -705,9 +705,8 @@ static inline status_t validatePrevious(BMessage *message, BString &lastID) {
   } else {
     const void *data;
     ssize_t numBytes;
-    if (message->FindData("previous", 'NULL', &data, &numBytes) != B_OK) {
+    if (message->FindData("previous", 'NULL', &data, &numBytes) != B_OK)
       return B_NOT_ALLOWED;
-    }
     return B_OK;
   }
   return B_NOT_ALLOWED;
@@ -715,9 +714,8 @@ static inline status_t validatePrevious(BMessage *message, BString &lastID) {
 
 static inline status_t validateHash(BMessage *message) {
   BString hash;
-  if (message->FindString("hash", &hash) != B_OK || hash != "sha256") {
+  if (message->FindString("hash", &hash) != B_OK || hash != "sha256")
     return B_NOT_ALLOWED;
-  }
   return B_OK;
 }
 
@@ -742,11 +740,10 @@ static inline status_t validateEitherContent(BMessage *message) {
     return validateContent(&content);
   } else {
     BString encrypted;
-    if (message->FindString("content", &encrypted) == B_OK) {
+    if (message->FindString("content", &encrypted) == B_OK)
       return validateContent(encrypted);
-    } else {
+    else
       return B_NOT_ALLOWED;
-    }
   }
 }
 

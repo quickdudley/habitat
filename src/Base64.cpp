@@ -4,24 +4,23 @@ namespace base64 {
 
 static inline bool isBase64(char point) {
   return point >= 'A' && point <= 'Z' || point >= 'a' && point <= 'z' ||
-         point >= '0' && point <= '9' || point == '+' || point == '-' ||
-         point == '/' || point == '_';
+      point >= '0' && point <= '9' || point == '+' || point == '-' ||
+      point == '/' || point == '_';
 }
 
 static inline unsigned char decode1(char point) {
-  if (point >= 'A' && point <= 'Z') {
+  if (point >= 'A' && point <= 'Z')
     return point - 'A';
-  } else if (point >= 'a' && point <= 'z') {
+  else if (point >= 'a' && point <= 'z')
     return point - 'a' + 26;
-  } else if (point >= '0' && point <= '9') {
+  else if (point >= '0' && point <= '9')
     return point - '0' + 52;
-  } else if (point == '+' || point == '-') {
+  else if (point == '+' || point == '-')
     return 62;
-  } else if (point == '/' || point == '_') {
+  else if (point == '/' || point == '_')
     return 63;
-  } else {
+  else
     throw INVALID_CHAR;
-  }
 }
 
 static inline char encode1(unsigned char byte, Variant variant) {
@@ -32,17 +31,15 @@ static inline char encode1(unsigned char byte, Variant variant) {
   } else if (byte <= 61) {
     return byte - 52 + '0';
   } else if (byte == 62) {
-    if (variant == STANDARD) {
+    if (variant == STANDARD)
       return '+';
-    } else {
+    else
       return '-';
-    }
   } else {
-    if (variant == STANDARD) {
+    if (variant == STANDARD)
       return '/';
-    } else {
+    else
       return '_';
-    }
   }
 }
 
@@ -68,9 +65,8 @@ BString encode(const unsigned char *raw, size_t inlen, Variant variant) {
       break;
     }
   }
-  if (r % 3 != 0) {
+  if (r % 3 != 0)
     result.Append(encode1(partial, variant), 1);
-  }
   result.Append('=', outlen - result.Length());
   return result;
 }
@@ -93,9 +89,8 @@ std::vector<unsigned char> decode(const char *b64, size_t inlen) {
   unsigned char partial = 0;
   for (size_t r = 0, c = 0; r < inlen; r++) {
     try {
-      if (b64[r] == '=') {
+      if (b64[r] == '=')
         break;
-      }
       unsigned char local = decode1(b64[r]);
       switch (c) {
       case 0:

@@ -6,6 +6,7 @@
 #include <Query.h>
 #include <Volume.h>
 #include <memory>
+#include <queue>
 #include <tuple>
 #include <vector>
 
@@ -54,8 +55,10 @@ public:
   status_t hashFile(entry_ref *ref);
 
 private:
-  std::vector<std::tuple<BString, int8, std::unique_ptr<BQuery>,
-                         std::vector<BMessenger>>>
+  status_t fetch(const BString &cypherkey, muxrpc::Connection *connection);
+  std::vector<
+      std::tuple<BString, int8, std::unique_ptr<BQuery>,
+                 std::vector<BMessenger>, std::queue<muxrpc::Connection *>>>
       wanted;
   BDirectory dir;
   BVolume volume;

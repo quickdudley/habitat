@@ -184,8 +184,9 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
     if (match == kCreatePost) {
       BMessenger(this->ownFeed).SendMessage(msg);
       return NULL;
-    } else
+    } else {
       return this;
+    }
   }
   if (databaseInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
@@ -205,8 +206,9 @@ void Habitat::MessageReceived(BMessage *msg) {
         }
       }
       return;
-    } else
+    } else {
       return BApplication::MessageReceived(msg);
+    }
   }
   BMessage reply(B_REPLY);
   status_t error = B_ERROR;
