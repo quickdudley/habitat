@@ -252,6 +252,12 @@ void Habitat::MessageReceived(BMessage *msg) {
       // TODO: Include the cypherkey in the response
       error = this->wantedBlobs->hashFile(&ref);
       break;
+    } else if (BString cypherkey;
+               msg->FindString("cypherkey", &cypherkey) == B_OK) {
+      auto h = new blob::LocalHandler(this->DetachCurrentMessage());
+      this->AddHandler(h);
+      this->wantedBlobs->addWant(cypherkey, 1, BMessenger(h));
+      return;
     }
     error = B_OK;
     msg->PrintToStream();

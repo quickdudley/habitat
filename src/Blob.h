@@ -14,6 +14,15 @@ namespace blob {
 
 class Wanted;
 
+class LocalHandler : public BHandler {
+public:
+  LocalHandler(BMessage *original);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  std::unique_ptr<BMessage> original;
+};
+
 class Get : public muxrpc::Method {
 public:
   Get(BLooper *looper, BVolume volume);

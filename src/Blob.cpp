@@ -572,4 +572,38 @@ void Wanted::registerMethods() {
   registerMethod(std::make_shared<Get>(this->Looper(), this->volume));
   registerMethod(std::make_shared<CreateWants>(this));
 }
+
+LocalHandler::LocalHandler(BMessage *original)
+    :
+    original(original) {}
+
+void LocalHandler::MessageReceived(BMessage *message) {
+  status_t err = B_OK;
+  BMessage toSend(B_REPLY);
+  entry_ref ref;
+  if (int32 device; message->FindInt32("device", &device) == B_OK) {
+    ref.device = device;
+  } else {
+    err = B_ERROR;
+    goto reply;
+  }
+  if (int64 directory; message->FindInt64("directory", &directory) == B_OK) {
+    ref.directory = directory;
+  } else {
+    err = B_ERROR;
+    goto reply;
+  }
+  if (BString name; message->FindString("name", &name) == B_OK)
+    ref.set_name(name.String());
+  toSend.AddRef("result", &ref);
+reply:
+  toSend.AddInt32("error", err);
+  toSend.AddString("message", strerror(err));
+  this->original->SendReply(&toSend);
+  BLooper *looper = this->Looper();
+  looper->Lock();
+  looper->RemoveHandler(this);
+  looper->Unlock();
+  delete this;
+}
 } // namespace blob
