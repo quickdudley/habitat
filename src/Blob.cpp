@@ -204,12 +204,15 @@ void WantSink::MessageReceived(BMessage *message) {
                                      &attrType)) != B_BAD_INDEX) {
       // TODO: Make distance threshold user-configurable
       // TODO: For positive numbers, get the blob if we want it
-      if (double distance; status == B_OK &&
-          content.FindDouble(attrName, &distance) == B_OK && distance < 0 &&
-          distance >= -2) {
-        BString cypherkey(attrName);
-        this->registry->addWant(cypherkey, (int8)(-distance) + 1,
-                                BMessenger(this));
+      if (double distance;
+          status == B_OK && content.FindDouble(attrName, &distance) == B_OK) {
+        if (distance < 0 && distance >= -2) {
+          BString cypherkey(attrName);
+          this->registry->addWant(cypherkey, (int8)(-distance) + 1,
+                                  BMessenger(this));
+        } else if (distance > 0 && distance <= 5242880) {
+          this->registry->sawSource(BString(attrName), this->connection);
+        }
       }
       index++;
     }
@@ -400,6 +403,20 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
   }
 }
 
+void Wanted::sawSource(const BString &cypherkey,
+                       muxrpc::Connection *connection) {
+  for (auto &item : this->wanted) {
+    if (std::get<0>(item) == cypherkey) {
+      auto &q = std::get<4>(item);
+      bool needStart = q.empty();
+      q.push(connection);
+      if (needStart)
+        this->fetch(cypherkey, connection);
+      break;
+    }
+  }
+}
+
 status_t Wanted::fetch(const BString &cypherkey,
                        muxrpc::Connection *connection) {
   std::vector<unsigned char> rawHash;
@@ -523,6 +540,21 @@ status_t Wanted::hashFile(entry_ref *ref) {
       base64::encode(buffer, crypto_hash_sha256_BYTES, base64::STANDARD));
   attr.Append(".sha256");
   return file.WriteAttrString("HABITAT:cypherkey", &attr);
+}
+
+Has::Has(Wanted *wanted)
+    :
+    wanted(wanted) {
+  this->name = {"blobs", "has"};
+  this->expectedType = muxrpc::RequestType::ASYNC;
+}
+
+status_t Has::call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                   BMessage *args, BMessenger replyTo, BMessenger *inbound) {
+  BString arg;
+  if (args->FindString("0", &arg) != B_OK)
+    return B_BAD_VALUE;
+  return B_OK;
 }
 
 void Wanted::registerMethods() {

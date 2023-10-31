@@ -28,7 +28,16 @@ private:
 
 class GetSlice : public muxrpc::Method {};
 
-class Has : public muxrpc::Method {};
+class Has : public muxrpc::Method {
+public:
+  Has(Wanted *wanted);
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
+
+private:
+  Wanted *wanted;
+};
 
 class CreateWants : public muxrpc::Method {
 public:
@@ -53,6 +62,7 @@ public:
   void propagateWant(BString &cypherkey, int8 distance);
   void registerMethods();
   status_t hashFile(entry_ref *ref);
+  void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
 
 private:
   status_t fetch(const BString &cypherkey, muxrpc::Connection *connection);
