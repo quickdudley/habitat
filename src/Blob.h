@@ -6,12 +6,22 @@
 #include <Query.h>
 #include <Volume.h>
 #include <memory>
+#include <queue>
 #include <tuple>
 #include <vector>
 
 namespace blob {
 
 class Wanted;
+
+class LocalHandler : public BHandler {
+public:
+  LocalHandler(BMessage *original);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  std::unique_ptr<BMessage> original;
+};
 
 class Get : public muxrpc::Method {
 public:
@@ -27,7 +37,16 @@ private:
 
 class GetSlice : public muxrpc::Method {};
 
-class Has : public muxrpc::Method {};
+class Has : public muxrpc::Method {
+public:
+  Has(Wanted *wanted);
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
+
+private:
+  Wanted *wanted;
+};
 
 class CreateWants : public muxrpc::Method {
 public:
@@ -52,10 +71,13 @@ public:
   void propagateWant(BString &cypherkey, int8 distance);
   void registerMethods();
   status_t hashFile(entry_ref *ref);
+  void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
 
 private:
-  std::vector<std::tuple<BString, int8, std::unique_ptr<BQuery>,
-                         std::vector<BMessenger>>>
+  status_t fetch(const BString &cypherkey, muxrpc::Connection *connection);
+  std::vector<
+      std::tuple<BString, int8, std::unique_ptr<BQuery>,
+                 std::vector<BMessenger>, std::queue<muxrpc::Connection *>>>
       wanted;
   BDirectory dir;
   BVolume volume;

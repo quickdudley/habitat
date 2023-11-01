@@ -12,12 +12,10 @@ struct RequiredIndex {
   type_code type;
 };
 
-static RequiredIndex requiredIndices[] = {{"HABITAT:cypherkey", B_STRING_TYPE},
-                                          {"HABITAT:sequence", B_INT64_TYPE},
-                                          {"HABITAT:author", B_STRING_TYPE},
-                                          {"HABITAT:timestamp", B_INT64_TYPE},
-                                          {"HABITAT:type", B_STRING_TYPE},
-                                          {"HABITAT:context", B_STRING_TYPE}};
+static RequiredIndex requiredIndices[] = {
+    {"HABITAT:cypherkey", B_STRING_TYPE}, {"HABITAT:sequence", B_INT64_TYPE},
+    {"HABITAT:author", B_STRING_TYPE},    {"HABITAT:timestamp", B_INT64_TYPE},
+    {"HABITAT:type", B_STRING_TYPE},      {"HABITAT:context", B_STRING_TYPE}};
 namespace {
 struct IndexDirDeleter {
   void operator()(DIR *p) { fs_close_index_dir(p); }
@@ -45,9 +43,8 @@ void ensureIndices(const char *path) {
       break;
     }
     index_info info;
-    if (fs_stat_index(device, index->d_name, &info) != B_OK) {
+    if (fs_stat_index(device, index->d_name, &info) != B_OK)
       throw errno;
-    }
     for (int i = 0; i < HABITAT_INDEX_COUNT; i++) {
       if (strcmp(requiredIndices[i].name, index->d_name) == 0)
         exists[i] = true;

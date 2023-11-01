@@ -41,9 +41,8 @@ BString stringifyNumber(number value) {
   if (std::isnan(value) || std::isinf(value)) {
     raw = "null";
   } else {
-    if (value < 0) {
+    if (value < 0)
       raw << '-';
-    }
     int32 k = 0;
     int32 n = ((int32)std::floor(std::log10(av))) + 1;
     long long s;
@@ -51,9 +50,8 @@ BString stringifyNumber(number value) {
     do {
       k++;
       s = std::round(av / std::pow((number)10, (number)(n - k)));
-      if (k > 40) {
+      if (k > 40)
         *((int *)0) = 5;
-      }
     } while ((number)s * std::pow((number)10, (number)(n - k)) != av);
     if (k <= n && n <= 21) {
       raw << s;
@@ -73,11 +71,10 @@ BString stringifyNumber(number value) {
     } else if (k == 1) {
       raw << s << 'e';
       long long e = n - 1;
-      if (e < 0) {
+      if (e < 0)
         raw << '-';
-      } else {
+      else
         raw << '+';
-      }
       raw << std::abs(e);
     } else {
       BString digits;
@@ -86,11 +83,10 @@ BString stringifyNumber(number value) {
       raw << digits.String() + 1;
       raw << 'e';
       long long e = n - 1;
-      if (e < 0) {
+      if (e < 0)
         raw << '-';
-      } else {
+      else
         raw << '+';
-      }
       raw << std::abs(e);
     }
   }
@@ -233,11 +229,10 @@ std::unique_ptr<NodeSink> ObjectSerializer::addArray(BString &rawname,
 }
 
 void ObjectSerializer::property(BString &rawname) {
-  if (this->nonempty) {
+  if (this->nonempty)
     this->target->Append(",");
-  } else {
+  else
     this->nonempty = true;
-  }
   this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
   this->target->Append(rawname);
@@ -294,11 +289,10 @@ std::unique_ptr<NodeSink> ArraySerializer::addArray(BString &rawname,
 }
 
 void ArraySerializer::item() {
-  if (this->nonempty) {
+  if (this->nonempty)
     this->target->Append(",");
-  } else {
+  else
     this->nonempty = true;
-  }
   this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
 }
@@ -355,9 +349,8 @@ RootSink::~RootSink() {
 
 void RootSink::addNumber(BString &rawname, BString &name, BString &raw,
                          number value) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.back()->addNumber(rawname, name, raw, value);
-  }
 }
 
 void RootSink::addNumber(BString &name, number value) {
@@ -372,9 +365,8 @@ void RootSink::addNumber(const char *name, number value) {
 }
 
 void RootSink::addBool(BString &rawname, BString &name, bool value) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.back()->addBool(rawname, name, value);
-  }
 }
 
 void RootSink::addBool(BString &name, bool value) {
@@ -388,9 +380,8 @@ void RootSink::addBool(const char *name, bool value) {
 }
 
 void RootSink::addNull(BString &rawname, BString &name) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.back()->addNull(rawname, name);
-  }
 }
 
 void RootSink::addNull(BString &name) {
@@ -405,9 +396,8 @@ void RootSink::addNull(const char *name) {
 
 void RootSink::addString(BString &rawname, BString &name, BString &raw,
                          BString &value) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.back()->addString(rawname, name, raw, value);
-  }
 }
 
 void RootSink::addString(BString &name, BString &value) {
@@ -417,9 +407,8 @@ void RootSink::addString(BString &name, BString &value) {
 }
 
 void RootSink::beginObject(BString &rawname, BString &name) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.push_back(this->stack.back()->addObject(rawname, name));
-  }
 }
 
 void RootSink::beginObject(BString &name) {
@@ -428,9 +417,8 @@ void RootSink::beginObject(BString &name) {
 }
 
 void RootSink::beginArray(BString &rawname, BString &name) {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.push_back(this->stack.back()->addArray(rawname, name));
-  }
 }
 
 void RootSink::beginArray(BString &name) {
@@ -439,9 +427,8 @@ void RootSink::beginArray(BString &name) {
 }
 
 void RootSink::closeNode() {
-  if (this->stack.size() > 0) {
+  if (this->stack.size() > 0)
     this->stack.pop_back();
-  }
 }
 
 status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input) {
@@ -605,11 +592,10 @@ status_t Parser::nextChar(char c) {
       return B_OK;
     } else if (c == '}') {
       this->stack.pop_back();
-      if (this->stack.empty()) {
+      if (this->stack.empty())
         this->state = 14;
-      } else {
+      else
         this->state = this->stack.back();
-      }
       this->target->closeNode();
       return B_OK;
     } else if (isspace(c)) {
@@ -617,11 +603,10 @@ status_t Parser::nextChar(char c) {
     }
   } else if (this->state == 2 && c == ']') {
     this->stack.pop_back();
-    if (this->stack.empty()) {
+    if (this->stack.empty())
       this->state = 14;
-    } else {
+    else
       this->state = this->stack.back();
-    }
     this->target->closeNode();
     return B_OK;
   } else if (this->state == 3) { // In object key
@@ -710,11 +695,10 @@ status_t Parser::nextChar(char c) {
       return B_OK;
     } else if (c == '}') {
       this->stack.pop_back();
-      if (this->stack.empty()) {
+      if (this->stack.empty())
         this->state = 14;
-      } else {
+      else
         this->state = this->stack.back();
-      }
       this->target->closeNode();
       return B_OK;
     } else if (isspace(c)) {
@@ -726,20 +710,18 @@ status_t Parser::nextChar(char c) {
       return B_OK;
     } else if (c == ']') {
       this->stack.pop_back();
-      if (this->stack.empty()) {
+      if (this->stack.empty())
         this->state = 14;
-      } else {
+      else
         this->state = this->stack.back();
-      }
       this->target->closeNode();
       return B_OK;
     } else if (isspace(c)) {
       return B_OK;
     }
   } else if (this->state == 14) { // After end of root object
-    if (isspace(c)) {
+    if (isspace(c))
       return B_OK;
-    }
   }
   return B_ILLEGAL_DATA;
 }
@@ -786,13 +768,11 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
 template <typename T> static T raise(T base, unsigned int p) {
   T r = 1;
   while (true) {
-    if (p % 2 == 1) {
+    if (p % 2 == 1)
       r *= base;
-    }
     p /= 2;
-    if (p == 0) {
+    if (p == 0)
       return r;
-    }
     base *= base;
   }
 }
@@ -806,24 +786,21 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
       this->z++;
     } else {
       this->e *= 10;
-      if (this->state2 == 2) {
+      if (this->state2 == 2)
         this->state2 = 3;
-      }
     }
     return B_OK;
   } else if (c >= '1' && c <= '9') {
     if (this->state2 <= 1) {
       this->s *= raise(10, (this->z + 1));
       this->s += c - '0';
-      if (this->state2 == 1) {
+      if (this->state2 == 1)
         this->k += this->z + 1;
-      }
       this->z = 0;
     } else {
       this->e = this->e * 10 + (c - '0');
-      if (this->state2 == 2) {
+      if (this->state2 == 2)
         this->state2 = 3;
-      }
     }
     return B_OK;
   } else if (c == '.') {
@@ -912,21 +889,19 @@ status_t Parser::charInString(char c, int cstate, int estate) {
     default:
       return B_ILLEGAL_DATA;
     }
-    if (this->highsurrogate != 0 && this->state2 != 2) {
+    if (this->highsurrogate != 0 && this->state2 != 2)
       return B_ILLEGAL_DATA;
-    }
     return B_OK;
   } else {
     int digit;
-    if (c >= '0' && c <= '9') {
+    if (c >= '0' && c <= '9')
       digit = c - '0';
-    } else if (c >= 'a' && c <= 'f') {
+    else if (c >= 'a' && c <= 'f')
       digit = c - 'a' + 10;
-    } else if (c >= 'A' && c <= 'F') {
+    else if (c >= 'A' && c <= 'F')
       digit = c - 'A' + 10;
-    } else {
+    else
       return B_ILLEGAL_DATA;
-    }
     this->escape |= digit << ((this->state2 - 2) * 4);
     if (this->state2 == 5) {
       this->state2 = 0;
@@ -946,7 +921,7 @@ status_t Parser::charInString(char c, int cstate, int estate) {
         if (this->highsurrogate == 0)
           return B_ILLEGAL_DATA;
         codepoint = (((int32)this->highsurrogate) - 0xD800) * 0x0400 +
-                    this->escape + 0x10000;
+            this->escape + 0x10000;
         this->highsurrogate = 0;
         this->escape = 0;
       }

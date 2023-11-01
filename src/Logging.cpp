@@ -19,8 +19,7 @@ void Logger::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'LOG_': {
     time_t now = message->GetUInt64("time", time(NULL));
-    if (int32 category;
-        message->FindInt32("category", &category) == B_OK &&
+    if (int32 category; message->FindInt32("category", &category) == B_OK &&
         this->categories.find(category) != this->categories.end()) {
       if (BString text; message->FindString("text", &text) == B_OK) {
         BString line("[");
@@ -34,9 +33,9 @@ void Logger::MessageReceived(BMessage *message) {
         line.Append((char *)&category, sizeof(int32));
         line << "}: ";
         line << text;
-        if (this->output == nullptr)
+        if (this->output == nullptr) {
           std::cerr << line.String() << std::endl;
-        else {
+        } else {
           line << "\n";
           this->output->WriteExactly(line.String(), line.Length());
         }

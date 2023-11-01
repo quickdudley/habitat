@@ -96,7 +96,7 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
       }
     }
   }
-failed : {
+failed: {
   BMessage reply('JSOB');
   reply.AddString("message", "could not get blob");
   reply.AddString("name", "Error");
@@ -139,6 +139,21 @@ void Wanted::MessageReceived(BMessage *message) {
             return;
           }
         }
+      }
+    }
+  } break;
+  case 'TNXT': {
+    BString cypherkey;
+    if (message->FindString("cypherkey", &cypherkey) != B_OK)
+      break;
+    for (auto &item : this->wanted) {
+      if (std::get<0>(item) == cypherkey) {
+        auto &q = std::get<4>(item);
+        if (!q.empty())
+          q.pop();
+        if (!q.empty())
+          this->fetch(cypherkey, q.front());
+        break;
       }
     }
   } break;
@@ -189,12 +204,15 @@ void WantSink::MessageReceived(BMessage *message) {
                                      &attrType)) != B_BAD_INDEX) {
       // TODO: Make distance threshold user-configurable
       // TODO: For positive numbers, get the blob if we want it
-      if (double distance; status == B_OK &&
-                           content.FindDouble(attrName, &distance) == B_OK &&
-                           distance < 0 && distance >= -2) {
-        BString cypherkey(attrName);
-        this->registry->addWant(cypherkey, (int8)(-distance) + 1,
-                                BMessenger(this));
+      if (double distance;
+          status == B_OK && content.FindDouble(attrName, &distance) == B_OK) {
+        if (distance < 0 && distance >= -2) {
+          BString cypherkey(attrName);
+          this->registry->addWant(cypherkey, (int8)(-distance) + 1,
+                                  BMessenger(this));
+        } else if (distance > 0 && distance <= 5242880) {
+          this->registry->sawSource(BString(attrName), this->connection);
+        }
       }
       index++;
     }
@@ -280,6 +298,61 @@ void WantSource::MessageReceived(BMessage *message) {
   }
   return BHandler::MessageReceived(message);
 }
+
+class FetchSink : public BHandler {
+public:
+  FetchSink(unsigned char expectedHash[crypto_hash_sha256_BYTES],
+            BDirectory dir);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  BFile file;
+  BEntry entry;
+  unsigned char expectedHash[crypto_hash_sha256_BYTES];
+  crypto_hash_sha256_state hashState;
+};
+
+FetchSink::FetchSink(unsigned char expectedHash[crypto_hash_sha256_BYTES],
+                     BDirectory dir) {
+  memcpy(this->expectedHash, expectedHash, crypto_hash_sha256_BYTES);
+  BString filename =
+      base64::encode(this->expectedHash, crypto_hash_sha256_BYTES, base64::URL);
+  this->entry.SetTo(&dir, filename);
+  dir.CreateFile(filename.String(), &this->file, false);
+  crypto_hash_sha256_init(&this->hashState);
+}
+
+void FetchSink::MessageReceived(BMessage *message) {
+  unsigned char *data;
+  ssize_t bytes;
+  if (message->FindData("content", B_RAW_TYPE, (const void **)&data, &bytes) ==
+      B_OK) {
+    this->file.WriteExactly(data, bytes);
+    crypto_hash_sha256_update(&this->hashState, data, bytes);
+  }
+  if (message->GetBool("end", false)) {
+    unsigned char gotHash[crypto_hash_sha256_BYTES];
+    crypto_hash_sha256_final(&this->hashState, gotHash);
+    BString cypherkey("&");
+    cypherkey.Append(
+        base64::encode(gotHash, crypto_hash_sha256_BYTES, base64::STANDARD));
+    cypherkey.Append(".sha256");
+    if (std::equal(gotHash, gotHash + crypto_hash_sha256_BYTES,
+                   this->expectedHash)) {
+      this->file.WriteAttrString("HABITAT:cypherkey", &cypherkey);
+    } else {
+      this->entry.Remove();
+    }
+    BLooper *looper = this->Looper();
+    looper->Lock();
+    looper->RemoveHandler(this);
+    looper->Unlock();
+    BMessage msg('TNXT');
+    msg.AddString("cypherkey", cypherkey.String());
+    BMessenger(looper).SendMessage(&msg);
+    delete this;
+  }
+}
 } // namespace
 
 void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
@@ -294,7 +367,7 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
       std::remove_if(std::get<3>(item).begin(), std::get<3>(item).end(),
                      [&replyTo](auto existingTarget) {
                        return !existingTarget.IsValid() ||
-                              existingTarget == replyTo;
+                           existingTarget == replyTo;
                      });
       if (replyTo.IsValid())
         std::get<3>(item).push_back(replyTo);
@@ -302,9 +375,9 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
     }
   }
   {
-    this->wanted.push_back(std::tuple(BString(cypherkey), distance,
-                                      std::make_unique<BQuery>(),
-                                      std::vector<BMessenger>{replyTo}));
+    this->wanted.push_back(std::tuple(
+        BString(cypherkey), distance, std::make_unique<BQuery>(),
+        std::vector<BMessenger>{replyTo}, std::queue<muxrpc::Connection *>()));
     BQuery &query = *std::get<2>(this->wanted.back());
     query.SetVolume(&this->volume);
     query.PushAttr("HABITAT:cypherkey");
@@ -324,9 +397,49 @@ void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
         BMessenger(this).SendMessage(&mimic);
       }
       this->propagateWant(cypherkey, distance);
-    } else
+    } else {
       writeLog('QRST', strerror(result));
+    }
   }
+}
+
+void Wanted::sawSource(const BString &cypherkey,
+                       muxrpc::Connection *connection) {
+  for (auto &item : this->wanted) {
+    if (std::get<0>(item) == cypherkey) {
+      auto &q = std::get<4>(item);
+      bool needStart = q.empty();
+      q.push(connection);
+      if (needStart)
+        this->fetch(cypherkey, connection);
+      break;
+    }
+  }
+}
+
+status_t Wanted::fetch(const BString &cypherkey,
+                       muxrpc::Connection *connection) {
+  std::vector<unsigned char> rawHash;
+  {
+    if (!cypherkey.StartsWith("&") || !cypherkey.EndsWith(".sha256"))
+      return B_BAD_VALUE;
+    BString inner;
+    cypherkey.CopyInto(inner, 1, cypherkey.Length() - 8);
+    rawHash = base64::decode(inner);
+  }
+  if (rawHash.size() != crypto_hash_sha256_BYTES)
+    return B_BAD_VALUE;
+  FetchSink *sink = new FetchSink(rawHash.data(), this->dir);
+  BLooper *looper = this->Looper();
+  looper->Lock();
+  looper->AddHandler(sink);
+  looper->Unlock();
+  std::vector<BString> methodName = {"blobs", "get"};
+  BMessage args('JSAR');
+  args.AddString("0", cypherkey.String());
+  connection->request(methodName, muxrpc::RequestType::SOURCE, &args,
+                      BMessenger(sink), NULL);
+  return B_OK;
 }
 
 status_t CreateWants::call(muxrpc::Connection *connection,
@@ -397,8 +510,9 @@ propagate:
     looper->Lock();
     for (int32 i = looper->CountHandlers() - 1; i >= 0; i--) {
       if (WantSource *source = dynamic_cast<WantSource *>(looper->HandlerAt(i));
-          source)
+          source) {
         targets.push_back(source);
+      }
     }
     looper->Unlock();
     BMessage message('WANT');
@@ -428,6 +542,21 @@ status_t Wanted::hashFile(entry_ref *ref) {
   return file.WriteAttrString("HABITAT:cypherkey", &attr);
 }
 
+Has::Has(Wanted *wanted)
+    :
+    wanted(wanted) {
+  this->name = {"blobs", "has"};
+  this->expectedType = muxrpc::RequestType::ASYNC;
+}
+
+status_t Has::call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                   BMessage *args, BMessenger replyTo, BMessenger *inbound) {
+  BString arg;
+  if (args->FindString("0", &arg) != B_OK)
+    return B_BAD_VALUE;
+  return B_OK;
+}
+
 void Wanted::registerMethods() {
   class CallCreateWants : public DefaultCall {
   public:
@@ -442,5 +571,39 @@ void Wanted::registerMethods() {
   registerDefaultCall(std::make_shared<CallCreateWants>(this));
   registerMethod(std::make_shared<Get>(this->Looper(), this->volume));
   registerMethod(std::make_shared<CreateWants>(this));
+}
+
+LocalHandler::LocalHandler(BMessage *original)
+    :
+    original(original) {}
+
+void LocalHandler::MessageReceived(BMessage *message) {
+  status_t err = B_OK;
+  BMessage toSend(B_REPLY);
+  entry_ref ref;
+  if (int32 device; message->FindInt32("device", &device) == B_OK) {
+    ref.device = device;
+  } else {
+    err = B_ERROR;
+    goto reply;
+  }
+  if (int64 directory; message->FindInt64("directory", &directory) == B_OK) {
+    ref.directory = directory;
+  } else {
+    err = B_ERROR;
+    goto reply;
+  }
+  if (BString name; message->FindString("name", &name) == B_OK)
+    ref.set_name(name.String());
+  toSend.AddRef("result", &ref);
+reply:
+  toSend.AddInt32("error", err);
+  toSend.AddString("message", strerror(err));
+  this->original->SendReply(&toSend);
+  BLooper *looper = this->Looper();
+  looper->Lock();
+  looper->RemoveHandler(this);
+  looper->Unlock();
+  delete this;
 }
 } // namespace blob

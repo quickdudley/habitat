@@ -80,9 +80,8 @@ Hash::~Hash() {
   const char *u8 = this->body.String();
   U8_NEXT_UNSAFE(u8, offset, codepoint);
   while (codepoint != 0) {
-    if (codepoint >= 0x10000) {
+    if (codepoint >= 0x10000)
       buffer.push_back((char)(((codepoint - 0x10000) >> 10) & 0xFF));
-    }
     buffer.push_back((char)(codepoint & 0xFF));
     U8_NEXT_UNSAFE(u8, offset, codepoint);
   }
@@ -224,9 +223,8 @@ void VerifyObjectSignature::addString(BString &rawname, BString &name,
         base64::decode(stuff.String(), stuff.Length());
     if (base64::encode(buffer, base64::STANDARD) != stuff)
       return;
-    if (buffer.size() == crypto_sign_BYTES) {
+    if (buffer.size() == crypto_sign_BYTES)
       memcpy(this->signature, buffer.data(), crypto_sign_BYTES);
-    }
   } else {
     this->inner->addString(rawname, name, raw, value);
   }

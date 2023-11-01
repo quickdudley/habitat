@@ -21,8 +21,9 @@ sendHello(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
 #define sendingKey (sendingAuth + crypto_auth_BYTES)
   memcpy(sendingKey, ephemeralPK, crypto_sign_PUBLICKEYBYTES);
   if (crypto_auth(sendingAuth, sendingKey, crypto_box_PUBLICKEYBYTES, netkey) <
-      0)
+      0) {
     throw HMAC_FAIL;
+  }
   if (peer->WriteExactly(buffer, sizeof(buffer), NULL) != B_OK)
     throw HANDSHAKE_HANGUP;
   memcpy(nonce, sendingAuth, crypto_secretbox_NONCEBYTES);
@@ -39,8 +40,9 @@ static void readHello(BDataIO *peer,
 #define receivedAuth (buffer + 0)
 #define receivedKey (receivedAuth + crypto_auth_BYTES)
   if (crypto_auth_verify(receivedAuth, receivedKey, crypto_box_PUBLICKEYBYTES,
-                         netkey) < 0)
+                         netkey) < 0) {
     throw WRONG_NETKEY;
+  }
   memcpy(ephemeralKey, receivedKey, crypto_sign_PUBLICKEYBYTES);
   memcpy(nonce, receivedAuth, crypto_secretbox_NONCEBYTES);
 #undef receivedKey
@@ -58,11 +60,13 @@ clientAuthKey(unsigned char *boxkey,
   if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
     throw SECRET_FAILED;
   if (crypto_hash_sha256_update(&state, sharedSecretab,
-                                crypto_scalarmult_BYTES) < 0)
+                                crypto_scalarmult_BYTES) < 0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_update(&state, sharedSecretaB,
-                                crypto_scalarmult_BYTES) < 0)
+                                crypto_scalarmult_BYTES) < 0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_final(&state, boxkey) < 0)
     throw SECRET_FAILED;
 }
@@ -79,14 +83,17 @@ serverAcceptKey(unsigned char *boxkey,
   if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
     throw SECRET_FAILED;
   if (crypto_hash_sha256_update(&state, sharedSecretab,
-                                crypto_scalarmult_BYTES) < 0)
+                                crypto_scalarmult_BYTES) < 0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_update(&state, sharedSecretaB,
-                                crypto_scalarmult_BYTES) < 0)
+                                crypto_scalarmult_BYTES) < 0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_update(&state, sharedSecretAb,
-                                crypto_scalarmult_BYTES) < 0)
+                                crypto_scalarmult_BYTES) < 0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_final(&state, boxkey) < 0)
     throw SECRET_FAILED;
 }
@@ -110,16 +117,18 @@ sendClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
 #define signingServerKey (signingNetid + crypto_auth_KEYBYTES)
 #define signingSharedSecret (signingServerKey + crypto_sign_PUBLICKEYBYTES)
     if (crypto_hash_sha256(signingSharedSecret, sharedSecretab,
-                           crypto_scalarmult_BYTES) < 0)
+                           crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     memcpy(signingNetid, netkey, crypto_auth_KEYBYTES);
     memcpy(signingServerKey, serverKey, crypto_sign_PUBLICKEYBYTES);
 #undef signingSharedSecret
 #undef signingServerKey
 #undef signingNetid
     if (crypto_sign_detached(detachedSignature, NULL, signBuffer,
-                             sizeof(signBuffer), clientSecret) < 0)
+                             sizeof(signBuffer), clientSecret) < 0) {
       throw SECRET_FAILED;
+    }
     memcpy(savedSignature, detachedSignature, crypto_sign_BYTES);
   }
   memcpy(sendingKey, clientKey, crypto_sign_PUBLICKEYBYTES);
@@ -130,8 +139,9 @@ sendClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
     memset(nonce, 0, sizeof(nonce));
     if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES,
                               sizeof(boxBuffer) - crypto_secretbox_MACBYTES,
-                              nonce, boxkey) < 0)
+                              nonce, boxkey) < 0) {
       throw SECRET_FAILED;
+    }
   }
 #undef sendingKey
 #undef detachedSignature
@@ -156,8 +166,9 @@ readClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
     unsigned char nonce[crypto_box_NONCEBYTES];
     memset(nonce, 0, crypto_box_NONCEBYTES);
     if (crypto_secretbox_open_easy(buffer + crypto_secretbox_MACBYTES, buffer,
-                                   sizeof(buffer), nonce, key) < 0)
+                                   sizeof(buffer), nonce, key) < 0) {
       throw SECRET_FAILED;
+    }
   }
 #define detachedSignature (buffer + crypto_secretbox_MACBYTES)
 #define receivedClientKey (detachedSignature + crypto_sign_BYTES)
@@ -169,8 +180,9 @@ readClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
 #define verifyServerKey (verifyNetkey + crypto_auth_KEYBYTES)
 #define verifySharedSecret (verifyServerKey + crypto_sign_PUBLICKEYBYTES)
     if (crypto_hash_sha256(verifySharedSecret, sharedSecretab,
-                           crypto_scalarmult_BYTES) < 0)
+                           crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     memcpy(verifyNetkey, netkey, crypto_auth_KEYBYTES);
     memcpy(verifyServerKey, serverKey, crypto_sign_PUBLICKEYBYTES);
 #undef verifySharedSecret
@@ -178,8 +190,9 @@ readClientAuth(BDataIO *peer, const unsigned char netkey[crypto_auth_KEYBYTES],
 #undef verifyNetkey
     if (crypto_sign_verify_detached(detachedSignature, verifyBuffer,
                                     sizeof(verifyBuffer),
-                                    receivedClientKey) != 0)
+                                    receivedClientKey) != 0) {
       throw SECRET_FAILED;
+    }
     memcpy(savedSignature, detachedSignature, crypto_sign_BYTES);
   }
   memcpy(clientKey, receivedClientKey, crypto_sign_PUBLICKEYBYTES);
@@ -207,8 +220,9 @@ sendServerAccept(BDataIO *peer,
 #define signingClientKey (signingSignature + crypto_sign_BYTES)
 #define signingSharedSecret (signingClientKey + crypto_sign_PUBLICKEYBYTES)
     if (crypto_hash_sha256(signingSharedSecret, sharedSecretab,
-                           crypto_scalarmult_BYTES) < 0)
+                           crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     memcpy(signingNetkey, netkey, crypto_auth_KEYBYTES);
     memcpy(signingSignature, signatureA, crypto_sign_BYTES);
     memcpy(signingClientKey, clientKey, crypto_sign_PUBLICKEYBYTES);
@@ -217,8 +231,9 @@ sendServerAccept(BDataIO *peer,
 #undef signingSignature
 #undef signingNetkey
     if (crypto_sign_detached(signature, NULL, signBuffer, sizeof(signBuffer),
-                             serverSecret) < 0)
+                             serverSecret) < 0) {
       throw SECRET_FAILED;
+    }
   }
   {
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
@@ -228,8 +243,9 @@ sendServerAccept(BDataIO *peer,
     memset(nonce, 0, sizeof(nonce));
     if (crypto_secretbox_easy(boxBuffer, boxBuffer + crypto_secretbox_MACBYTES,
                               sizeof(boxBuffer) - crypto_secretbox_MACBYTES,
-                              nonce, boxkey) < 0)
+                              nonce, boxkey) < 0) {
       throw SECRET_FAILED;
+    }
   }
   size_t sent;
   if (peer->WriteExactly(boxBuffer, sizeof(boxBuffer), &sent) != B_OK)
@@ -256,8 +272,9 @@ readServerAccept(BDataIO *peer,
     memset(nonce, 0, sizeof(nonce));
     if (crypto_secretbox_open_easy(boxBuffer + crypto_secretbox_MACBYTES,
                                    boxBuffer, sizeof(boxBuffer), nonce,
-                                   boxkey) < 0)
+                                   boxkey) < 0) {
       throw SECRET_FAILED;
+    }
   }
 #define detachedSignature (boxBuffer + crypto_secretbox_MACBYTES)
   {
@@ -269,8 +286,9 @@ readServerAccept(BDataIO *peer,
 #define verifyClientKey (verifyFirstSignature + crypto_sign_BYTES)
 #define verifySharedSecret (verifyClientKey + crypto_sign_PUBLICKEYBYTES)
     if (crypto_hash_sha256(verifySharedSecret, sharedSecretab,
-                           crypto_scalarmult_BYTES) < 0)
+                           crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     memcpy(verifyNetkey, netkey, crypto_auth_KEYBYTES);
     memcpy(verifyFirstSignature, signatureA, crypto_sign_BYTES);
     memcpy(verifyClientKey, clientKey, crypto_sign_PUBLICKEYBYTES);
@@ -279,8 +297,9 @@ readServerAccept(BDataIO *peer,
 #undef verifyFirstSignature
 #undef verifyNetkey
     if (crypto_sign_verify_detached(detachedSignature, verifyBuffer,
-                                    sizeof(verifyBuffer), serverKey) < 0)
+                                    sizeof(verifyBuffer), serverKey) < 0) {
       throw SECRET_FAILED;
+    }
   }
 #undef detachedSignature
 }
@@ -299,14 +318,17 @@ streamKeyCommon(unsigned char *output,
     if (crypto_hash_sha256_update(&state, netkey, crypto_auth_KEYBYTES) < 0)
       throw SECRET_FAILED;
     if (crypto_hash_sha256_update(&state, sharedSecretab,
-                                  crypto_scalarmult_BYTES) < 0)
+                                  crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     if (crypto_hash_sha256_update(&state, sharedSecretaB,
-                                  crypto_scalarmult_BYTES) < 0)
+                                  crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     if (crypto_hash_sha256_update(&state, sharedSecretAb,
-                                  crypto_scalarmult_BYTES) < 0)
+                                  crypto_scalarmult_BYTES) < 0) {
       throw SECRET_FAILED;
+    }
     if (crypto_hash_sha256_final(&state, hash1) < 0)
       throw SECRET_FAILED;
   }
@@ -323,8 +345,9 @@ static void streamKey(unsigned char *output,
   if (crypto_hash_sha256_update(&state, common, crypto_hash_sha256_BYTES) < 0)
     throw SECRET_FAILED;
   if (crypto_hash_sha256_update(&state, peerKey, crypto_sign_PUBLICKEYBYTES) <
-      0)
+      0) {
     throw SECRET_FAILED;
+  }
   if (crypto_hash_sha256_final(&state, output) < 0)
     throw SECRET_FAILED;
 }
@@ -421,11 +444,10 @@ static void nonce_inc(unsigned char *nonce) {
   unsigned char i = crypto_secretbox_NONCEBYTES - 1;
   while (i != 255) {
     nonce[i] += 1;
-    if (nonce[i] == 0) {
+    if (nonce[i] == 0)
       i--;
-    } else {
+    else
       break;
-    }
   }
 }
 
@@ -434,39 +456,41 @@ BoxStream::~BoxStream() {
   memset(header + crypto_secretbox_MACBYTES, 0, 18);
   nonce_inc(this->sendnonce);
   if (crypto_secretbox_easy(header, header + crypto_secretbox_MACBYTES, 18,
-                            this->sendnonce, this->sendkey) == 0)
+                            this->sendnonce, this->sendkey) == 0) {
     this->inner->WriteExactly(header, crypto_secretbox_MACBYTES + 18, NULL);
+  }
 }
 
 ssize_t BoxStream::Write(const void *buffer, size_t size) {
-  if (size > 4096) {
+  if (size > 4096)
     size = 4096;
-  }
   std::unique_ptr<unsigned char> buffer1 =
       std::unique_ptr<unsigned char>(new unsigned char[size + 34]);
   unsigned char tmpnonce[24];
   memcpy(tmpnonce, this->sendnonce, 24);
   nonce_inc(tmpnonce);
   if (crypto_secretbox_easy(buffer1.get() + 18, (unsigned char *)buffer, size,
-                            tmpnonce, this->sendkey) != 0)
+                            tmpnonce, this->sendkey) != 0) {
     return B_IO_ERROR;
+  }
   *((unsigned short *)(buffer1.get() + 16)) = (unsigned short)size;
   if (swap_data(B_INT16_TYPE, buffer1.get() + 16, sizeof(short),
-                B_SWAP_HOST_TO_BENDIAN) != B_OK)
+                B_SWAP_HOST_TO_BENDIAN) != B_OK) {
     return B_IO_ERROR;
+  }
   if (crypto_secretbox_easy(buffer1.get(), buffer1.get() + 16, 18,
-                            this->sendnonce, this->sendkey) != 0)
+                            this->sendnonce, this->sendkey) != 0) {
     return B_IO_ERROR;
+  }
   nonce_inc(tmpnonce);
   memcpy(this->sendnonce, tmpnonce, 24);
   size_t bytes_written;
   status_t result =
       this->inner->WriteExactly(buffer1.get(), size + 34, &bytes_written);
-  if (result == B_OK) {
+  if (result == B_OK)
     return bytes_written - 34;
-  } else {
+  else
     return result;
-  }
 }
 
 ssize_t BoxStream::Read(void *buffer, size_t size) {
@@ -493,9 +517,8 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
     this->read_buffer =
         std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
     memcpy(this->read_buffer.get(), headerMsg + 2, 16);
-    if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK) {
+    if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK)
       return B_IO_ERROR;
-    }
     if (crypto_secretbox_open_easy(this->read_buffer.get() + 16,
                                    this->read_buffer.get(), bodyLength + 16,
                                    this->recvnonce, this->recvkey) != 0) {

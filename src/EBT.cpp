@@ -95,8 +95,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     return;
   }
   if (msg->IsReply()) {
-    if (status_t response;
-        msg->FindInt32("error", &response) == B_OK &&
+    if (status_t response; msg->FindInt32("error", &response) == B_OK &&
         (response == B_ENTRY_NOT_FOUND || response == B_NAME_NOT_FOUND)) {
       const BMessage *request = msg->Previous();
       int32 index;
@@ -110,13 +109,12 @@ void Dispatcher::MessageReceived(BMessage *msg) {
         if (specifier.FindString("property", &property) == B_OK) {
           if (property == "ReplicatedFeed") {
             BString feedId;
-            if (specifier.FindString("name", &feedId) == B_OK) {
+            if (specifier.FindString("name", &feedId) == B_OK)
               cypherkey = feedId;
-            }
-          } else if (int32 sequence;
-                     property == "Post" &&
-                     specifier.FindInt32("index", &sequence) == B_OK)
+          } else if (int32 sequence; property == "Post" &&
+                     specifier.FindInt32("index", &sequence) == B_OK) {
             gotSequence = true;
+          }
         }
       }
       if (response != B_NAME_NOT_FOUND && gotSequence && cypherkey != "") {
@@ -151,10 +149,12 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   abs(item->second.updated + item->second.note.receive ? 5000000 : 6000000)
             if (line->second.note.sequence > bestLine->second.note.sequence ||
                 (line->second.note.sequence == bestLine->second.note.sequence &&
-                 TIME_FORMULA(line) < TIME_FORMULA(bestLine)))
+                 TIME_FORMULA(line) < TIME_FORMULA(bestLine))) {
               bestSoFar = link;
-          } else
+            }
+          } else {
             bestSoFar = link;
+          }
 #undef TIME_FORMULA
         }
       }
@@ -197,9 +197,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
           }
           link->sendSequence.pop();
         }
-        if (nonempty) {
+        if (nonempty)
           link->sender.send(&content, true, false, false);
-        }
         if (!link->sendSequence.empty())
           anyRemaining = true;
       }
@@ -231,9 +230,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
             }
           }
         }
-        if (sentAny) {
+        if (sentAny)
           this->checkForMessage(author, actualSequence + 1);
-        }
         return;
       }
     }
@@ -256,9 +254,8 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
 bool Dispatcher::polyLink() {
   int count = 0;
   for (int32 i = this->CountHandlers(); i >= 0; i--) {
-    if (dynamic_cast<Link *>(this->HandlerAt(i)) && ++count >= 2) {
+    if (dynamic_cast<Link *>(this->HandlerAt(i)) && ++count >= 2)
       return true;
-    }
   }
   return false;
 }
@@ -300,10 +297,11 @@ void Link::MessageReceived(BMessage *message) {
             if (this->ourState.find(attrname) != this->ourState.end()) {
               dispatcher->checkForMessage(inserted.first->first,
                                           inserted.first->second.note.sequence);
-              if (inserted.first->second.note.receive)
+              if (inserted.first->second.note.receive) {
                 dispatcher->checkForMessage(
                     inserted.first->first,
                     inserted.first->second.note.sequence + 1);
+              }
             } else {
               this->unsent.insert(attrname);
               this->sendSequence.push(attrname);
