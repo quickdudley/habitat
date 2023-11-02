@@ -74,6 +74,8 @@ public:
   void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
 
 private:
+  void _addWant_(BString &cypherkey, int8 distance,
+                 BMessenger replyTo = BMessenger());
   status_t fetch(const BString &cypherkey, muxrpc::Connection *connection);
   std::vector<
       std::tuple<BString, int8, std::unique_ptr<BQuery>,

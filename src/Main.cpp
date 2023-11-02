@@ -9,6 +9,7 @@
 #include <PropertyInfo.h>
 #include <TimeZone.h>
 #include <iostream>
+#include <signal.h>
 #include <sodium.h>
 #include <string>
 
@@ -17,6 +18,7 @@
 Habitat *app;
 
 int main(int argc, const char **args) {
+  signal(SIGPIPE, SIG_IGN);
   int exit_status = 0;
   if (sodium_init() == -1) {
     std::cerr << B_TRANSLATE("Failed to initialize libsodium") << std::endl;

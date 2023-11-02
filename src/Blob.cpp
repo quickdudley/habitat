@@ -157,6 +157,15 @@ void Wanted::MessageReceived(BMessage *message) {
       }
     }
   } break;
+  case 'ADDW': {
+    BString cypherkey;
+    if (message->FindString("cypherkey", &cypherkey) != B_OK)
+      break;
+    BMessenger replyTo;
+    message->FindMessenger("replyTo", &replyTo);
+    int8 distance = message->GetInt8("distance", 1);
+    this->_addWant_(cypherkey, distance, replyTo);
+  } break;
   }
 }
 
@@ -356,6 +365,14 @@ void FetchSink::MessageReceived(BMessage *message) {
 } // namespace
 
 void Wanted::addWant(BString &cypherkey, int8 distance, BMessenger replyTo) {
+  BMessage message('ADDW');
+  message.AddString("cypherkey", cypherkey);
+  message.AddInt8("distance", distance);
+  message.AddMessenger("replyTo", replyTo);
+  BMessenger(this).SendMessage(&message);
+}
+
+void Wanted::_addWant_(BString &cypherkey, int8 distance, BMessenger replyTo) {
   for (auto &item : this->wanted) {
     BString &existingKey = std::get<0>(item);
     if (existingKey == cypherkey) {

@@ -126,8 +126,13 @@ void QueryHandler::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_PULSE: {
     entry_ref ref;
-    if (query.GetNextRef(&ref) != B_OK)
+    if (query.GetNextRef(&ref) != B_OK) {
+      if (this->target.IsValid())
+        this->target.SendMessage('DONE');
+      else
+        goto canceled;
       break;
+    }
     BMessage post;
     BFile file(&ref, B_READ_ONLY);
     if (post.Unflatten(&file) == B_OK) {
@@ -355,7 +360,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       bool live;
       if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
         qh = new QueryHandler(target);
-        qh->query.SetTarget(target);
+        qh->query.SetTarget(BMessenger(qh));
         live = true;
       } else {
         qh = new QueryHandler(BMessenger());
