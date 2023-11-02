@@ -4,7 +4,9 @@
 #include "SignJSON.h"
 #include <File.h>
 #include <MessageRunner.h>
+#include <NodeMonitor.h>
 #include <Path.h>
+#include <StringList.h>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -31,21 +33,137 @@ AttrCheck::AttrCheck(BDirectory dir)
 }
 
 void AttrCheck::MessageReceived(BMessage *msg) {
-  if (msg->what == 'TICK') {
-    BMessage tick('TICK');
+  if (msg->what == B_PULSE) {
+    BMessage tick(B_PULSE);
     if (BEntry entry; this->dir.GetNextEntry(&entry, true) == B_OK) {
       BFile file(&entry, B_READ_ONLY);
       if (BMessage contents;
           file.IsReadable() && contents.Unflatten(&file) == B_OK) {
         postAttrs(&file, &contents);
       }
-      BMessageRunner::StartSending(this, &tick, 250000, 1);
+      BMessenger(this).SendMessage(&tick);
+      //  BMessageRunner::StartSending(this, &tick, 250000, 1);
     } else {
       this->dir.Rewind();
-      BMessageRunner::StartSending(this, &tick, 300000000, 1); // 5 minutes
+      BMessageRunner::StartSending(this, &tick, 86400000000, 1); // 24 hours
     }
   } else {
     BHandler::MessageReceived(msg);
+  }
+}
+
+class QueryHandler : public BHandler {
+public:
+  QueryHandler(BMessenger target);
+  void MessageReceived(BMessage *message);
+  BQuery query;
+
+private:
+  BMessenger target;
+};
+
+QueryHandler::QueryHandler(BMessenger target)
+    :
+    target(target) {}
+
+status_t populateQuery(BQuery &query, BMessage *specifier) {
+  bool already = false;
+  bool disj = false;
+#define CONJ()                                                                 \
+  if (already)                                                                 \
+    query.PushOp(B_AND);                                                       \
+  else                                                                         \
+    already = true;                                                            \
+  disj = false
+#define DISJ()                                                                 \
+  if (disj)                                                                    \
+    query.PushOp(B_OR);                                                        \
+  else                                                                         \
+    disj = true
+  if (BString cypherkey;
+      specifier->FindString(specifier->what == 'CPLX' ? "cypherkey" : "name",
+                            &cypherkey) == B_OK) {
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(cypherkey.String());
+    query.PushOp(B_EQ);
+    CONJ();
+  }
+#define STRC(mname, attr)                                                      \
+  if (BStringList mname##s;                                                    \
+      specifier->FindStrings(#mname, &mname##s) == B_OK) {                     \
+    for (int32 i = mname##s.CountStrings() - 1; i >= 0; i--) {                 \
+      query.PushAttr(attr);                                                    \
+      query.PushString(mname##s.StringAt(i));                                  \
+      query.PushOp(B_EQ);                                                      \
+      DISJ();                                                                  \
+    }                                                                          \
+    if (disj) {                                                                \
+      CONJ();                                                                  \
+    }                                                                          \
+  }
+  STRC(author, "HABITAT:author")
+  STRC(context, "HABITAT:context")
+  STRC(type, "HABITAT:type")
+  if (uint64 earliest; specifier->FindUInt64("earliest", &earliest) == B_OK) {
+    query.PushAttr("HABITAT:timestamp");
+    query.PushUInt64(earliest);
+    query.PushOp(B_GE);
+    CONJ();
+  }
+  if (uint64 latest; specifier->FindUInt64("latest", &latest) == B_OK) {
+    query.PushAttr("HABITAT:timestamp");
+    query.PushUInt64(latest);
+    query.PushOp(B_LE);
+    CONJ();
+  }
+  return already ? B_OK : B_BAD_VALUE;
+#undef STRC
+#undef DISJ
+#undef CONJ
+}
+
+void QueryHandler::MessageReceived(BMessage *message) {
+  switch (message->what) {
+  case B_PULSE: {
+    entry_ref ref;
+    if (query.GetNextRef(&ref) != B_OK)
+      break;
+    BMessage post;
+    BFile file(&ref, B_READ_ONLY);
+    if (post.Unflatten(&file) == B_OK) {
+      if (this->target.IsValid())
+        this->target.SendMessage(&post);
+      else
+        goto canceled;
+    }
+    BMessenger(this).SendMessage(B_PULSE);
+  } break;
+  case B_QUERY_UPDATE:
+    if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
+      entry_ref ref;
+      ref.device = message->GetInt32("device", B_ERROR);
+      ref.directory = message->GetInt64("directory", B_ERROR);
+      BString name;
+      if (message->FindString("name", &name) == B_OK)
+        ref.set_name(name.String());
+      BFile file(&ref, B_READ_ONLY);
+      BMessage post;
+      if (post.Unflatten(&file) == B_OK) {
+        if (this->target.IsValid())
+          this->target.SendMessage(&post);
+        else
+          goto canceled;
+      }
+    }
+    break;
+  case B_QUIT_REQUESTED:
+  canceled: {
+    BLooper *looper = this->Looper();
+    looper->Lock();
+    looper->RemoveHandler(this);
+    looper->Unlock();
+    delete this;
+  } break;
   }
 }
 } // namespace
@@ -65,7 +183,7 @@ SSBDatabase::SSBDatabase(BDirectory store)
     store(store) {
   BHandler *check = new AttrCheck(store);
   this->AddHandler(check);
-  BMessenger(check).SendMessage('TICK');
+  BMessenger(check).SendMessage(B_PULSE);
 }
 
 SSBDatabase::~SSBDatabase() {}
@@ -87,7 +205,7 @@ property_info databaseProperties[] = {
      {}},
     {"Post",
      {B_GET_PROPERTY, 0},
-     {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
+     {B_NAME_SPECIFIER, 'CPLX', 0},
      "An SSB message",
      kPostByID,
      {}},
@@ -232,6 +350,42 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         error = B_DONT_DO_THAT;
       }
       break;
+    case kPostByID: {
+      QueryHandler *qh;
+      bool live;
+      if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
+        qh = new QueryHandler(target);
+        qh->query.SetTarget(target);
+        live = true;
+      } else {
+        qh = new QueryHandler(BMessenger());
+        live = false;
+      }
+      BVolume volume;
+      this->store.GetVolume(&volume);
+      qh->query.SetVolume(&volume);
+      populateQuery(qh->query, &specifier);
+      if ((error = qh->query.Fetch()) != B_OK) {
+        delete qh;
+        break;
+      }
+      if (live) {
+        this->Lock();
+        this->AddHandler(qh);
+        this->Unlock();
+        BMessenger(qh).SendMessage(B_PULSE);
+        reply.AddMessenger("result", BMessenger(qh));
+      } else {
+        entry_ref ref;
+        while (qh->query.GetNextRef(&ref) == B_OK) {
+          BMessage post;
+          BFile file(&ref, B_READ_ONLY);
+          if (post.Unflatten(&file) == B_OK)
+            reply.AddMessage("result", &post);
+        }
+        delete qh;
+      }
+    } break;
     default:
       return BLooper::MessageReceived(msg);
     }

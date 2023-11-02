@@ -44,7 +44,7 @@ void GetSender::MessageReceived(BMessage *message) {
   ssize_t read = this->source->Read(chunk, sizeof(chunk));
   if (read > 0) {
     this->sink.send(chunk, (uint32)read, true, false, true);
-    BMessenger(this).SendMessage('TICK');
+    BMessenger(this).SendMessage(B_PULSE);
   } else {
     this->sink.send(true, true, true, true);
     BLooper *looper = this->Looper();
@@ -91,7 +91,7 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
         this->looper->Lock();
         this->looper->AddHandler(sender);
         this->looper->Unlock();
-        BMessenger(sender).SendMessage('TICK');
+        BMessenger(sender).SendMessage(B_PULSE);
         return B_OK;
       }
     }

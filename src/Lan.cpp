@@ -45,7 +45,7 @@ void LanBroadcaster::MessageReceived(BMessage *message) {
     if ((error = message->FindUInt16("port", &port)) != B_OK)
       break;
     this->ssbPort = port;
-    BMessage tick('TICK');
+    BMessage tick(B_PULSE);
     this->timer =
         std::make_unique<BMessageRunner>(BMessenger(this), tick, 999999);
   } break;
@@ -54,7 +54,7 @@ void LanBroadcaster::MessageReceived(BMessage *message) {
     this->timer.reset(NULL);
     error = B_OK;
     break;
-  case 'TICK':
+  case B_PULSE:
     error = this->sendBroadcast();
     break;
   default:
