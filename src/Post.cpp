@@ -57,6 +57,7 @@ public:
   QueryHandler(BMessenger target);
   void MessageReceived(BMessage *message);
   BQuery query;
+  int32 limit = -1;
 
 private:
   BMessenger target;
@@ -125,6 +126,8 @@ status_t populateQuery(BQuery &query, BMessage *specifier) {
 void QueryHandler::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_PULSE: {
+    if (this->limit == 0)
+      goto canceled;
     entry_ref ref;
     if (query.GetNextRef(&ref) != B_OK) {
       if (this->target.IsValid())
@@ -141,6 +144,8 @@ void QueryHandler::MessageReceived(BMessage *message) {
       else
         goto canceled;
     }
+    if (this->limit > 0 && --this->limit == 0)
+      goto canceled;
     BMessenger(this).SendMessage(B_PULSE);
   } break;
   case B_QUERY_UPDATE:
@@ -157,6 +162,8 @@ void QueryHandler::MessageReceived(BMessage *message) {
         if (this->target.IsValid())
           this->target.SendMessage(&post);
         else
+          goto canceled;
+        if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
     }
@@ -366,6 +373,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         qh = new QueryHandler(BMessenger());
         live = false;
       }
+      qh->limit = msg->GetInt32("limit", -1);
       BVolume volume;
       this->store.GetVolume(&volume);
       qh->query.SetVolume(&volume);
@@ -382,11 +390,14 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         reply.AddMessenger("result", BMessenger(qh));
       } else {
         entry_ref ref;
-        while (qh->query.GetNextRef(&ref) == B_OK) {
+        while (qh->limit != 0; qh->query.GetNextRef(&ref) == B_OK) {
           BMessage post;
           BFile file(&ref, B_READ_ONLY);
-          if (post.Unflatten(&file) == B_OK)
+          if (post.Unflatten(&file) == B_OK) {
             reply.AddMessage("result", &post);
+            if (qh->limit > 0)
+              qh--;
+          }
         }
         delete qh;
       }
