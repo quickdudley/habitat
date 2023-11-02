@@ -390,7 +390,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         reply.AddMessenger("result", BMessenger(qh));
       } else {
         entry_ref ref;
-        while (qh->limit != 0; qh->query.GetNextRef(&ref) == B_OK) {
+        while (qh->limit != 0 && qh->query.GetNextRef(&ref) == B_OK) {
           BMessage post;
           BFile file(&ref, B_READ_ONLY);
           if (post.Unflatten(&file) == B_OK) {
