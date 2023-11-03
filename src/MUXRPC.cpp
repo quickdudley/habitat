@@ -5,7 +5,6 @@
 #include "JSON.h"
 #include "Logging.h"
 #include <PropertyInfo.h>
-#include <iostream>
 #include <support/ByteOrder.h>
 #include <utility>
 
@@ -166,36 +165,38 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
           JSON::SerializerStart(target),
           target(target),
           header(header) {}
-      void addNumber(BString &rawname, BString &name, BString &raw,
-                     JSON::number value) {
+      void addNumber(const BString &rawname, const BString &name,
+                     const BString &raw, JSON::number value) override {
         if (name == "content") {
           BString blank;
           this->header->setBodyType(BodyType::JSON);
           JSON::SerializerStart::addNumber(blank, blank, raw, value);
         }
       }
-      void addBool(BString &rawname, BString &name, bool value) {
+      void addBool(const BString &rawname, const BString &name,
+                   bool value) override {
         if (name == "content") {
           BString blank;
           this->header->setBodyType(BodyType::JSON);
           JSON::SerializerStart::addBool(blank, blank, value);
         }
       }
-      void addNull(BString &rawname, BString &name) {
+      void addNull(const BString &rawname, const BString &name) override {
         if (name == "content") {
           BString blank;
           this->header->setBodyType(BodyType::JSON);
           JSON::SerializerStart::addNull(blank, blank);
         }
       }
-      void addString(BString &rawname, BString &name, BString &raw,
-                     BString &value) {
+      void addString(const BString &rawname, const BString &name,
+                     const BString &raw, const BString &value) override {
         if (name == "content") {
           this->header->setBodyType(BodyType::UTF8_STRING);
           *this->target = value;
         }
       }
-      std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
+      std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                          const BString &name) override {
         BString blank;
         if (name == "content") {
           this->header->setBodyType(BodyType::JSON);
@@ -204,7 +205,8 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
           return JSON::NodeSink::addObject(blank, blank);
         }
       }
-      std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+      std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                         const BString &name) override {
         BString blank;
         if (name == "content") {
           this->header->setBodyType(BodyType::JSON);
