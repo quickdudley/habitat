@@ -33,13 +33,35 @@ bool wasArray(const BMessage *msg) {
   return true;
 }
 
+static inline BString jsonAttrName(const BString &attrName) {
+  if (attrName.EndsWith("_")) {
+    BString substr;
+    attrName.CopyInto(substr, 0, attrName.Length() - 1);
+    return substr;
+  } else {
+    return attrName;
+  }
+}
+
+static inline BString messageAttrName(const BString &attrName) {
+  if (attrName == "specifiers" || attrName == "refs" ||
+      attrName.EndsWith("_")) {
+    BString padded(attrName);
+    padded.Append('_', 1);
+    return padded;
+  } else {
+    return attrName;
+  }
+}
+
 void fromBMessageData(RootSink *target, const BMessage *source,
                       BString &attrname, type_code attrtype) {
   if (attrname == "specifiers" || attrname == "refs")
     return;
   switch (attrtype) {
   case B_BOOL_TYPE:
-    target->addBool(attrname, source->GetBool(attrname.String(), 0, false));
+    target->addBool(jsonAttrName(attrname),
+                    source->GetBool(attrname.String(), 0, false));
     break;
   case B_CHAR_TYPE: {
     char *data;
@@ -48,33 +70,36 @@ void fromBMessageData(RootSink *target, const BMessage *source,
                          &size) == B_OK) {
       BString c;
       c.Append(data[0], 1);
-      target->addString(attrname, c);
+      target->addString(jsonAttrName(attrname), c);
     }
   } break;
   case B_DOUBLE_TYPE:
-    target->addNumber(attrname, source->GetDouble(attrname.String(), 0.0));
+    target->addNumber(jsonAttrName(attrname),
+                      source->GetDouble(attrname.String(), 0.0));
     break;
   case B_FLOAT_TYPE:
-    target->addNumber(attrname, source->GetFloat(attrname.String(), 0.0));
+    target->addNumber(jsonAttrName(attrname),
+                      source->GetFloat(attrname.String(), 0.0));
     break;
   case B_INT64_TYPE:
-    target->addNumber(attrname, source->GetInt64(attrname.String(), 0.0));
+    target->addNumber(jsonAttrName(attrname),
+                      source->GetInt64(attrname.String(), 0.0));
     break;
   case B_MESSAGE_TYPE: {
     BMessage value;
     if (source->FindMessage(attrname, &value) == B_OK) {
       if (wasArray(&value)) {
-        target->beginArray(attrname);
+        target->beginArray(jsonAttrName(attrname));
         fromBMessageArray(target, &value);
       } else {
-        target->beginObject(attrname);
+        target->beginObject(jsonAttrName(attrname));
         fromBMessageObject(target, &value);
       }
       target->closeNode();
     }
   } break;
   case 'NULL':
-    target->addNull(attrname);
+    target->addNull(jsonAttrName(attrname));
     break;
   case B_REF_TYPE: {
     entry_ref ref;
@@ -94,11 +119,11 @@ void fromBMessageData(RootSink *target, const BMessage *source,
         break;
       }
     }
-    target->addString(attrname, value);
+    target->addString(jsonAttrName(attrname), value);
   } break;
   case B_STRING_TYPE: {
     BString value(source->GetString(attrname.String(), ""));
-    target->addString(attrname, value);
+    target->addString(jsonAttrName(attrname), value);
   } break;
   }
 }
@@ -140,7 +165,7 @@ void fromBMessageArray(RootSink *target, const BMessage *source) {
 
 class BMessageObjectChild : public BMessageObjectDocSink {
 public:
-  BMessageObjectChild(BMessage *parent, BString &key);
+  BMessageObjectChild(BMessage *parent, const BString &key);
   ~BMessageObjectChild();
 
 private:
@@ -151,7 +176,7 @@ private:
 
 class BMessageArrayChild : public BMessageArrayDocSink {
 public:
-  BMessageArrayChild(BMessage *parent, BString &key);
+  BMessageArrayChild(BMessage *parent, const BString &key);
   ~BMessageArrayChild();
 
 private:
@@ -160,7 +185,7 @@ private:
   BString key;
 };
 
-BMessageObjectChild::BMessageObjectChild(BMessage *parent, BString &key)
+BMessageObjectChild::BMessageObjectChild(BMessage *parent, const BString &key)
     :
     BMessageObjectDocSink(&target),
     parent(parent),
@@ -172,7 +197,7 @@ BMessageObjectChild::~BMessageObjectChild() {
   parent->AddMessage(this->key.String(), &this->target);
 }
 
-BMessageArrayChild::BMessageArrayChild(BMessage *parent, BString &key)
+BMessageArrayChild::BMessageArrayChild(BMessage *parent, const BString &key)
     :
     BMessageArrayDocSink(&target),
     parent(parent),
@@ -188,13 +213,13 @@ BMessageDocSink::BMessageDocSink(BMessage *target)
     :
     target(target) {}
 
-std::unique_ptr<NodeSink> BMessageDocSink::addObject(BString &rawname,
-                                                     BString &name) {
+std::unique_ptr<NodeSink> BMessageDocSink::addObject(const BString &rawname,
+                                                     const BString &name) {
   return std::make_unique<BMessageObjectDocSink>(this->target);
 }
 
-std::unique_ptr<NodeSink> BMessageDocSink::addArray(BString &rawname,
-                                                    BString &name) {
+std::unique_ptr<NodeSink> BMessageDocSink::addArray(const BString &rawname,
+                                                    const BString &name) {
   return std::make_unique<BMessageArrayDocSink>(this->target);
 }
 
@@ -204,34 +229,39 @@ BMessageObjectDocSink::BMessageObjectDocSink(BMessage *target)
   target->what = 'JSOB';
 }
 
-void BMessageObjectDocSink::addNumber(BString &rawname, BString &name,
-                                      BString &raw, number value) {
-  this->target->AddDouble(name.String(), value);
+void BMessageObjectDocSink::addNumber(const BString &rawname,
+                                      const BString &name, const BString &raw,
+                                      number value) {
+  this->target->AddDouble(messageAttrName(name).String(), value);
 }
 
-void BMessageObjectDocSink::addBool(BString &rawname, BString &name,
+void BMessageObjectDocSink::addBool(const BString &rawname, const BString &name,
                                     bool value) {
-  this->target->AddBool(name.String(), value);
+  this->target->AddBool(messageAttrName(name).String(), value);
 }
 
-void BMessageObjectDocSink::addNull(BString &rawname, BString &name) {
+void BMessageObjectDocSink::addNull(const BString &rawname,
+                                    const BString &name) {
   char pad = 0;
-  this->target->AddData(name.String(), 'NULL', &pad, 1);
+  this->target->AddData(messageAttrName(name).String(), 'NULL', &pad, 1);
 }
 
-void BMessageObjectDocSink::addString(BString &rawname, BString &name,
-                                      BString &raw, BString &value) {
-  this->target->AddString(name.String(), value.String());
+void BMessageObjectDocSink::addString(const BString &rawname,
+                                      const BString &name, const BString &raw,
+                                      const BString &value) {
+  this->target->AddString(messageAttrName(name).String(), value.String());
 }
 
-std::unique_ptr<NodeSink> BMessageObjectDocSink::addObject(BString &rawname,
-                                                           BString &name) {
-  return std::make_unique<BMessageObjectChild>(this->target, name);
+std::unique_ptr<NodeSink>
+BMessageObjectDocSink::addObject(const BString &rawname, const BString &name) {
+  return std::make_unique<BMessageObjectChild>(this->target,
+                                               messageAttrName(name));
 }
 
-std::unique_ptr<NodeSink> BMessageObjectDocSink::addArray(BString &rawname,
-                                                          BString &name) {
-  return std::make_unique<BMessageArrayChild>(this->target, name);
+std::unique_ptr<NodeSink>
+BMessageObjectDocSink::addArray(const BString &rawname, const BString &name) {
+  return std::make_unique<BMessageArrayChild>(this->target,
+                                              messageAttrName(name));
 }
 
 BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
@@ -241,34 +271,37 @@ BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
   target->what = 'JSAR';
 }
 
-void BMessageArrayDocSink::addNumber(BString &rawname, BString &name,
-                                     BString &raw, number value) {
+void BMessageArrayDocSink::addNumber(const BString &rawname,
+                                     const BString &name, const BString &raw,
+                                     number value) {
   this->target->AddDouble(this->key().String(), value);
 }
 
-void BMessageArrayDocSink::addBool(BString &rawname, BString &name,
+void BMessageArrayDocSink::addBool(const BString &rawname, const BString &name,
                                    bool value) {
   this->target->AddBool(this->key().String(), value);
 }
 
-void BMessageArrayDocSink::addNull(BString &rawname, BString &name) {
+void BMessageArrayDocSink::addNull(const BString &rawname,
+                                   const BString &name) {
   char pad = 0;
   this->target->AddData(this->key().String(), 'NULL', &pad, 1);
 }
 
-void BMessageArrayDocSink::addString(BString &rawname, BString &name,
-                                     BString &raw, BString &value) {
+void BMessageArrayDocSink::addString(const BString &rawname,
+                                     const BString &name, const BString &raw,
+                                     const BString &value) {
   this->target->AddString(this->key().String(), value.String());
 }
 
-std::unique_ptr<NodeSink> BMessageArrayDocSink::addObject(BString &rawname,
-                                                          BString &name) {
+std::unique_ptr<NodeSink>
+BMessageArrayDocSink::addObject(const BString &rawname, const BString &name) {
   BString key = this->key();
   return std::make_unique<BMessageObjectChild>(this->target, key);
 }
 
-std::unique_ptr<NodeSink> BMessageArrayDocSink::addArray(BString &rawname,
-                                                         BString &name) {
+std::unique_ptr<NodeSink> BMessageArrayDocSink::addArray(const BString &rawname,
+                                                         const BString &name) {
   BString key = this->key();
   return std::make_unique<BMessageArrayChild>(this->target, key);
 }

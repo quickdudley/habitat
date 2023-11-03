@@ -1,4 +1,6 @@
+#include "BJSON.h"
 #include "JSON.h"
+#include "sample576.h"
 #include <catch2/catch_all.hpp>
 
 TEST_CASE("Handles unicode", "[JSON]") {
@@ -13,11 +15,12 @@ TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
     AExpect(double *target)
         :
         target(target) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       *(this->target) = value;
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       return std::make_unique<AExpect>(this->target);
     }
 
@@ -37,11 +40,12 @@ TEST_CASE("Correctly parses decimal with trailing 0",
     AExpect(double *target)
         :
         target(target) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       *(this->target) = value;
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       return std::unique_ptr<NodeSink>(std::make_unique<AExpect>(this->target));
     }
 
@@ -60,11 +64,12 @@ TEST_CASE("Correctly parses negative number", "[JSON][parsing][number]") {
     AExpect(double *target)
         :
         target(target) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       *(this->target) = value;
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       return std::unique_ptr<NodeSink>(std::make_unique<AExpect>(this->target));
     }
 
@@ -81,9 +86,8 @@ TEST_CASE("Successfully parses object with empty array as properties",
           "[JSON][parsing]") {
   char example[] = "{\"a\": [], \"b\": []}";
   JSON::Parser parser(std::make_unique<JSON::IgnoreNode>());
-  for (int i = 0; example[i] != 0; i++) {
+  for (int i = 0; example[i] != 0; i++)
     REQUIRE(parser.nextChar(example[i]) == B_OK);
-  }
 }
 
 TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
@@ -98,66 +102,63 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
         :
         target(target),
         ix(ix) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       this->target->extra = true;
     }
-    void addBool(BString &rawname, BString &name, bool value) {
+    void addBool(const BString &rawname, const BString &name,
+                 bool value) override {
       this->target->extra = true;
     }
-    void addNull(BString &rawname, BString &name) {
+    void addNull(const BString &rawname, const BString &name) override {
       this->target->extra = true;
     }
-    void addString(BString &rawname, BString &name, BString &raw,
-                   BString &value) {
+    void addString(const BString &rawname, const BString &name,
+                   const BString &raw, const BString &value) override {
       if (name == "a") {
-        if (this->ix == 0) {
+        if (this->ix == 0)
           this->target->a1 = true;
-        } else {
+        else
           this->target->a2 = true;
-        }
         if (value == "b") {
-          if (this->ix == 0) {
+          if (this->ix == 0)
             this->target->b1 = true;
-          } else {
+          else
             this->target->b2 = true;
-          }
         }
       } else if (name == "c") {
-        if (this->ix == 0) {
+        if (this->ix == 0)
           this->target->c1 = true;
-        } else {
+        else
           this->target->c2 = true;
-        }
         if (value == "d") {
-          if (this->ix == 0) {
+          if (this->ix == 0)
             this->target->d1 = true;
-          } else {
+          else
             this->target->d2 = true;
-          }
         }
       } else if (name == "e") {
-        if (this->ix == 0) {
+        if (this->ix == 0)
           this->target->e1 = true;
-        } else {
+        else
           this->target->e2 = true;
-        }
         if (value == "f") {
-          if (this->ix == 0) {
+          if (this->ix == 0)
             this->target->f1 = true;
-          } else {
+          else
             this->target->f2 = true;
-          }
         }
       } else {
         this->target->extra = true;
       }
     }
-    std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                        const BString &name) override {
       this->target->extra = true;
       return JSON::NodeSink::addObject(rawname, name);
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       this->target->extra = true;
       return JSON::NodeSink::addArray(rawname, name);
     }
@@ -172,24 +173,27 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
         :
         target(target),
         ix(0) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       this->target->extra = true;
     }
-    void addBool(BString &rawname, BString &name, bool value) {
+    void addBool(const BString &rawname, const BString &name,
+                 bool value) override {
       this->target->extra = true;
     }
-    void addNull(BString &rawname, BString &name) {
+    void addNull(const BString &rawname, const BString &name) override {
       this->target->extra = true;
     }
-    void addString(BString &rawname, BString &name, BString &raw,
-                   BString &value) {
+    void addString(const BString &rawname, const BString &name,
+                   const BString &raw, const BString &value) override {
       this->target->extra = true;
     }
-    std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                        const BString &name) override {
       return std::make_unique<OExpect>(this->target, this->ix++);
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       this->target->extra = true;
       return JSON::NodeSink::addArray(rawname, name);
     }
@@ -203,25 +207,28 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
     RootExpect(Results *target)
         :
         target(target) {}
-    void addNumber(BString &rawname, BString &name, BString &raw,
-                   JSON::number value) {
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
       this->target->extra = true;
     }
-    void addBool(BString &rawname, BString &name, bool value) {
+    void addBool(const BString &rawname, const BString &name,
+                 bool value) override {
       this->target->extra = true;
     }
-    void addNull(BString &rawname, BString &name) {
+    void addNull(const BString &rawname, const BString &name) override {
       this->target->extra = true;
     }
-    void addString(BString &rawname, BString &name, BString &raw,
-                   BString &value) {
+    void addString(const BString &rawname, const BString &name,
+                   const BString &raw, const BString &value) override {
       this->target->extra = true;
     }
-    std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                        const BString &name) override {
       this->target->extra = true;
       return JSON::NodeSink::addObject(rawname, name);
     }
-    std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name) {
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
       return std::make_unique<AExpect>(this->target);
     }
 
@@ -233,9 +240,8 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   char example[] = "[{\"a\":\"b\",\"c\":\"d\"},{\"e\":\"f\"}]";
   {
     JSON::Parser parser(std::make_unique<RootExpect>(&results));
-    for (int i = 0; i < sizeof(example); i++) {
+    for (int i = 0; i < sizeof(example); i++)
       parser.nextChar(example[i]);
-    }
   }
   REQUIRE(results.a1 == true);
   REQUIRE(results.b1 == true);
@@ -275,8 +281,8 @@ TEST_CASE("Correctly parses escaped tab", "[JSON]") {
     StringSink(BString *target)
         :
         target(target) {}
-    void addString(BString &rawname, BString &name, BString &raw,
-                   BString &value) {
+    void addString(const BString &rawname, const BString &name,
+                   const BString &raw, const BString &value) {
       *this->target = value;
     }
 
@@ -289,4 +295,18 @@ TEST_CASE("Correctly parses escaped tab", "[JSON]") {
   REQUIRE(escaped == "\"\\t\"");
   JSON::parse(std::make_unique<StringSink>(&result), escaped);
   REQUIRE(result == raw);
+}
+
+TEST_CASE("Correctly parses previously failing message 576 from CEL",
+          "[JSON]") {
+  BString sample(sample576, sample576_len);
+  BMessage parsed;
+  JSON::parse(std::make_unique<JSON::BMessageDocSink>(&parsed), sample);
+  BString reconstructed;
+  {
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::SerializerStart>(&reconstructed));
+    JSON::fromBMessage(&rootSink, &parsed);
+  }
+  REQUIRE(sample == reconstructed);
 }

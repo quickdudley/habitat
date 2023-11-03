@@ -43,8 +43,8 @@ SecretNode::SecretNode(Ed25519Secret *target)
     :
     target(target) {}
 
-void SecretNode::addString(BString &rawname, BString &name, BString &raw,
-                           BString &value) {
+void SecretNode::addString(const BString &rawname, const BString &name,
+                           const BString &raw, const BString &value) {
   unsigned char *target;
   size_t size;
   if (name == "public") {
@@ -65,8 +65,8 @@ interesting:
   memcpy(target, &decoded[0], std::min(decoded.size(), size));
 }
 
-std::unique_ptr<NodeSink> SecretNode::addObject(BString &rawname,
-                                                BString &name) {
+std::unique_ptr<NodeSink> SecretNode::addObject(const BString &rawname,
+                                                const BString &name) {
   return std::make_unique<SecretNode>(this->target);
 }
 } // namespace JSON

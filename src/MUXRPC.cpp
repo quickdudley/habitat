@@ -521,8 +521,8 @@ BString Header::describe() {
 class RequestNameSink : public JSON::NodeSink {
 public:
   RequestNameSink(std::vector<BString> *name);
-  void addString(BString &rawname, BString &name, BString &raw,
-                 BString &value) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
 
 private:
   std::vector<BString> *name;
@@ -532,10 +532,10 @@ class RequestObjectSink : public JSON::NodeSink {
 public:
   RequestObjectSink(std::vector<BString> *name, RequestType *requestType,
                     BMessage *args);
-  void addString(BString &rawname, BString &name, BString &raw,
-                 BString &value) override;
-  std::unique_ptr<JSON::NodeSink> addArray(BString &rawname,
-                                           BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<JSON::NodeSink> addArray(const BString &rawname,
+                                           const BString &name) override;
 
 private:
   std::vector<BString> *name;
@@ -547,8 +547,8 @@ class RequestSink : public JSON::NodeSink {
 public:
   RequestSink(std::vector<BString> *name, RequestType *requestType,
               BMessage *args);
-  std::unique_ptr<JSON::NodeSink> addObject(BString &rawname,
-                                            BString &name) override;
+  std::unique_ptr<JSON::NodeSink> addObject(const BString &rawname,
+                                            const BString &name) override;
 
 private:
   std::vector<BString> *name;
@@ -570,14 +570,14 @@ RequestSink::RequestSink(std::vector<BString> *name, RequestType *requestType,
     requestType(requestType),
     args(args) {}
 
-std::unique_ptr<JSON::NodeSink> RequestSink::addObject(BString &rawname,
-                                                       BString &name) {
+std::unique_ptr<JSON::NodeSink> RequestSink::addObject(const BString &rawname,
+                                                       const BString &name) {
   return std::make_unique<RequestObjectSink>(this->name, this->requestType,
                                              this->args);
 }
 
-void RequestObjectSink::addString(BString &rawname, BString &name, BString &raw,
-                                  BString &value) {
+void RequestObjectSink::addString(const BString &rawname, const BString &name,
+                                  const BString &raw, const BString &value) {
   if (name == "type") {
     if (value == "source")
       *this->requestType = RequestType::SOURCE;
@@ -590,8 +590,8 @@ void RequestObjectSink::addString(BString &rawname, BString &name, BString &raw,
   }
 }
 
-std::unique_ptr<JSON::NodeSink> RequestObjectSink::addArray(BString &rawname,
-                                                            BString &name) {
+std::unique_ptr<JSON::NodeSink>
+RequestObjectSink::addArray(const BString &rawname, const BString &name) {
   if (name == "name")
     return std::make_unique<RequestNameSink>(this->name);
   else if (name == "args")
@@ -604,8 +604,8 @@ RequestNameSink::RequestNameSink(std::vector<BString> *name)
     :
     name(name) {}
 
-void RequestNameSink::addString(BString &rawname, BString &name, BString &raw,
-                                BString &value) {
+void RequestNameSink::addString(const BString &rawname, const BString &name,
+                                const BString &raw, const BString &value) {
   this->name->push_back(value);
 }
 

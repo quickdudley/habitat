@@ -16,8 +16,10 @@ namespace JSON {
 class SecretNode : public NodeSink {
 public:
   SecretNode(Ed25519Secret *target);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
 
 private:
   Ed25519Secret *target;

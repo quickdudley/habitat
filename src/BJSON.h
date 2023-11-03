@@ -9,8 +9,10 @@ void fromBMessageObject(RootSink *target, const BMessage *source);
 class BMessageDocSink : public NodeSink {
 public:
   BMessageDocSink(BMessage *target);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   BMessage *target;
@@ -19,12 +21,17 @@ private:
 class BMessageObjectDocSink : public NodeSink {
 public:
   BMessageObjectDocSink(BMessage *target);
-  void addNumber(BString &rawname, BString &name, BString &raw, number value);
-  void addBool(BString &rawname, BString &name, bool value);
-  void addNull(BString &rawname, BString &name);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  void addNumber(const BString &rawname, const BString &name,
+                 const BString &raw, number value) override;
+  void addBool(const BString &rawname, const BString &name,
+               bool value) override;
+  void addNull(const BString &rawname, const BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   BMessage *target;
@@ -33,12 +40,17 @@ private:
 class BMessageArrayDocSink : public NodeSink {
 public:
   BMessageArrayDocSink(BMessage *target);
-  void addNumber(BString &rawname, BString &name, BString &raw, number value);
-  void addBool(BString &rawname, BString &name, bool value);
-  void addNull(BString &rawname, BString &name);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  void addNumber(const BString &rawname, const BString &name,
+                 const BString &raw, number value) override;
+  void addBool(const BString &rawname, const BString &name,
+               bool value) override;
+  void addNull(const BString &rawname, const BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   BString key();

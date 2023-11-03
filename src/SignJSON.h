@@ -10,12 +10,17 @@ public:
   SignObject(std::unique_ptr<NodeSink> target,
              unsigned char key[crypto_sign_SECRETKEYBYTES]);
   ~SignObject();
-  void addNumber(BString &rawname, BString &name, BString &raw, number value);
-  void addBool(BString &rawname, BString &name, bool value);
-  void addNull(BString &rawname, BString &name);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  void addNumber(const BString &rawname, const BString &name,
+                 const BString &raw, number value) override;
+  void addBool(const BString &rawname, const BString &name,
+               bool value) override;
+  void addNull(const BString &rawname, const BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   std::unique_ptr<NodeSink> target;
@@ -29,12 +34,17 @@ class Hash : public NodeSink {
 public:
   Hash(unsigned char target[crypto_hash_sha256_BYTES]);
   ~Hash();
-  void addNumber(BString &rawname, BString &name, BString &raw, number value);
-  void addBool(BString &rawname, BString &name, bool value);
-  void addNull(BString &rawname, BString &name);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  void addNumber(const BString &rawname, const BString &name,
+                 const BString &raw, number value) override;
+  void addBool(const BString &rawname, const BString &name,
+               bool value) override;
+  void addNull(const BString &rawname, const BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   BString body;
@@ -45,14 +55,19 @@ private:
 class VerifySignature : public NodeSink {
 public:
   VerifySignature(bool *target);
-  VerifySignature(bool *target, BString &hmac);
+  VerifySignature(bool *target, const BString &hmac);
   ~VerifySignature();
-  void addNumber(BString &rawname, BString &name, BString &raw, number value);
-  void addBool(BString &rawname, BString &name, bool value);
-  void addNull(BString &rawname, BString &name);
-  void addString(BString &rawname, BString &name, BString &raw, BString &value);
-  std::unique_ptr<NodeSink> addObject(BString &rawname, BString &name);
-  std::unique_ptr<NodeSink> addArray(BString &rawname, BString &name);
+  void addNumber(const BString &rawname, const BString &name,
+                 const BString &raw, number value) override;
+  void addBool(const BString &rawname, const BString &name,
+               bool value) override;
+  void addNull(const BString &rawname, const BString &name) override;
+  void addString(const BString &rawname, const BString &name,
+                 const BString &raw, const BString &value) override;
+  std::unique_ptr<NodeSink> addObject(const BString &rawname,
+                                      const BString &name) override;
+  std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                     const BString &name) override;
 
 private:
   BString body;

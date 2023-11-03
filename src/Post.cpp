@@ -886,7 +886,8 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
         :
         target(target),
         key(key) {}
-    std::unique_ptr<JSON::NodeSink> addObject(BString &rawname, BString &name) {
+    std::unique_ptr<JSON::NodeSink> addObject(const BString &rawname,
+                                              const BString &name) override {
       return std::make_unique<JSON::SignObject>(
           std::make_unique<JSON::BMessageObjectDocSink>(this->target),
           this->key);
