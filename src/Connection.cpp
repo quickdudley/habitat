@@ -502,7 +502,7 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
     size_t received;
     if ((err = this->inner->ReadExactly(header, sizeof(header), &received)) !=
         B_OK) {
-      return B_IO_ERROR;
+      return err;
     }
     if (crypto_secretbox_open_easy(headerMsg, header, 34, this->recvnonce,
                                    this->recvkey) != 0) {
@@ -517,8 +517,10 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
     this->read_buffer =
         std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
     memcpy(this->read_buffer.get(), headerMsg + 2, 16);
-    if (inner->ReadExactly(this->read_buffer.get() + 16, bodyLength) != B_OK)
-      return B_IO_ERROR;
+    if ((err = inner->ReadExactly(this->read_buffer.get() + 16, bodyLength)) !=
+        B_OK) {
+      return err;
+    }
     if (crypto_secretbox_open_easy(this->read_buffer.get() + 16,
                                    this->read_buffer.get(), bodyLength + 16,
                                    this->recvnonce, this->recvkey) != 0) {

@@ -229,8 +229,16 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     BDataIO *output = this->output();
     unsigned char headerBytes[9];
     header.writeToBuffer(headerBytes);
-    output->WriteExactly(headerBytes, 9);
-    output->WriteExactly(content.String(), content.Length());
+    if (output->WriteExactly(headerBytes, 9) != B_OK) {
+      BLooper *looper = this->Looper();
+      looper->Lock();
+      looper->Quit();
+    }
+    if (output->WriteExactly(content.String(), content.Length()) != B_OK) {
+      BLooper *looper = this->Looper();
+      looper->Lock();
+      looper->Quit();
+    }
     return;
   }
   // TODO: Reply to the message if it's waiting
@@ -280,7 +288,12 @@ void Connection::Quit() {
   if (this->pullThreadID != B_NO_MORE_THREADS) {
     send_data(this->pullThreadID, 'STOP', NULL, 0);
     status_t exitValue;
+    int32 locks = this->CountLocks();
+    for (int32 i = 0; i < locks; i++)
+      this->Unlock();
     wait_for_thread(this->pullThreadID, &exitValue);
+    for (int32 i = 0; i < locks; i++)
+      this->Lock();
   }
   for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
     if (BHandler *handler = this->HandlerAt(i); handler != this)
