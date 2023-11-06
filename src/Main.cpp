@@ -1,11 +1,13 @@
 #include "Main.h"
 #include "Indices.h"
 #include "Logging.h"
+#include "SettingsWindow.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
 #include <File.h>
 #include <FindDirectory.h>
 #include <LocaleRoster.h>
+#include <MenuItem.h>
 #include <PropertyInfo.h>
 #include <TimeZone.h>
 #include <iostream>
@@ -308,6 +310,7 @@ thread_id Habitat::Run() {
 }
 
 void Habitat::ReadyToRun() {
+  this->loadSettings();
   this->AddHandler(this->lanBroadcaster.get());
   this->ipListener = std::make_unique<SSBListener>(
       this->myId, BMessenger(this->lanBroadcaster.get()), this->serverMethods);
@@ -318,7 +321,47 @@ void Habitat::ReadyToRun() {
   this->serverMethods.registerMethod(std::make_shared<ebt::Begin>(this->ebt));
 }
 
+void Habitat::loadSettings() {
+  if (BEntry entry; this->settings->FindEntry("preferences", &entry) == B_OK) {
+    BMessage settings;
+    {
+      BFile file(&entry, B_READ_ONLY);
+      if (settings.Unflatten(&file) != B_OK)
+        return;
+    }
+    {
+      int32 logCategory;
+      for (int32 i = 0;
+        settings.FindInt32("LogCategory", i, &logCategory) == B_OK; i++) {
+        BMessage start(B_CREATE_PROPERTY);
+        start.AddSpecifier("LogCategory");
+        start.AddInt32("category", logCategory);
+        BMessenger(this).SendMessage(&start);
+      }
+    }
+  }
+}
+
+void Habitat::saveSettings() {
+  BMessage settings;
+  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+    if (Logger *logger = dynamic_cast<Logger *>(this->HandlerAt(i));
+        logger != NULL) {
+      logger->storeCategories(&settings);
+    }
+  }
+  BFile output;
+  if (this->settings->CreateFile("preferences~", &output, false) != B_OK)
+    return;
+  if (settings.Flatten(&output) == B_OK) {
+    BEntry entry;
+    if (this->settings->FindEntry("preferences~", &entry) == B_OK)
+      entry.Rename("preferences", true);
+  }
+}
+
 void Habitat::Quit() {
+  this->saveSettings();
   this->ipListener->halt();
   BApplication::Quit();
 }
@@ -326,6 +369,26 @@ void Habitat::Quit() {
 MainWindow::MainWindow(void)
     :
     BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
-            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {}
+            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
+  BRect mbarRect(this->Bounds());
+  mbarRect.bottom = 20;
+  this->menuBar = new BMenuBar(mbarRect, "menubar");
+  BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
+  appMenu->AddItem(
+      new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
+  this->menuBar->AddItem(appMenu);
+  this->AddChild(this->menuBar);
+}
+
+void MainWindow::MessageReceived(BMessage *message) {
+  switch (message->what) {
+  case 'PRFS': {
+    SettingsWindow *window = new SettingsWindow();
+    window->Show();
+  } break;
+  default:
+    BWindow::MessageReceived(message);
+  }
+}
 
 #undef B_TRANSLATION_CONTEXT

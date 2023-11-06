@@ -46,6 +46,7 @@ SRCS = \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
+	 src/SettingsWindow.cpp \
 	 src/SignJSON.cpp \
 
 TESTABLE_SRCS = \
