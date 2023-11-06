@@ -36,6 +36,7 @@ private:
   OwnFeed *ownFeed;
   ebt::Dispatcher *ebt;
   blob::Wanted *wantedBlobs;
+  muxrpc::MethodSuite serverMethods;
   std::unique_ptr<BDirectory> settings;
   std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;

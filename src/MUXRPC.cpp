@@ -250,14 +250,45 @@ BDataIO *SenderHandler::output() {
   return dynamic_cast<Connection *>(this->Looper())->inner.get();
 }
 
-Connection::Connection(
-    std::unique_ptr<BDataIO> inner,
-    std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers)
+namespace {
+class Setup : public BHandler {
+public:
+  Setup(std::shared_ptr<std::vector<std::shared_ptr<ConnectionHook>>>
+            connectionHooks);
+  void MessageReceived(BMessage *message);
+
+private:
+  std::shared_ptr<std::vector<std::shared_ptr<ConnectionHook>>> connectionHooks;
+};
+
+Setup::Setup(std::shared_ptr<std::vector<std::shared_ptr<ConnectionHook>>>
+                 connectionHooks)
+    :
+    connectionHooks(connectionHooks) {}
+
+void Setup::MessageReceived(BMessage *message) {
+  auto connection = dynamic_cast<Connection *>(this->Looper());
+  for (auto hook : *this->connectionHooks)
+    hook->call(connection);
+  connection->Lock();
+  connection->RemoveHandler(this);
+  connection->Unlock();
+  delete this;
+}
+}; // namespace
+
+Connection::Connection(std::unique_ptr<BDataIO> inner,
+                       const MethodSuite &methods)
     :
     BLooper("MUXRPC sender"),
-    handlers(handlers) {
+    handlers(methods.methods) {
   this->inner = std::move(inner);
   this->ongoingLock = create_sem(1, "MUXRPC incoming streams lock");
+  {
+    auto setup = new Setup(methods.connectionHooks);
+    this->AddHandler(setup);
+    BMessenger(setup).SendMessage('RUN_');
+  }
   BoxStream *shs = dynamic_cast<BoxStream *>(this->inner.get());
   if (shs)
     shs->getPeerKey(this->peer);
@@ -863,5 +894,36 @@ bool MessageOrder::operator()(BMessage &a, BMessage &b) {
   if (b.FindUInt32("sequence", &bseq) != B_OK)
     bseq = 0;
   return aseq > bseq;
+}
+
+MethodSuite::MethodSuite()
+    :
+    methods(std::make_shared<std::vector<std::shared_ptr<Method>>>(
+        std::vector<std::shared_ptr<Method>>())),
+    connectionHooks(
+        std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
+            std::vector<std::shared_ptr<ConnectionHook>>())) {}
+
+MethodSuite::MethodSuite(const MethodSuite &original, bool includeHooks)
+    :
+    methods(original.methods),
+    connectionHooks(
+        includeHooks
+            ? original.connectionHooks
+            : std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
+                  std::vector<std::shared_ptr<ConnectionHook>>())) {}
+
+MethodSuite &MethodSuite::operator=(const MethodSuite &original) {
+  this->methods = original.methods;
+  this->connectionHooks = original.connectionHooks;
+  return *this;
+}
+
+void MethodSuite::registerMethod(std::shared_ptr<Method> method) {
+  this->methods->push_back(method);
+}
+
+void MethodSuite::registerConnectionHook(std::shared_ptr<ConnectionHook> call) {
+  this->connectionHooks->push_back(call);
 }
 }; // namespace muxrpc

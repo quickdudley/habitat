@@ -110,10 +110,11 @@ struct Inbound {
   uint32 sequence;
 };
 
+class MethodSuite;
+
 class Connection : public BLooper {
 public:
-  Connection(std::unique_ptr<BDataIO> inner,
-             std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers);
+  Connection(std::unique_ptr<BDataIO> inner, const MethodSuite &methods);
   ~Connection();
   thread_id Run() override;
   void Quit() override;
@@ -141,6 +142,25 @@ private:
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);
   static int32 pullThreadFunction(void *data);
+};
+
+class ConnectionHook {
+public:
+  virtual void call(muxrpc::Connection *rpc) = 0;
+};
+
+class MethodSuite {
+public:
+  MethodSuite();
+  MethodSuite(const MethodSuite &original, bool includeHooks = false);
+  MethodSuite &operator=(const MethodSuite &original);
+  void registerMethod(std::shared_ptr<Method> method);
+  void registerConnectionHook(std::shared_ptr<ConnectionHook> call);
+
+private:
+  std::shared_ptr<std::vector<std::shared_ptr<Method>>> methods;
+  std::shared_ptr<std::vector<std::shared_ptr<ConnectionHook>>> connectionHooks;
+  friend class Connection;
 };
 }; // namespace muxrpc
 

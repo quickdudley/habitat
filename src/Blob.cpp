@@ -574,8 +574,8 @@ status_t Has::call(muxrpc::Connection *connection, muxrpc::RequestType type,
   return B_OK;
 }
 
-void Wanted::registerMethods() {
-  class CallCreateWants : public DefaultCall {
+void Wanted::registerMethods(muxrpc::MethodSuite &methods) {
+  class CallCreateWants : public muxrpc::ConnectionHook {
   public:
     CallCreateWants(Wanted *registry)
         :
@@ -585,9 +585,9 @@ void Wanted::registerMethods() {
   private:
     Wanted *registry;
   };
-  registerDefaultCall(std::make_shared<CallCreateWants>(this));
-  registerMethod(std::make_shared<Get>(this->Looper(), this->volume));
-  registerMethod(std::make_shared<CreateWants>(this));
+  methods.registerConnectionHook(std::make_shared<CallCreateWants>(this));
+  methods.registerMethod(std::make_shared<Get>(this->Looper(), this->volume));
+  methods.registerMethod(std::make_shared<CreateWants>(this));
 }
 
 LocalHandler::LocalHandler(BMessage *original)

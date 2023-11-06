@@ -69,7 +69,7 @@ public:
   void pullWants(muxrpc::Connection *connection);
   void sendWants(BMessenger target);
   void propagateWant(BString &cypherkey, int8 distance);
-  void registerMethods();
+  void registerMethods(muxrpc::MethodSuite &methods);
   status_t hashFile(entry_ref *ref);
   void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
 

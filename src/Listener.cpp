@@ -5,10 +5,12 @@
 #include <iostream>
 
 SSBListener::SSBListener(std::shared_ptr<Ed25519Secret> myId,
-                         BMessenger broadcaster)
+                         BMessenger broadcaster,
+                         const muxrpc::MethodSuite &methods)
     :
     myId(myId),
-    broadcaster(broadcaster) {}
+    broadcaster(broadcaster),
+    methods(methods) {}
 
 namespace {
 class PrintReply : public BHandler {
@@ -19,28 +21,9 @@ void PrintReply::MessageReceived(BMessage *msg) {
   msg->PrintToStream();
   BHandler::MessageReceived(msg);
 }
-
-std::shared_ptr<std::vector<std::shared_ptr<muxrpc::Method>>> defaultHandlers =
-    std::make_shared<std::vector<std::shared_ptr<muxrpc::Method>>>(
-        std::vector<std::shared_ptr<muxrpc::Method>>());
-
-std::shared_ptr<std::vector<std::shared_ptr<DefaultCall>>> defaultCalls =
-    std::make_shared<std::vector<std::shared_ptr<DefaultCall>>>(
-        std::vector<std::shared_ptr<DefaultCall>>());
 } // namespace
 
-void registerMethod(std::shared_ptr<muxrpc::Method> method) {
-  defaultHandlers->push_back(method);
-}
-
-void registerDefaultCall(std::shared_ptr<DefaultCall> call) {
-  defaultCalls->push_back(call);
-}
-
 int SSBListener::run_() {
-  if (defaultHandlers->size() == 0) {
-    //  	defaultHandlers->push_back(std::make_unique<GossipPing>());
-  }
   BHandler *printer = new PrintReply;
   be_app->Lock();
   be_app->AddHandler(printer);
@@ -79,17 +62,9 @@ int SSBListener::run_() {
         throw;
       }
       muxrpc::Connection *rpc =
-          new muxrpc::Connection(std::move(shsPeer), defaultHandlers);
+          new muxrpc::Connection(std::move(shsPeer), this->methods);
       be_app->RegisterLooper(rpc);
       thread_id thread = rpc->Run();
-      for (auto call : *defaultCalls)
-        call->call(rpc);
-      std::vector<BString> call = {"blobs", "get"};
-      BMessage args('JSAR');
-      args.AddString("0",
-                     "&opAMOaQQ674De6DiUGi55ZEMiGk3xerWQLXE5nzRdlU=.sha256");
-      rpc->request(call, muxrpc::RequestType::SOURCE, &args,
-                   BMessenger(printer), NULL);
     }
   }
   return 0;

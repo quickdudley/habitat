@@ -156,7 +156,7 @@ Habitat::Habitat(void)
     this->wantedBlobs = new blob::Wanted(blobsDir);
   }
   this->databaseLooper->AddHandler(this->wantedBlobs);
-  this->wantedBlobs->registerMethods();
+  this->wantedBlobs->registerMethods(this->serverMethods);
   // Open main window
   this->mainWindow = new MainWindow();
   this->mainWindow->Show();
@@ -310,12 +310,12 @@ thread_id Habitat::Run() {
 void Habitat::ReadyToRun() {
   this->AddHandler(this->lanBroadcaster.get());
   this->ipListener = std::make_unique<SSBListener>(
-      this->myId, BMessenger(this->lanBroadcaster.get()));
+      this->myId, BMessenger(this->lanBroadcaster.get()), this->serverMethods);
   this->ipListener->run();
   this->ebt = new ebt::Dispatcher(this->databaseLooper);
   this->ebt->Run();
   this->RegisterLooper(this->ebt);
-  registerMethod(std::make_shared<ebt::Begin>(this->ebt));
+  this->serverMethods.registerMethod(std::make_shared<ebt::Begin>(this->ebt));
 }
 
 void Habitat::Quit() {
