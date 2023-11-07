@@ -5,6 +5,9 @@
 #include <ListView.h>
 #include <LocaleRoster.h>
 #include <Screen.h>
+#include <SeparatorView.h>
+#include <SpaceLayoutItem.h>
+#include <TextControl.h>
 #include <sodium.h>
 
 #define B_TRANSLATION_CONTEXT "Settings"
@@ -44,6 +47,16 @@ NetworkTab::NetworkTab(BRect contentFrame)
           new BButton(B_TRANSLATE("Remove"), new BMessage('DSRV'));
       buttonLayout->AddView(this->delButton);
     }
+  }
+  outerLayout->AddView(new BSeparatorView(B_VERTICAL));
+  {
+    auto column2Layout = new BGroupLayout(B_VERTICAL);
+    outerLayout->AddItem(column2Layout);
+    column2Layout->AddView(
+        new BTextControl(B_TRANSLATE("Network address"), "", NULL));
+    column2Layout->AddView(
+        new BTextControl(B_TRANSLATE("Public key"), "", NULL));
+    column2Layout->AddItem(BSpaceLayoutItem::CreateGlue());
   }
 }
 }; // namespace
