@@ -1,6 +1,8 @@
-1	English	application/x-vnd.habitat	2348370987
+1	English	application/x-vnd.habitat	521029978
 Application	MainWindow		Application
 Failed to initialize libsodium	MainWindow		Failed to initialize libsodium
 Settings	MainWindow		Settings
 Network	Settings		Network
+Remove	Settings		Remove
+Add	Settings		Add
 Habitat Settings	Settings		Habitat Settings
