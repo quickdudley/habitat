@@ -24,6 +24,10 @@ SettingsWindow::SettingsWindow()
             B_CURRENT_WORKSPACE) {
   this->tabView = new BTabView(this->Bounds(), "settingsTabView");
   this->AddChild(tabView);
+  BRect contentFrame = this->tabView->ContainerView()->Bounds();
+  BView *networkTab = new BView(contentFrame, B_TRANSLATE("Network"),
+                                B_FOLLOW_ALL_SIDES, B_WILL_DRAW);
+  this->tabView->AddTab(networkTab);
 }
 
 SettingsWindow::~SettingsWindow() {}
