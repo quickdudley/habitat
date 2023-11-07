@@ -152,7 +152,7 @@ public:
 class MethodSuite {
 public:
   MethodSuite();
-  MethodSuite(const MethodSuite &original, bool includeHooks = false);
+  MethodSuite(const MethodSuite &original, bool includeHooks = true);
   MethodSuite &operator=(const MethodSuite &original);
   void registerMethod(std::shared_ptr<Method> method);
   void registerConnectionHook(std::shared_ptr<ConnectionHook> call);

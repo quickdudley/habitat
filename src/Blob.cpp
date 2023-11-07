@@ -346,19 +346,19 @@ void FetchSink::MessageReceived(BMessage *message) {
     cypherkey.Append(
         base64::encode(gotHash, crypto_hash_sha256_BYTES, base64::STANDARD));
     cypherkey.Append(".sha256");
+    BLooper *looper = this->Looper();
     if (std::equal(gotHash, gotHash + crypto_hash_sha256_BYTES,
                    this->expectedHash)) {
       this->file.WriteAttrString("HABITAT:cypherkey", &cypherkey);
     } else {
       this->entry.Remove();
+      BMessage msg('TNXT');
+      msg.AddString("cypherkey", cypherkey.String());
+      BMessenger(looper).SendMessage(&msg);
     }
-    BLooper *looper = this->Looper();
     looper->Lock();
     looper->RemoveHandler(this);
     looper->Unlock();
-    BMessage msg('TNXT');
-    msg.AddString("cypherkey", cypherkey.String());
-    BMessenger(looper).SendMessage(&msg);
     delete this;
   }
 }

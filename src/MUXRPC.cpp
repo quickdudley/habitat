@@ -31,9 +31,10 @@ Sender::Sender(BMessenger inner)
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
     :
     requestNumber(requestNumber) {
-  conn->Lock();
-  conn->AddHandler(this);
-  conn->Unlock();
+  if (conn->Lock()) {
+    conn->AddHandler(this);
+    conn->Unlock();
+  }
 }
 
 Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
@@ -322,6 +323,8 @@ void Connection::Quit() {
     int32 locks = this->CountLocks();
     for (int32 i = 0; i < locks; i++)
       this->Unlock();
+    suspend_thread(this->pullThreadID);
+    resume_thread(this->pullThreadID);
     wait_for_thread(this->pullThreadID, &exitValue);
     for (int32 i = 0; i < locks; i++)
       this->Lock();
