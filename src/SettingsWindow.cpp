@@ -9,11 +9,12 @@
 #include <SeparatorView.h>
 #include <SpaceLayoutItem.h>
 #include <TextControl.h>
+#include <iostream>
 #include <sodium.h>
 
 #define B_TRANSLATION_CONTEXT "Settings"
 
-#define WIDTH 400
+#define WIDTH 480
 #define HEIGHT 400
 
 namespace {
@@ -27,6 +28,7 @@ private:
   BListView *serverList;
   BTextControl *addrControl;
   BTextControl *keyControl;
+  BButton *delButton;
   BButton *saveButton;
 };
 
@@ -45,6 +47,15 @@ private:
   BString cypherkey;
 };
 
+class ServerList : public BListView {
+public:
+  ServerList(const char *name, NetworkTab *container);
+  void SelectionChanged() override;
+
+private:
+  NetworkTab *container;
+};
+
 NetworkTab::NetworkTab(BRect contentFrame)
     :
     BView(contentFrame, B_TRANSLATE("Network"), B_FOLLOW_ALL_SIDES,
@@ -58,7 +69,7 @@ void NetworkTab::AttachedToWindow() {
   {
     auto column1Layout = new BGroupLayout(B_VERTICAL);
     outerLayout->AddItem(column1Layout);
-    this->serverList = new BListView("ServerList");
+    this->serverList = new ServerList("ServerList", this);
     column1Layout->AddView(this->serverList);
     this->serverList->AddItem(new ServerEntry("testAddress", "testKey"), 0);
     {
@@ -67,9 +78,11 @@ void NetworkTab::AttachedToWindow() {
       auto addButton = new BButton(B_TRANSLATE("Add"), new BMessage('ASRV'));
       addButton->SetTarget(this);
       buttonLayout->AddView(addButton);
-      auto delButton = new BButton(B_TRANSLATE("Remove"), new BMessage('DSRV'));
-      delButton->SetTarget(this);
-      buttonLayout->AddView(delButton);
+      this->delButton =
+          new BButton(B_TRANSLATE("Remove"), new BMessage('DSRV'));
+      this->delButton->SetTarget(this);
+      this->delButton->SetEnabled(false);
+      buttonLayout->AddView(this->delButton);
     }
   }
   outerLayout->AddView(new BSeparatorView(B_VERTICAL));
@@ -100,6 +113,7 @@ void NetworkTab::AttachedToWindow() {
 }
 
 void NetworkTab::MessageReceived(BMessage *message) {
+
   BView::MessageReceived(message);
 }
 
@@ -144,6 +158,13 @@ void ServerEntry::Update(BView *owner, const BFont *font) {
   this->SetHeight(
       (fontHeight.ascent + fontHeight.descent + fontHeight.leading) * 2.1);
 }
+
+ServerList::ServerList(const char *name, NetworkTab *container)
+    :
+    BListView(name),
+    container(container) {}
+
+void ServerList::SelectionChanged() {}
 }; // namespace
 
 static inline BRect ourFrame() {
