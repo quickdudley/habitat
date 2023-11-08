@@ -95,11 +95,13 @@ void NetworkTab::AttachedToWindow() {
                                          new BMessage('NADR'));
     this->addrControl->SetTarget(this);
     this->addrControl->SetEnabled(false);
+    this->addrControl->SetModificationMessage(new BMessage('MSRV'));
     column2Layout->AddView(this->addrControl);
     this->keyControl =
         new BTextControl(B_TRANSLATE("Public key"), "", new BMessage('CKEY'));
     this->keyControl->SetEnabled(false);
     this->keyControl->SetTarget(this);
+    this->keyControl->SetModificationMessage(new BMessage('MSRV'));
     column2Layout->AddView(this->keyControl);
     {
       auto buttonLayout = new BGroupLayout(B_HORIZONTAL);
@@ -118,6 +120,7 @@ void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
     int32 ll = this->serverList->CountItems();
+    // TODO: If the clipboard contains an invite code then derive these values.
     this->serverList->AddItem(new ServerEntry("127.0.0.1:8008", "@"));
     this->serverList->Select(ll);
   } break;
@@ -132,7 +135,10 @@ void NetworkTab::MessageReceived(BMessage *message) {
       item->setCypherkey(this->keyControl->Text());
       this->serverList->Invalidate();
     }
-  }
+  } break;
+  case 'MSRV': {
+    // TODO: Trigger validation, enable/disable save button.
+  } break;
   default:
     BView::MessageReceived(message);
   }
@@ -144,7 +150,6 @@ void NetworkTab::clearDetails() {
   this->keyControl->SetText("");
   this->keyControl->SetEnabled(false);
   this->delButton->SetEnabled(false);
-  this->saveButton->SetEnabled(false);
 }
 
 void NetworkTab::fillDetails(const BString &netAddress,
@@ -154,7 +159,6 @@ void NetworkTab::fillDetails(const BString &netAddress,
   this->keyControl->SetText(cypherkey);
   this->keyControl->SetEnabled(true);
   this->delButton->SetEnabled(true);
-  this->saveButton->SetEnabled(true);
 }
 
 ServerEntry::ServerEntry(const BString &netAddress, const BString cypherkey)
