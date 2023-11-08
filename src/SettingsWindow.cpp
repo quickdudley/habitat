@@ -6,10 +6,10 @@
 #include <ListView.h>
 #include <LocaleRoster.h>
 #include <Screen.h>
+#include <ScrollView.h>
 #include <SeparatorView.h>
 #include <SpaceLayoutItem.h>
 #include <TextControl.h>
-#include <iostream>
 #include <sodium.h>
 
 #define B_TRANSLATION_CONTEXT "Settings"
@@ -23,6 +23,8 @@ public:
   NetworkTab(BRect contentFrame);
   void AttachedToWindow();
   void MessageReceived(BMessage *msg) override;
+  void clearDetails();
+  void fillDetails(const BString &netAddress, const BString &cypherkey);
 
 private:
   BListView *serverList;
@@ -70,8 +72,8 @@ void NetworkTab::AttachedToWindow() {
     auto column1Layout = new BGroupLayout(B_VERTICAL);
     outerLayout->AddItem(column1Layout);
     this->serverList = new ServerList("ServerList", this);
-    column1Layout->AddView(this->serverList);
-    this->serverList->AddItem(new ServerEntry("testAddress", "testKey"), 0);
+    column1Layout->AddView(new BScrollView(
+        NULL, this->serverList, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false, true));
     {
       auto buttonLayout = new BGroupLayout(B_HORIZONTAL);
       column1Layout->AddItem(buttonLayout, 0.2);
@@ -113,8 +115,46 @@ void NetworkTab::AttachedToWindow() {
 }
 
 void NetworkTab::MessageReceived(BMessage *message) {
+  switch (message->what) {
+  case 'ASRV': {
+    int32 ll = this->serverList->CountItems();
+    this->serverList->AddItem(new ServerEntry("127.0.0.1:8008", "@"));
+    this->serverList->Select(ll);
+  } break;
+  case 'DSRV': {
+    this->serverList->RemoveItem(this->serverList->CurrentSelection());
+    this->serverList->DeselectAll();
+  } break;
+  case 'SSRV': {
+    if (auto item = dynamic_cast<ServerEntry *>(
+            this->serverList->ItemAt(this->serverList->CurrentSelection()))) {
+      item->setAddress(this->addrControl->Text());
+      item->setCypherkey(this->keyControl->Text());
+      this->serverList->Invalidate();
+    }
+  }
+  default:
+    BView::MessageReceived(message);
+  }
+}
 
-  BView::MessageReceived(message);
+void NetworkTab::clearDetails() {
+  this->addrControl->SetText("");
+  this->addrControl->SetEnabled(false);
+  this->keyControl->SetText("");
+  this->keyControl->SetEnabled(false);
+  this->delButton->SetEnabled(false);
+  this->saveButton->SetEnabled(false);
+}
+
+void NetworkTab::fillDetails(const BString &netAddress,
+                             const BString &cypherkey) {
+  this->addrControl->SetText(netAddress);
+  this->addrControl->SetEnabled(true);
+  this->keyControl->SetText(cypherkey);
+  this->keyControl->SetEnabled(true);
+  this->delButton->SetEnabled(true);
+  this->saveButton->SetEnabled(true);
 }
 
 ServerEntry::ServerEntry(const BString &netAddress, const BString cypherkey)
@@ -164,7 +204,15 @@ ServerList::ServerList(const char *name, NetworkTab *container)
     BListView(name),
     container(container) {}
 
-void ServerList::SelectionChanged() {}
+void ServerList::SelectionChanged() {
+  if (auto selected =
+          dynamic_cast<ServerEntry *>(this->ItemAt(this->CurrentSelection()))) {
+    this->container->fillDetails(selected->getAddress(),
+                                 selected->getCypherkey());
+  } else {
+    this->container->clearDetails();
+  }
+}
 }; // namespace
 
 static inline BRect ourFrame() {
