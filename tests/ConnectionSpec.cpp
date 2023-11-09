@@ -83,3 +83,26 @@ TEST_CASE("SHS connection works", "[shs]") {
   REQUIRE(BString(testdata.sgot) == "Hello");
   REQUIRE(BString(testdata.cgot) == "World");
 }
+
+TEST_CASE("Hostname validation validation", "[net]") {
+  REQUIRE(validateHostname("127.0.0.1"));
+  REQUIRE(validateHostname("127.0.0.1", PORT_OPTIONAL));
+  REQUIRE_FALSE(validateHostname("127.0.0.1", PORT_REQUIRED));
+  REQUIRE_FALSE(validateHostname("127.0.0.1:8008"));
+  REQUIRE(validateHostname("127.0.0.1:8008", PORT_OPTIONAL));
+  REQUIRE(validateHostname("127.0.0.1:8008", PORT_REQUIRED));
+  REQUIRE_FALSE(validateHostname("127.1", PORT_OPTIONAL));
+  REQUIRE(validateHostname("127.0.0.1."));
+  REQUIRE(validateHostname("127.0.0.1.:8008", PORT_REQUIRED));
+  REQUIRE(validateHostname("::1:8008", PORT_REQUIRED));
+  REQUIRE_FALSE(validateHostname("::1:8008", PORT_OPTIONAL));
+  REQUIRE(validateHostname("[::1]:8008", PORT_OPTIONAL));
+  REQUIRE_FALSE(validateHostname("[::1]:8008", PORT_FORBIDDEN));
+  REQUIRE(validateHostname("[::1]:8008", PORT_REQUIRED));
+  REQUIRE_FALSE(validateHostname("1:1:1:1:1:1:1:1:1", PORT_FORBIDDEN));
+  REQUIRE_FALSE(validateHostname("1:1:1:1::1:1:1", PORT_FORBIDDEN));
+  REQUIRE(validateHostname("1:1:1:1::1:1", PORT_FORBIDDEN));
+  REQUIRE(validateHostname("example.com", PORT_FORBIDDEN));
+  REQUIRE(validateHostname("example.com", PORT_OPTIONAL));
+  REQUIRE_FALSE(validateHostname("example.com", PORT_REQUIRED));
+}

@@ -17,7 +17,6 @@ enum HandshakeError {
   SECRET_FAILED
 };
 
-// TODO: wrap & inherit `BAbstractSocket` instead.
 class BoxStream : public BDataIO {
 public:
   // Client side of handshake (server public key known)
@@ -46,4 +45,8 @@ private:
   unsigned char recvnonce[24];
 };
 
+enum PortOption { PORT_FORBIDDEN = 0, PORT_OPTIONAL = 1, PORT_REQUIRED = 2 };
+
+bool validateHostname(const BString &hostName,
+                      PortOption portFlags = PORT_FORBIDDEN);
 #endif

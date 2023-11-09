@@ -550,3 +550,135 @@ BString BoxStream::cypherkey() {
   result << ".ed25519";
   return result;
 }
+
+static inline bool validateIPv4(const BString &hostName, int32 end) {
+  int16 currentNumber = 0;
+  int8 numbers = 0;
+  bool nonempty = false;
+  for (int32 i = 0; i <= end; i++) {
+    char c = hostName[i];
+    if (isdigit(c)) {
+      if (numbers >= 4)
+        return false;
+      currentNumber = currentNumber * 10 + (c - '0');
+      if (currentNumber > 0xFF)
+        return false;
+      nonempty = true;
+    } else if (c == '.') {
+      if (!nonempty)
+        return false;
+      nonempty = false;
+      currentNumber = 0;
+      numbers++;
+    } else {
+      return false;
+    }
+  }
+  return numbers == (nonempty ? 3 : 4);
+}
+
+static bool validateIPv6(const char *hostName, int32 end) {
+  int8 digits = 0;
+  int8 fields = 0;
+  int8 chunks = 0;
+  int8 colons = 0;
+  if (hostName[0] == '[' && hostName[end] == ']') {
+    hostName++;
+    end -= 2;
+  }
+  for (int32 i = 0; i <= end; i++) {
+    char c = hostName[i];
+    if (isdigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+      digits++;
+      if (digits > 4)
+        return false;
+      colons = 0;
+    } else if (c == ':') {
+      if (colons >= 2 || (colons == 1 && chunks > 0))
+        return false;
+      fields++;
+      if (colons == 1)
+        fields++;
+      colons++;
+      digits = 0;
+      if (fields >= 8)
+        return false;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+static inline bool validateDomainName(const BString &hostName, int end) {
+  bool numeric = false;
+  bool alphabetic = false;
+  bool hyphen = false;
+  if (hostName[end] == '.')
+    end--;
+  for (int32 i = 0; i <= end; i++) {
+    char c = hostName[i];
+    if (c == '-') {
+      if (!numeric && !alphabetic)
+        return false;
+      else
+        hyphen = true;
+    } else if (c >= '0' && c <= '9') {
+      hyphen = false;
+      numeric = true;
+    } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+      hyphen = false;
+      alphabetic = true;
+    } else if (c == '.') {
+      if (hyphen || !(numeric || alphabetic))
+        return false;
+      numeric = false;
+      alphabetic = false;
+    }
+  }
+  return alphabetic && !hyphen;
+}
+
+bool validateHostname(const BString &hostName, PortOption portFlags) {
+  int32 end = hostName.Length() - 1;
+  if (portFlags != PORT_FORBIDDEN) {
+    while (isdigit(hostName[end]))
+      end--;
+    if (hostName[end] == ':')
+      end--;
+    else
+      end = hostName.Length() - 1;
+    if (portFlags == PORT_REQUIRED && end + 1 == hostName.Length())
+      return false;
+  }
+  if (end >= 253)
+    return false;
+  if (!validateIPv4(hostName, end) &&
+      !(portFlags == PORT_OPTIONAL ? validateIPv6(hostName, end) &&
+                !validateIPv6(hostName, hostName.Length() - 1)
+                                   : validateIPv6(hostName, end) ||
+                validateIPv6(hostName, hostName.Length() - 1)) &&
+      !validateDomainName(hostName, end)) {
+    return false;
+  }
+  {
+    if (end + 1 == hostName.Length())
+      return portFlags != PORT_REQUIRED;
+    if (portFlags == PORT_FORBIDDEN)
+      return false;
+    if (hostName[end + 1] != ':')
+      return false;
+    int32 port = 0;
+    bool nonempty = false;
+    for (end += 2; end < hostName.Length(); end++) {
+      char c = hostName[end];
+      if (!isdigit(c))
+        return false;
+      port = port * 10 + (c - '0');
+      if (port > 0xFFFF)
+        return false;
+      nonempty = true;
+    }
+    return nonempty;
+  }
+}
