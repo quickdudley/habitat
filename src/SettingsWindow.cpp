@@ -32,6 +32,7 @@ private:
   BListView *serverList;
   BTextControl *addrControl;
   BTextControl *keyControl;
+  BButton *addButton;
   BButton *delButton;
   BButton *saveButton;
 };
@@ -79,9 +80,9 @@ void NetworkTab::AttachedToWindow() {
     {
       auto buttonLayout = new BGroupLayout(B_HORIZONTAL);
       column1Layout->AddItem(buttonLayout, 0.2);
-      auto addButton = new BButton(B_TRANSLATE("Add"), new BMessage('ASRV'));
-      addButton->SetTarget(this);
-      buttonLayout->AddView(addButton);
+      this->addButton = new BButton(B_TRANSLATE("New"), new BMessage('ASRV'));
+      this->addButton->SetTarget(this);
+      buttonLayout->AddView(this->addButton);
       this->delButton =
           new BButton(B_TRANSLATE("Remove"), new BMessage('DSRV'));
       this->delButton->SetTarget(this);
@@ -96,12 +97,10 @@ void NetworkTab::AttachedToWindow() {
     this->addrControl = new BTextControl(B_TRANSLATE("Network address"), "",
                                          new BMessage('NADR'));
     this->addrControl->SetTarget(this);
-    this->addrControl->SetEnabled(false);
     this->addrControl->SetModificationMessage(new BMessage('MSRV'));
     column2Layout->AddView(this->addrControl);
     this->keyControl =
         new BTextControl(B_TRANSLATE("Public key"), "", new BMessage('CKEY'));
-    this->keyControl->SetEnabled(false);
     this->keyControl->SetTarget(this);
     this->keyControl->SetModificationMessage(new BMessage('MSRV'));
     column2Layout->AddView(this->keyControl);
@@ -136,10 +135,7 @@ static inline bool validateCypherkey(const BString &key) {
 void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
-    int32 ll = this->serverList->CountItems();
-    // TODO: If the clipboard contains an invite code then derive these values.
-    this->serverList->AddItem(new ServerEntry("127.0.0.1:8008", "@"));
-    this->serverList->Select(ll);
+    this->serverList->DeselectAll();
   } break;
   case 'DSRV': {
     this->serverList->RemoveItem(this->serverList->CurrentSelection());
@@ -151,12 +147,15 @@ void NetworkTab::MessageReceived(BMessage *message) {
       item->setAddress(this->addrControl->Text());
       item->setCypherkey(this->keyControl->Text());
       this->serverList->Invalidate();
+    } else {
+      int32 ll = this->serverList->CountItems();
+      this->serverList->AddItem(
+          new ServerEntry(this->addrControl->Text(), this->keyControl->Text()));
+      this->serverList->Select(ll);
     }
   } break;
   case 'MSRV': {
     this->saveButton->SetEnabled(
-        dynamic_cast<ServerEntry *>(
-            this->serverList->ItemAt(this->serverList->CurrentSelection())) &&
         validateHostname(this->addrControl->Text(), PORT_REQUIRED) &&
         validateCypherkey(this->keyControl->Text()));
   } break;
@@ -167,18 +166,14 @@ void NetworkTab::MessageReceived(BMessage *message) {
 
 void NetworkTab::clearDetails() {
   this->addrControl->SetText("");
-  this->addrControl->SetEnabled(false);
   this->keyControl->SetText("");
-  this->keyControl->SetEnabled(false);
   this->delButton->SetEnabled(false);
 }
 
 void NetworkTab::fillDetails(const BString &netAddress,
                              const BString &cypherkey) {
   this->addrControl->SetText(netAddress);
-  this->addrControl->SetEnabled(true);
   this->keyControl->SetText(cypherkey);
-  this->keyControl->SetEnabled(true);
   this->delButton->SetEnabled(true);
 }
 

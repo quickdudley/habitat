@@ -1,11 +1,11 @@
-1	简体中文	application/x-vnd.habitat	1046838209
+1	简体中文	application/x-vnd.habitat	907984650
 Application	MainWindow		应用程序
 Failed to initialize libsodium	MainWindow		初始化libsodium失败了
+New	Settings		加新
 Save	Settings		保存
 Settings	MainWindow		设置
 Network	Settings		网络
 Remove	Settings		删除
 Network address	Settings		网络地址
-Add	Settings		加上
 Public key	Settings		公银
 Habitat Settings	Settings		Habitat的设置
