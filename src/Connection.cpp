@@ -597,8 +597,12 @@ static bool validateIPv6(const char *hostName, int32 end) {
       if (colons >= 2 || (colons == 1 && chunks > 0))
         return false;
       fields++;
-      if (colons == 1)
+      if (colons == 1) {
         fields++;
+        chunks++;
+      }
+      if (chunks > 1)
+        return false;
       colons++;
       digits = 0;
       if (fields >= 8)
@@ -607,7 +611,7 @@ static bool validateIPv6(const char *hostName, int32 end) {
       return false;
     }
   }
-  return true;
+  return fields == 7 || chunks > 0;
 }
 
 static inline bool validateDomainName(const BString &hostName, int end) {

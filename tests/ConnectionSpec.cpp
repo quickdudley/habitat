@@ -102,6 +102,8 @@ TEST_CASE("Hostname validation validation", "[net]") {
   REQUIRE_FALSE(validateHostname("1:1:1:1:1:1:1:1:1", PORT_FORBIDDEN));
   REQUIRE_FALSE(validateHostname("1:1:1:1::1:1:1", PORT_FORBIDDEN));
   REQUIRE(validateHostname("1:1:1:1::1:1", PORT_FORBIDDEN));
+  REQUIRE(validateHostname("1:1:1:1:1:1:1:1", PORT_FORBIDDEN));
+  REQUIRE_FALSE(validateHostname("1:1:1:1:1:1:1", PORT_FORBIDDEN));
   REQUIRE(validateHostname("example.com", PORT_FORBIDDEN));
   REQUIRE(validateHostname("example.com", PORT_OPTIONAL));
   REQUIRE_FALSE(validateHostname("example.com", PORT_REQUIRED));

@@ -1,4 +1,6 @@
 #include "SettingsWindow.h"
+#include "Base64.h"
+#include "Connection.h"
 #include <Button.h>
 #include <Catalog.h>
 #include <ControlLook.h>
@@ -116,6 +118,21 @@ void NetworkTab::AttachedToWindow() {
   }
 }
 
+static inline bool validateCypherkey(const BString &key) {
+  if (!key.StartsWith("@"))
+    return false;
+  if (!key.EndsWith(".ed25519"))
+    return false;
+  BString inner;
+  key.CopyInto(inner, 1, key.Length() - 9);
+  auto bytes = base64::decode(inner);
+  if (bytes.size() != crypto_sign_PUBLICKEYBYTES)
+    return false;
+  if (inner != base64::encode(bytes, base64::STANDARD))
+    return false;
+  return true;
+}
+
 void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
@@ -137,7 +154,11 @@ void NetworkTab::MessageReceived(BMessage *message) {
     }
   } break;
   case 'MSRV': {
-    // TODO: Trigger validation, enable/disable save button.
+    this->saveButton->SetEnabled(
+        dynamic_cast<ServerEntry *>(
+            this->serverList->ItemAt(this->serverList->CurrentSelection())) &&
+        validateHostname(this->addrControl->Text(), PORT_REQUIRED) &&
+        validateCypherkey(this->keyControl->Text()));
   } break;
   default:
     BView::MessageReceived(message);

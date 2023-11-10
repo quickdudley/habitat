@@ -71,7 +71,7 @@ BString encode(const unsigned char *raw, size_t inlen, Variant variant) {
   return result;
 }
 
-BString encode(std::vector<unsigned char> &raw, Variant variant) {
+BString encode(const std::vector<unsigned char> &raw, Variant variant) {
   return encode(raw.data(), raw.size(), variant);
 }
 
