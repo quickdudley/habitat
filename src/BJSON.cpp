@@ -26,7 +26,7 @@ bool wasArray(const BMessage *msg) {
   }
   if (collected.size() == 0)
     return false;
-  for (int i = 0; i < collected.size(); i++) {
+  for (uint32 i = 0; i < collected.size(); i++) {
     if (collected.count(i) != 1)
       return false;
   }

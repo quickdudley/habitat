@@ -380,7 +380,6 @@ void Wanted::_addWant_(BString &cypherkey, int8 distance, BMessenger replyTo) {
         std::get<1>(item) = distance;
         this->propagateWant(cypherkey, distance);
       }
-      std::vector<BMessenger> &replyTargets = std::get<3>(item);
       std::remove_if(std::get<3>(item).begin(), std::get<3>(item).end(),
                      [&replyTo](auto existingTarget) {
                        return !existingTarget.IsValid() ||

@@ -3,8 +3,8 @@
 namespace base64 {
 
 static inline bool isBase64(char point) {
-  return point >= 'A' && point <= 'Z' || point >= 'a' && point <= 'z' ||
-      point >= '0' && point <= '9' || point == '+' || point == '-' ||
+  return (point >= 'A' && point <= 'Z') || (point >= 'a' && point <= 'z') ||
+      (point >= '0' && point <= '9') || point == '+' || point == '-' ||
       point == '/' || point == '_';
 }
 

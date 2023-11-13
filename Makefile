@@ -133,10 +133,6 @@ LOCALES = en zh
 #	"-DDEBUG" on the compiler's command line.
 DEFINES =
 
-#	Specify the warning level. Either NONE (suppress all warnings),
-#	ALL (enable all warnings), or leave blank (enable default warnings).
-WARNINGS =
-
 #	With image symbols, stack crawls in the debugger are meaningful.
 #	If set to "TRUE", symbols will be created.
 SYMBOLS :=
@@ -146,7 +142,7 @@ SYMBOLS :=
 DEBUGGER := TRUE
 
 #	Specify any additional compiler flags to be used.
-COMPILER_FLAGS = -gdwarf-3
+COMPILER_FLAGS = -gdwarf-3 -Wall
 
 #	Specify any additional linker flags to be used.
 LINKER_FLAGS =
