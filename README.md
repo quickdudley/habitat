@@ -8,7 +8,6 @@ A Secure Scuttlebutt client for Haiku.
 
 - Libsodium: `pkgman install devel:libsodium`
 - ICU: `pkgman install icu66_devel`
-- Catch2 (only needed for unit tests) `pkgman install catch2_devel`
 
 ## Building
 
@@ -18,9 +17,12 @@ make
 ```
 
 Once I have a fully functioning application I will add a build target to
-generate an hpkg file; and will also submit releases to [HaikuPorts](https://github.com/haikuports/haikuports/wiki/_
+generate an hpkg file; and will also submit releases to [HaikuPorts](https://github.com/haikuports/haikuports/wiki/)
 
 ## Unit tests
+
+Unit tests have two additional dependencies which can be installed with
+`pkgman install catch2_devel vim`
 
 You can run unit tests with `make test`.
 
