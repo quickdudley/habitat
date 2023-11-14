@@ -47,6 +47,8 @@ private:
 
 enum PortOption { PORT_FORBIDDEN = 0, PORT_OPTIONAL = 1, PORT_REQUIRED = 2 };
 
+bool validateCypherkey(const BString &key);
+
 bool validateHostname(const BString &hostName,
                       PortOption portFlags = PORT_FORBIDDEN);
 #endif

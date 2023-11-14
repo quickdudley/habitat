@@ -24,6 +24,26 @@ private:
   BMenuBar *menuBar;
 };
 
+class Habitat;
+
+class ServerRecord {
+public:
+  ServerRecord();
+  ServerRecord(const BString &hostname, const BString &cypherkey);
+  ServerRecord(const BString &transport, const BString &hostname,
+               const BString &cypherkey);
+  ServerRecord(BMessage *record);
+  virtual ~ServerRecord() {}
+  virtual bool isValid();
+  virtual void pack(BMessage *record);
+
+private:
+  BString transport;
+  BString hostname;
+  BString cypherkey;
+  friend class Habitat;
+};
+
 class Habitat : public BApplication {
 public:
   Habitat(void);
@@ -50,6 +70,7 @@ private:
   std::unique_ptr<SSBListener> ipListener;
   std::unique_ptr<BHandler> lanBroadcaster;
   std::shared_ptr<Ed25519Secret> myId;
+  std::vector<ServerRecord> servers;
 };
 
 extern Habitat *app;

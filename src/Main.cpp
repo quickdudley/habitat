@@ -1,4 +1,5 @@
 #include "Main.h"
+#include "Connection.h"
 #include "Indices.h"
 #include "Logging.h"
 #include "SettingsWindow.h"
@@ -36,7 +37,7 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
-enum { kTimeZone, kCypherkey, kCreateBlob, kCreatePost, kLogCategory };
+enum { kTimeZone, kCypherkey, kCreateBlob, kCreatePost, kLogCategory, kServer };
 
 static property_info habitatProperties[] = {
     {"Timezone",
@@ -68,6 +69,18 @@ static property_info habitatProperties[] = {
      {B_DIRECT_SPECIFIER, 0},
      "An enabled category of log entries",
      kLogCategory,
+     {}},
+    {"Server",
+     {B_CREATE_PROPERTY, B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A pub server or room server",
+     kServer,
+     {}},
+    {"Server",
+     {B_DELETE_PROPERTY, B_GET_PROPERTY, 0},
+     {B_NAME_SPECIFIER, 0},
+     "A pub server or room server",
+     kServer,
      {}},
     {0}};
 
@@ -103,6 +116,7 @@ Habitat::Habitat(void)
       throw status;
     }
     // Create posts directory
+    this->postDir = std::make_unique<BDirectory>();
     status = this->settings->CreateDirectory("posts", this->postDir.get());
     if (status == B_FILE_EXISTS) {
       BEntry entry;
@@ -292,6 +306,39 @@ void Habitat::MessageReceived(BMessage *msg) {
       }
     }
   } break;
+  case kServer: {
+    switch (msg->what) {
+    case B_CREATE_PROPERTY: {
+      this->servers.push_back(msg);
+      if (!this->servers.back().isValid())
+        this->servers.pop_back();
+      else
+        error = B_OK;
+    } break;
+    case B_DELETE_PROPERTY: {
+      error = B_NAME_NOT_FOUND;
+      for (auto i = this->servers.begin(); i != this->servers.end(); i++) {
+        if (i->hostname == specifier.GetString("name")) {
+          error = B_OK;
+          this->servers.erase(i);
+          break;
+        }
+      }
+    } break;
+    case B_GET_PROPERTY: {
+      error = B_NAME_NOT_FOUND;
+      for (auto &server : this->servers) {
+        if (what == B_DIRECT_SPECIFIER ||
+            server.hostname == specifier.GetString("name")) {
+          BMessage result;
+          server.pack(&result);
+          reply.AddMessage("result", &result);
+          error = B_OK;
+        }
+      }
+    } break;
+    }
+  } break;
   default:
     return BApplication::MessageReceived(msg);
   }
@@ -389,6 +436,39 @@ void MainWindow::MessageReceived(BMessage *message) {
   default:
     BWindow::MessageReceived(message);
   }
+}
+
+ServerRecord::ServerRecord() {}
+
+ServerRecord::ServerRecord(const BString &transport, const BString &hostname,
+                           const BString &cypherkey)
+    :
+    transport(transport),
+    hostname(hostname),
+    cypherkey(cypherkey) {}
+
+ServerRecord::ServerRecord(const BString &hostname, const BString &cypherkey)
+    :
+    transport("net"),
+    hostname(hostname),
+    cypherkey(cypherkey) {}
+
+ServerRecord::ServerRecord(BMessage *record)
+    :
+    transport(record->GetString("transport", "")),
+    hostname(record->GetString("hostname", "")),
+    cypherkey(record->GetString("cypherkey", "")) {}
+
+bool ServerRecord::isValid() {
+  return this->transport == "net" &&
+      validateHostname(this->hostname, PORT_REQUIRED) &&
+      validateCypherkey(this->cypherkey);
+}
+
+void ServerRecord::pack(BMessage *record) {
+  record->AddString("transport", this->transport);
+  record->AddString("hostname", this->hostname);
+  record->AddString("cypherkey", this->cypherkey);
 }
 
 #undef B_TRANSLATION_CONTEXT

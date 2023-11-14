@@ -551,6 +551,21 @@ BString BoxStream::cypherkey() {
   return result;
 }
 
+bool validateCypherkey(const BString &key) {
+  if (!key.StartsWith("@"))
+    return false;
+  if (!key.EndsWith(".ed25519"))
+    return false;
+  BString inner;
+  key.CopyInto(inner, 1, key.Length() - 9);
+  auto bytes = base64::decode(inner);
+  if (bytes.size() != crypto_sign_PUBLICKEYBYTES)
+    return false;
+  if (inner != base64::encode(bytes, base64::STANDARD))
+    return false;
+  return true;
+}
+
 static inline bool validateIPv4(const BString &hostName, int32 end) {
   int16 currentNumber = 0;
   int8 numbers = 0;

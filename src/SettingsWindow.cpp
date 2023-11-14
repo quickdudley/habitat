@@ -117,21 +117,6 @@ void NetworkTab::AttachedToWindow() {
   }
 }
 
-static inline bool validateCypherkey(const BString &key) {
-  if (!key.StartsWith("@"))
-    return false;
-  if (!key.EndsWith(".ed25519"))
-    return false;
-  BString inner;
-  key.CopyInto(inner, 1, key.Length() - 9);
-  auto bytes = base64::decode(inner);
-  if (bytes.size() != crypto_sign_PUBLICKEYBYTES)
-    return false;
-  if (inner != base64::encode(bytes, base64::STANDARD))
-    return false;
-  return true;
-}
-
 void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
