@@ -702,7 +702,7 @@ BString SSBFeed::cypherkey() {
   return result;
 }
 
-int64 SSBFeed::sequence() { return this->lastSequence; }
+uint64 SSBFeed::sequence() { return this->lastSequence; }
 
 BString SSBFeed::previousLink() {
   BString result("%");

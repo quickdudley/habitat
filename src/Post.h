@@ -14,7 +14,7 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
 
 namespace post_private_ {
 struct FeedShuntEntry {
-  int64 sequence;
+  uint64 sequence;
   entry_ref ref;
 };
 
@@ -56,7 +56,7 @@ public:
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
   status_t findPost(BMessage *post, uint64 sequence);
-  int64 sequence();
+  uint64 sequence();
   void notifyChanges();
   void notifyChanges(BMessenger target);
 
@@ -70,7 +70,7 @@ protected:
   BVolume volume;
   BQuery query;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
-  int64 lastSequence = 0;
+  uint64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
 };
 
