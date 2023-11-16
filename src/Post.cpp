@@ -52,20 +52,24 @@ void AttrCheck::MessageReceived(BMessage *msg) {
   }
 }
 
-class QueryHandler : public BHandler {
+class QueryHandler : public QueryBacked {
 public:
-  QueryHandler(BMessenger target);
-  void MessageReceived(BMessage *message);
-  BQuery query;
+  QueryHandler(BMessenger target, const BMessage &specifier);
+  void MessageReceived(BMessage *message) override;
+  bool fillQuery(BQuery *query, time_t reset) override;
+  bool queryMatch(entry_ref *entry) override;
   int32 limit = -1;
 
 private:
   BMessenger target;
+  BMessage specifier;
+  bool ongoing = false;
 };
 
-QueryHandler::QueryHandler(BMessenger target)
+QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
     :
-    target(target) {}
+    target(target),
+    specifier(specifier) {}
 
 status_t populateQuery(BQuery &query, BMessage *specifier) {
   bool already = false;
@@ -124,30 +128,8 @@ status_t populateQuery(BQuery &query, BMessage *specifier) {
 }
 
 void QueryHandler::MessageReceived(BMessage *message) {
+  this->ongoing = true;
   switch (message->what) {
-  case B_PULSE: {
-    if (this->limit == 0)
-      goto canceled;
-    entry_ref ref;
-    if (query.GetNextRef(&ref) != B_OK) {
-      if (this->target.IsValid())
-        this->target.SendMessage('DONE');
-      else
-        goto canceled;
-      break;
-    }
-    BMessage post;
-    BFile file(&ref, B_READ_ONLY);
-    if (post.Unflatten(&file) == B_OK) {
-      if (this->target.IsValid())
-        this->target.SendMessage(&post);
-      else
-        goto canceled;
-    }
-    if (this->limit > 0 && --this->limit == 0)
-      goto canceled;
-    BMessenger(this).SendMessage(B_PULSE);
-  } break;
   case B_QUERY_UPDATE:
     if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
       entry_ref ref;
@@ -177,6 +159,68 @@ void QueryHandler::MessageReceived(BMessage *message) {
     delete this;
   } break;
   }
+}
+
+bool QueryHandler::fillQuery(BQuery *query, time_t reset) {
+  if (populateQuery(*query, &this->specifier) == B_OK)
+    return false;
+  if (this->ongoing) {
+    query->PushAttr("last_modified");
+    query->PushInt64((int64)reset);
+    query->PushOp(B_GE);
+    query->PushOp(B_AND);
+  }
+  return true;
+}
+
+bool QueryHandler::queryMatch(entry_ref *entry) {
+  BNode node(entry);
+  bool specifierHas;
+  bool found;
+  BString value;
+  BString foundValue;
+#define CKS(specKey, attrKey)                                                  \
+  found = false;                                                               \
+  foundValue = false;                                                          \
+  for (int32 i = 0; this->specifier.FindString(specKey, i, &value) == B_OK;    \
+    i++) {                                                                     \
+    specifierHas = true;                                                       \
+    if (i == 0) {                                                              \
+      if (node.ReadAttrString(attrKey, &foundValue) != B_OK)                   \
+        return false;                                                          \
+    }                                                                          \
+    if (value == foundValue) {                                                 \
+      found = true;                                                            \
+      break;                                                                   \
+    }                                                                          \
+  }                                                                            \
+  if (specifierHas && !found)                                                  \
+  return false
+  CKS(this->specifier.what == 'CPLX' ? "cypherkey" : "name",
+      "HABITAT:cypherkey");
+  CKS("author", "HABITAT:author");
+  CKS("context", "HABITAT:context");
+  CKS("type", "HABITAT:type");
+#undef CKS
+  if (uint64 earliest; this->specifier.FindUInt64("earliest", &earliest) == 0) {
+    int64 timestamp;
+    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
+                      sizeof(int64)) != B_OK) {
+      return false;
+    }
+    if ((uint64)timestamp < earliest)
+      return false;
+  }
+  if (uint64 latest; this->specifier.FindUInt64("earliest", &latest) == 0) {
+    int64 timestamp;
+    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
+                      sizeof(int64)) != B_OK) {
+      return false;
+    }
+    if ((uint64)timestamp < latest)
+      return false;
+  }
+  return true;
 }
 } // namespace
 
@@ -366,31 +410,32 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       QueryHandler *qh;
       bool live;
       if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-        qh = new QueryHandler(target);
-        qh->query.SetTarget(BMessenger(qh));
+        qh = new QueryHandler(target, specifier);
         live = true;
       } else {
-        qh = new QueryHandler(BMessenger());
+        qh = new QueryHandler(BMessenger(), specifier);
         live = false;
       }
       qh->limit = msg->GetInt32("limit", -1);
-      BVolume volume;
-      this->store.GetVolume(&volume);
-      qh->query.SetVolume(&volume);
-      populateQuery(qh->query, &specifier);
-      if ((error = qh->query.Fetch()) != B_OK) {
-        delete qh;
-        break;
-      }
       if (live) {
         this->Lock();
         this->AddHandler(qh);
         this->Unlock();
-        BMessenger(qh).SendMessage(B_PULSE);
-        reply.AddMessenger("result", BMessenger(qh));
+        if (!this->pendingQueryMods) {
+          this->pendingQueryMods = true;
+          BMessenger(this).SendMessage(B_PULSE);
+        }
       } else {
         entry_ref ref;
-        while (qh->limit != 0 && qh->query.GetNextRef(&ref) == B_OK) {
+        BQuery query;
+        {
+          BVolume volume;
+          this->store.GetVolume(&volume);
+          query.SetVolume(&volume);
+        }
+        qh->fillQuery(&query, 0);
+        query.Fetch();
+        while (qh->limit != 0 && query.GetNextRef(&ref) == B_OK) {
           BMessage post;
           BFile file(&ref, B_READ_ONLY);
           if (post.Unflatten(&file) == B_OK) {
@@ -415,8 +460,48 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     if (this->findFeed(feed, author) == B_OK)
       BMessenger(feed).SendMessage(msg);
     return;
+  } else if (msg->what == B_PULSE) {
+    if (entry_ref entry; this->commonQuery.GetNextRef(&entry) == B_OK) {
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", entry.device);
+      mimic.AddInt64("directory", entry.directory);
+      mimic.AddString("name", entry.name);
+      BMessenger(this).SendMessage(&mimic);
+    } else if (this->pendingQueryMods) {
+      time_t reset = time(NULL);
+      this->commonQuery.Clear();
+      this->commonQuery.SetTarget(this);
+      bool nonEmpty = false;
+      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
+          bool flag = handler->fillQuery(&this->commonQuery, reset);
+          if (flag && nonEmpty)
+            this->commonQuery.PushOp(B_OR);
+          nonEmpty = nonEmpty || flag;
+        }
+      }
+      this->pendingQueryMods = false;
+      this->commonQuery.Fetch();
+      if (nonEmpty)
+        BMessenger(this).SendMessage(B_PULSE);
+    }
+  } else if (msg->what == B_QUERY_UPDATE &&
+             msg->GetInt32("opcode", B_ERROR) == B_QUERY_UPDATE) {
+    entry_ref ref;
+    ref.device = msg->GetInt32("device", B_ERROR);
+    ref.directory = msg->GetInt64("directory", B_ERROR);
+    if (BString name; msg->FindString("name", &name) == B_OK)
+      ref.set_name(name.String());
+    for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+      if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
+        if (handler->queryMatch(&ref))
+          BMessenger(handler).SendMessage(msg);
+      }
+    }
+  } else {
+    return BLooper::MessageReceived(msg);
   }
-  return BLooper::MessageReceived(msg);
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, BString &cypherkey) {
@@ -472,7 +557,7 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
 SSBFeed::SSBFeed(BDirectory store,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
-    BHandler(),
+    QueryBacked(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
   this->store.GetVolume(&this->volume);
@@ -480,20 +565,20 @@ SSBFeed::SSBFeed(BDirectory store,
 
 status_t SSBFeed::load() {
   status_t error;
-  this->query.Clear();
-  this->query.SetVolume(&this->volume);
-  this->query.PushAttr("HABITAT:author");
+  BQuery query;
+  query.SetVolume(&this->volume);
+  query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
-  this->query.PushString(attrValue.String());
-  this->query.PushOp(B_EQ);
+  query.PushString(attrValue.String());
+  query.PushOp(B_EQ);
   if (this->Looper()) {
     // TODO: Ensure the messages we get from this are handled, including
     // call to SendNotices
-    this->query.SetTarget(BMessenger(this));
+    query.SetTarget(BMessenger(this));
   }
-  if ((error = this->query.Fetch()) == B_OK) {
+  if ((error = query.Fetch()) == B_OK) {
     entry_ref ref;
-    while (this->query.GetNextRef(&ref) == B_OK) {
+    while (query.GetNextRef(&ref) == B_OK) {
       BNode node(&ref);
       int64 sequence;
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
@@ -725,6 +810,16 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
     }
   }
   return B_ERROR;
+}
+
+bool SSBFeed::fillQuery(BQuery *query, time_t reset) {
+  // TODO
+  return false;
+}
+
+bool SSBFeed::queryMatch(entry_ref *entry) {
+  // TODO
+  return false;
 }
 
 namespace {

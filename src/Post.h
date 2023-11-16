@@ -23,6 +23,12 @@ struct FeedBuildComparator {
 };
 } // namespace post_private_
 
+class QueryBacked : public BHandler {
+public:
+  virtual bool fillQuery(BQuery *query, time_t reset) = 0;
+  virtual bool queryMatch(entry_ref *entry) = 0;
+};
+
 class SSBFeed;
 
 extern property_info databaseProperties[];
@@ -40,9 +46,11 @@ public:
 
 private:
   BDirectory store;
+  BQuery commonQuery;
+  bool pendingQueryMods = false;
 };
 
-class SSBFeed : public BHandler {
+class SSBFeed : public QueryBacked {
 public:
   SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
@@ -53,6 +61,8 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   status_t load();
+  bool fillQuery(BQuery *query, time_t reset) override;
+  bool queryMatch(entry_ref *entry) override;
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
   status_t findPost(BMessage *post, uint64 sequence);
@@ -68,7 +78,6 @@ protected:
       pending;
   BDirectory store;
   BVolume volume;
-  BQuery query;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
