@@ -162,13 +162,15 @@ void QueryHandler::MessageReceived(BMessage *message) {
 }
 
 bool QueryHandler::fillQuery(BQuery *query, time_t reset) {
-  if (populateQuery(*query, &this->specifier) == B_OK)
+  if (populateQuery(*query, &this->specifier) != B_OK)
     return false;
   if (this->ongoing) {
     query->PushAttr("last_modified");
     query->PushInt64((int64)reset);
     query->PushOp(B_GE);
     query->PushOp(B_AND);
+  } else {
+    this->ongoing = true;
   }
   return true;
 }
@@ -195,7 +197,8 @@ bool QueryHandler::queryMatch(entry_ref *entry) {
     }                                                                          \
   }                                                                            \
   if (specifierHas && !found)                                                  \
-  return false
+    return false;                                                              \
+  specifierHas = false
   CKS(this->specifier.what == 'CPLX' ? "cypherkey" : "name",
       "HABITAT:cypherkey");
   CKS("author", "HABITAT:author");
@@ -425,7 +428,9 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           this->pendingQueryMods = true;
           BMessenger(this).SendMessage(B_PULSE);
         }
+        error = B_OK;
       } else {
+        error = B_ENTRY_NOT_FOUND;
         entry_ref ref;
         BQuery query;
         {
@@ -436,12 +441,13 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         qh->fillQuery(&query, 0);
         query.Fetch();
         while (qh->limit != 0 && query.GetNextRef(&ref) == B_OK) {
+          error = B_OK;
           BMessage post;
           BFile file(&ref, B_READ_ONLY);
           if (post.Unflatten(&file) == B_OK) {
             reply.AddMessage("result", &post);
             if (qh->limit > 0)
-              qh--;
+              qh->limit--;
           }
         }
         delete qh;
@@ -468,10 +474,16 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       mimic.AddInt64("directory", entry.directory);
       mimic.AddString("name", entry.name);
       BMessenger(this).SendMessage(&mimic);
+      BMessenger(this).SendMessage(B_PULSE);
     } else if (this->pendingQueryMods) {
       time_t reset = time(NULL);
       this->commonQuery.Clear();
       this->commonQuery.SetTarget(this);
+      {
+        BVolume volume;
+        this->store.GetVolume(&volume);
+        this->commonQuery.SetVolume(&volume);
+      }
       bool nonEmpty = false;
       for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
         if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
@@ -487,7 +499,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         BMessenger(this).SendMessage(B_PULSE);
     }
   } else if (msg->what == B_QUERY_UPDATE &&
-             msg->GetInt32("opcode", B_ERROR) == B_QUERY_UPDATE) {
+             msg->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
     entry_ref ref;
     ref.device = msg->GetInt32("device", B_ERROR);
     ref.directory = msg->GetInt64("directory", B_ERROR);
