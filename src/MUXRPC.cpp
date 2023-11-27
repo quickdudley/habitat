@@ -291,6 +291,18 @@ void Connection::Quit() {
     int32 locks = this->CountLocks();
     for (int32 i = 0; i < locks; i++)
       this->Unlock();
+    // The loop is in case the other thread blocks immediately after we unblock
+    // it.
+    while (true) {
+      this->Lock();
+      if (this->stoppedRecv) {
+        this->Unlock();
+        break;
+      }
+      this->Unlock();
+      suspend_thread(this->pullThreadID);
+      resume_thread(this->pullThreadID);
+    }
     wait_for_thread(this->pullThreadID, &exitValue);
     for (int32 i = 0; i < locks; i++)
       this->Lock();
@@ -426,7 +438,7 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
     BMessage content('JSOB');
     {
       BMessage methodName('JSAR');
-      for (int i = 0; i < name.size(); i++) {
+      for (uint32 i = 0; i < name.size(); i++) {
         BString k;
         k << i;
         methodName.AddString(k.String(), name[i]);
@@ -468,6 +480,9 @@ int32 Connection::pullLoop() {
         return B_CANCELED;
     }
   } while (result == B_OK);
+  this->Lock();
+  this->stoppedRecv = true;
+  this->Unlock();
   {
     BString logtext("Closing connection to ");
     logtext << this->cypherkey() << ": " << strerror(result);
@@ -494,7 +509,7 @@ SenderHandler *Connection::findSend(uint32 requestNumber) {
 status_t Header::readFromBuffer(unsigned char *buffer) {
   status_t last_error;
   this->flags = buffer[0];
-  if (this->flags & 3 == 3)
+  if ((this->flags & 3) == 3)
     return B_BAD_DATA;
   memcpy(&(this->bodyLength), buffer + 1, sizeof(uint32));
   if ((last_error = swap_data(B_UINT32_TYPE, &this->bodyLength, sizeof(uint32),
@@ -657,7 +672,8 @@ status_t Connection::readOne() {
       while (remaining > 0) {
         char buffer[1024];
         ssize_t count = this->inner->Read(
-            buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+            buffer,
+            remaining > ((ssize_t)sizeof(buffer)) ? sizeof(buffer) : remaining);
         remaining -= count;
         if (count <= 0)
           return B_PARTIAL_READ;
@@ -745,13 +761,7 @@ status_t Connection::readOne() {
         }
       }
       {
-        SenderHandler *replies;
-        try {
-          replies = new SenderHandler(this, -header.requestNumber);
-        } catch (...) {
-          delete replies;
-          throw;
-        }
+        SenderHandler *replies = new SenderHandler(this, -header.requestNumber);
         this->Lock();
         this->AddHandler(replies);
         this->Unlock();
@@ -759,7 +769,7 @@ status_t Connection::readOne() {
         BString errorText("method:");
         BString logText = this->cypherkey();
         logText << " called unknown method ";
-        for (int i = 0; i < name.size(); i++) {
+        for (uint32 i = 0; i < name.size(); i++) {
           if (i > 0) {
             errorText << ",";
             logText << ".";
@@ -777,6 +787,11 @@ status_t Connection::readOne() {
         case RequestType::ASYNC:
           logText << " (async)";
           break;
+        case RequestType::MISSING:
+          logText << " (type missing)";
+          break;
+        case RequestType::UNKNOWN:
+          logText << " (type unrecognised)";
         }
         logText << " ";
         {
