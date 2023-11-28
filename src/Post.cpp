@@ -63,7 +63,9 @@ public:
 private:
   BMessenger target;
   BMessage specifier;
+  bool started = false;
   bool ongoing = false;
+  bool drips = false;
 };
 
 QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
@@ -150,6 +152,15 @@ void QueryHandler::MessageReceived(BMessage *message) {
       }
     }
     break;
+  case 'DONE':
+    if (this->started && !this->drips) {
+      this->drips = true;
+      this->target.SendMessage('DONE');
+    } else {
+      this->started = true;
+    }
+    if (this->target.IsValid())
+      break;
   case B_QUIT_REQUESTED:
   canceled: {
     BLooper *looper = this->Looper();
@@ -487,6 +498,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       bool nonEmpty = false;
       for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
         if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
+          BMessenger(handler).SendMessage('DONE');
           bool flag = handler->fillQuery(&this->commonQuery, reset);
           if (flag && nonEmpty)
             this->commonQuery.PushOp(B_OR);
@@ -497,6 +509,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       this->commonQuery.Fetch();
       if (nonEmpty)
         BMessenger(this).SendMessage(B_PULSE);
+    }
+  } else if (msg->what == 'UQRY') {
+    if (!this->pendingQueryMods) {
+      this->pendingQueryMods = true;
+      BMessenger(this).SendMessage(B_PULSE);
     }
   } else if (msg->what == B_QUERY_UPDATE &&
              msg->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
