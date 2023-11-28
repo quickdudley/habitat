@@ -54,6 +54,28 @@ void GetSender::MessageReceived(BMessage *message) {
     delete this;
   }
 }
+
+class Reopen : public BDataIO {
+public:
+  Reopen(entry_ref *ref);
+  ssize_t Read(void *buffer, size_t size) override;
+
+private:
+  entry_ref ref;
+  ssize_t position = 0;
+};
+
+Reopen::Reopen(entry_ref *ref)
+    :
+    ref(*ref) {}
+
+ssize_t Reopen::Read(void *buffer, size_t size) {
+  BFile file(&this->ref, B_READ_ONLY);
+  ssize_t result = file.ReadAt(this->position, buffer, size);
+  if (result > 0)
+    this->position += result;
+  return result;
+}
 } // namespace
 
 status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
@@ -86,8 +108,7 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
           if (size > maxSize)
             goto failed;
         }
-        auto sender =
-            new GetSender(std::make_unique<BFile>(&ref, B_READ_ONLY), replyTo);
+        auto sender = new GetSender(std::make_unique<Reopen>(&ref), replyTo);
         this->looper->Lock();
         this->looper->AddHandler(sender);
         this->looper->Unlock();
