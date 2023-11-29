@@ -31,9 +31,10 @@ Sender::Sender(BMessenger inner)
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
     :
     requestNumber(requestNumber) {
-  conn->Lock();
-  conn->AddHandler(this);
-  conn->Unlock();
+  if (conn->Lock()) {
+    conn->AddHandler(this);
+    conn->Unlock();
+  }
 }
 
 Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
@@ -231,13 +232,13 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(headerBytes);
     if (output->WriteExactly(headerBytes, 9) != B_OK) {
       BLooper *looper = this->Looper();
-      looper->Lock();
-      looper->Quit();
+      if (looper->Lock())
+        looper->Quit();
     }
     if (output->WriteExactly(content.String(), content.Length()) != B_OK) {
       BLooper *looper = this->Looper();
-      looper->Lock();
-      looper->Quit();
+      if (looper->Lock())
+        looper->Quit();
     }
     return;
   }
