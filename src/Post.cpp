@@ -1,6 +1,7 @@
 #include "Post.h"
 #include "BJSON.h"
 #include "Base64.h"
+#include "Main.h"
 #include "SignJSON.h"
 #include <File.h>
 #include <MessageRunner.h>
@@ -380,7 +381,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
           if (this->findFeed(feed, formatted) != B_OK)
-            feed = new SSBFeed(this->store, key);
+            feed = new SSBFeed(&this->store, key);
           this->AddHandler(feed);
           feed->load();
           reply.AddMessenger("result", BMessenger(feed));
@@ -583,13 +584,43 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
   return l.sequence > r.sequence;
 }
 
-SSBFeed::SSBFeed(BDirectory store,
+SSBFeed::SSBFeed(BDirectory *store,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
     QueryBacked(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
-  this->store.GetVolume(&this->volume);
+  this->store->GetVolume(&this->volume);
+  {
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(this->cypherkey().String());
+    query.PushOp(B_EQ);
+    if (query.Fetch() != B_OK)
+      goto notfound;
+    if (query.GetNextRef(&this->metastore) != B_OK)
+      goto notfound;
+    return;
+  }
+notfound: {
+  BDirectory &settingsDir = dynamic_cast<Habitat *>(be_app)->settingsDir();
+  BDirectory contactsDir;
+  status_t err = settingsDir.CreateDirectory("contacts", &contactsDir);
+  if (err == B_FILE_EXISTS) {
+    BEntry entry;
+    err = settingsDir.FindEntry("contacts", &entry, true);
+    if (err != B_OK)
+      return;
+    contactsDir.SetTo(&entry);
+  }
+  BEntry entry;
+  entry.SetTo(
+      &contactsDir,
+      base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES, base64::URL)
+          .String());
+  entry.GetRef(&this->metastore);
+}
 }
 
 status_t SSBFeed::load() {
@@ -924,7 +955,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   BFile sink;
   BString filename =
       base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
-  if ((status = this->store.CreateFile(filename.String(), &sink, false)) !=
+  if ((status = this->store->CreateFile(filename.String(), &sink, false)) !=
       B_OK) {
     return status;
   }
@@ -932,7 +963,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     return status;
   BMessage result;
   entry_ref ref;
-  BEntry entry(&this->store, filename.String());
+  BEntry entry(this->store, filename.String());
   entry.GetRef(&ref);
   result.AddRef("ref", &ref);
   result.AddString("cypherkey", messageCypherkey(msgHash));
@@ -948,7 +979,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   return B_OK;
 }
 
-OwnFeed::OwnFeed(BDirectory store, Ed25519Secret *secret)
+OwnFeed::OwnFeed(BDirectory *store, Ed25519Secret *secret)
     :
     SSBFeed(store, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);

@@ -141,7 +141,7 @@ Habitat::Habitat(void)
   }
   // Create main feed looper
   this->databaseLooper = new SSBDatabase(*this->postDir);
-  this->ownFeed = new OwnFeed(*this->postDir, this->myId.get());
+  this->ownFeed = new OwnFeed(this->postDir.get(), this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);
@@ -322,6 +322,8 @@ void Habitat::Quit() {
   this->ipListener->halt();
   BApplication::Quit();
 }
+
+BDirectory &Habitat::settingsDir() { return *this->settings; }
 
 MainWindow::MainWindow(void)
     :

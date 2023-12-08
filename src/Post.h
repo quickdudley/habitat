@@ -52,7 +52,7 @@ private:
 
 class SSBFeed : public QueryBacked {
 public:
-  SSBFeed(BDirectory store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
+  SSBFeed(BDirectory *store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
   BString cypherkey();
   BString previousLink();
@@ -76,8 +76,9 @@ protected:
                       std::vector<post_private_::FeedShuntEntry>,
                       post_private_::FeedBuildComparator>
       pending;
-  BDirectory store;
+  BDirectory *store;
   BVolume volume;
+  entry_ref metastore;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
@@ -85,7 +86,7 @@ protected:
 
 class OwnFeed : public SSBFeed {
 public:
-  OwnFeed(BDirectory store, Ed25519Secret *secret);
+  OwnFeed(BDirectory *store, Ed25519Secret *secret);
   status_t GetSupportedSuites(BMessage *data);
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,

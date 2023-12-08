@@ -29,6 +29,7 @@ public:
   thread_id Run();
   void ReadyToRun();
   void Quit();
+  BDirectory &settingsDir();
 
 private:
   MainWindow *mainWindow;
