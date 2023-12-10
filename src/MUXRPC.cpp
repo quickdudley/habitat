@@ -275,6 +275,7 @@ Connection::~Connection() {
       i++;
   }
   // TODO: Send termination notices to `inboundOngoing`
+  acquire_sem(this->ongoingLock);
   delete_sem(this->ongoingLock);
 }
 
@@ -460,9 +461,10 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
     content.AddMessage("args", args);
     if (type == RequestType::DUPLEX && outbound)
       *outbound = BMessenger(handler);
-    acquire_sem(this->ongoingLock);
-    this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
-    release_sem(this->ongoingLock);
+    if (acquire_sem(this->ongoingLock) == B_OK) {
+      this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
+      release_sem(this->ongoingLock);
+    }
     return Sender(BMessenger(handler))
         .send(&content, type != RequestType::ASYNC, false, false);
   } catch (...) {
@@ -647,7 +649,8 @@ status_t Connection::readOne() {
     if ((err = this->populateHeader(&header)) != B_OK)
       return err;
   }
-  acquire_sem(this->ongoingLock);
+  if (status_t err = acquire_sem(this->ongoingLock); err != B_OK)
+    return err;
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
     release_sem(this->ongoingLock);
@@ -697,9 +700,10 @@ status_t Connection::readOne() {
     wrapper.AddUInt32("sequence", search->second.sequence);
     BMessenger next = search->second.target;
     if (header.endOrError() || !header.stream()) {
-      acquire_sem(this->ongoingLock);
-      this->inboundOngoing.erase(header.requestNumber);
-      release_sem(this->ongoingLock);
+      if (acquire_sem(this->ongoingLock) == B_OK) {
+        this->inboundOngoing.erase(header.requestNumber);
+        release_sem(this->ongoingLock);
+      }
       this->Lock();
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
         if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
@@ -754,9 +758,10 @@ status_t Connection::readOne() {
           status_t result = (*this->handlers)[i]->call(
               this, requestType, &args, BMessenger(replies), &inbound);
           if (header.stream() && !header.endOrError()) {
-            acquire_sem(this->ongoingLock);
-            this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
-            release_sem(this->ongoingLock);
+            if (acquire_sem(this->ongoingLock) == B_OK) {
+              this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
+              release_sem(this->ongoingLock);
+            }
           }
           return B_OK;
         }
@@ -807,10 +812,11 @@ status_t Connection::readOne() {
         Sender(BMessenger(replies))
             .send(&errorMessage, header.stream(), true, false);
         if (header.stream() && !header.endOrError()) {
-          acquire_sem(this->ongoingLock);
-          BMessenger dummy;
-          this->inboundOngoing.insert({header.requestNumber, {dummy, 1}});
-          release_sem(this->ongoingLock);
+          if (acquire_sem(this->ongoingLock) == B_OK) {
+            BMessenger dummy;
+            this->inboundOngoing.insert({header.requestNumber, {dummy, 1}});
+            release_sem(this->ongoingLock);
+          }
         }
       }
     } break;
