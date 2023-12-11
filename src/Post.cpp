@@ -626,21 +626,44 @@ notfound: {
 status_t SSBFeed::load() {
   status_t error;
   BQuery query;
+  bool stale = false;
   query.SetVolume(&this->volume);
   query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
   query.PushString(attrValue.String());
   query.PushOp(B_EQ);
-  if (this->Looper()) {
-    // TODO: Ensure the messages we get from this are handled, including
-    // call to SendNotices
-    query.SetTarget(BMessenger(this));
+  BMessage metadata;
+  {
+    BFile chkMeta(&this->metastore, B_READ_ONLY);
+    if (chkMeta.IsReadable())
+      metadata.Unflatten(&chkMeta);
   }
+  {
+    BString cachedID;
+    int64 cachedSequence;
+    if (metadata.FindString("lastID", &cachedID) == B_OK &&
+        metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
+      auto rawid = base64::decode(cachedID);
+      if (rawid.size() == crypto_hash_sha256_BYTES) {
+        this->lastSequence = cachedSequence;
+        memcpy(this->lastHash, rawid.data(), crypto_hash_sha256_BYTES);
+      }
+    }
+  }
+  if (this->lastSequence > 0) {
+    query.PushAttr("HABITAT:sequence");
+    query.PushInt64(this->lastSequence);
+    query.PushOp(B_GT);
+    query.PushOp(B_AND);
+  }
+  if (this->Looper())
+    query.SetTarget(BMessenger(this));
   if ((error = query.Fetch()) == B_OK) {
     entry_ref ref;
     while (query.GetNextRef(&ref) == B_OK) {
       BNode node(&ref);
       int64 sequence;
+      stale = true;
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
                     sizeof(int64));
       if (sequence > this->lastSequence)
@@ -665,6 +688,8 @@ status_t SSBFeed::load() {
       }
     }
   }
+  if (stale)
+    this->cacheLatest();
   this->notifyChanges();
   return error;
 }
@@ -973,10 +998,32 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     this->lastSequence = attrNum;
   if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
     return status;
+  this->cacheLatest();
   this->notifyChanges();
   if (reply != NULL)
     reply->AddMessage("result", &result);
   return B_OK;
+}
+
+void SSBFeed::cacheLatest() {
+  BMessage existing;
+  BFile store(&this->metastore, B_READ_WRITE | B_CREATE_FILE);
+  if (store.IsReadable()) {
+    if (existing.Unflatten(&store) != B_OK)
+      existing.MakeEmpty();
+  }
+  existing.RemoveName("lastID");
+  existing.RemoveName("lastSequence");
+  existing.AddInt64("lastSequence", this->lastSequence);
+  existing.AddString(
+      "lastID",
+      base64::encode(this->lastHash, crypto_hash_sha256_BYTES, base64::STANDARD)
+          .String());
+  store.Seek(0, SEEK_SET);
+  store.SetSize(0);
+  existing.Flatten(&store);
+  BString attrString = this->cypherkey();
+  store.WriteAttrString("HABITAT:cypherkey", &attrString);
 }
 
 OwnFeed::OwnFeed(BDirectory *store, Ed25519Secret *secret)
