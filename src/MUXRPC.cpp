@@ -274,7 +274,6 @@ Connection::~Connection() {
     else
       i++;
   }
-  // TODO: Send termination notices to `inboundOngoing`
   acquire_sem(this->ongoingLock);
   delete_sem(this->ongoingLock);
 }
@@ -313,11 +312,14 @@ void Connection::Quit() {
     if (BHandler *handler = this->HandlerAt(i); handler != this)
       delete handler;
   }
-  for (auto link : this->inboundOngoing) {
-    BMessage stop('MXRP');
-    stop.AddBool("content", false);
-    stop.AddBool("end", true);
-    link.second.target.SendMessage(&stop);
+  if (acquire_sem(this->ongoingLock) == B_OK) {
+    for (auto link : this->inboundOngoing) {
+      BMessage stop('MXRP');
+      stop.AddBool("content", false);
+      stop.AddBool("end", true);
+      link.second.target.SendMessage(&stop);
+    }
+    release_sem(this->ongoingLock);
   }
   BLooper::Quit();
 }
