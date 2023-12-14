@@ -275,6 +275,12 @@ Connection::~Connection() {
       i++;
   }
   acquire_sem(this->ongoingLock);
+  for (auto &link : this->inboundOngoing) {
+    BMessage stop('MXRP');
+    stop.AddBool("content", false);
+    stop.AddBool("end", true);
+    link.second.target.SendMessage(&stop);
+  }
   delete_sem(this->ongoingLock);
 }
 
@@ -312,15 +318,9 @@ void Connection::Quit() {
     if (BHandler *handler = this->HandlerAt(i); handler != this)
       delete handler;
   }
-  if (acquire_sem(this->ongoingLock) == B_OK) {
-    for (auto link : this->inboundOngoing) {
-      BMessage stop('MXRP');
-      stop.AddBool("content", false);
-      stop.AddBool("end", true);
-      link.second.target.SendMessage(&stop);
-    }
+  if (acquire_sem(this->ongoingLock) == B_OK)
+
     release_sem(this->ongoingLock);
-  }
   BLooper::Quit();
 }
 
