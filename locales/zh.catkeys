@@ -1,2 +1,7 @@
-1	大陆简体	application/x-vnd.habitat	1690257106
+1	English	application/x-vnd.habitat	375109877
+Application	MainWindow		应用程序
 Failed to initialize libsodium	MainWindow		初始化libsodium失败了
+Settings	MainWindow		设置
+Habitat Settings	Settings		Habitat的设置
+s
+gs

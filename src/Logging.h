@@ -14,6 +14,7 @@ public:
   void MessageReceived(BMessage *message) override;
   void enableCategory(int32 category);
   void disableCategory(int32 category);
+  void storeCategories(BMessage *message);
 
 private:
   std::set<int32> categories;

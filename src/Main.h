@@ -9,6 +9,7 @@
 #include "Secret.h"
 #include <Application.h>
 #include <Directory.h>
+#include <MenuBar.h>
 #include <Path.h>
 #include <Window.h>
 #include <memory>
@@ -17,6 +18,10 @@
 class MainWindow : public BWindow {
 public:
   MainWindow(void);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  BMenuBar *menuBar;
 };
 
 class Habitat : public BApplication {
@@ -32,6 +37,8 @@ public:
   BDirectory &settingsDir();
 
 private:
+  void loadSettings();
+  void saveSettings();
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;

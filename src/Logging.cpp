@@ -54,3 +54,8 @@ void Logger::enableCategory(int32 category) {
 void Logger::disableCategory(int32 category) {
   this->categories.erase(category);
 }
+
+void Logger::storeCategories(BMessage *message) {
+  for (auto category : this->categories)
+    message->AddInt32("LogCategory", category);
+}
