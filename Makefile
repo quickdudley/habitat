@@ -36,6 +36,7 @@ SRCS = \
 	 src/BJSON.cpp \
 	 src/Blob.cpp \
 	 src/Connection.cpp \
+	 src/ContactGraph.cpp \
 	 src/EBT.cpp \
 	 src/Indices.cpp \
 	 src/JSON.cpp \
