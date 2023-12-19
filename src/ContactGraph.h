@@ -12,6 +12,7 @@ public:
   void MessageReceived(BMessage *message) override;
 
 private:
+  void logContact(BMessage *message);
   std::map<BString, std::map<BString, std::tuple<int64, bool, int64, bool>>>
       graph;
 };
