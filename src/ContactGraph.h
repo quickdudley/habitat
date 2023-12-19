@@ -15,6 +15,7 @@ private:
   void logContact(BMessage *message);
   std::map<BString, std::map<BString, std::tuple<int64, bool, int64, bool>>>
       graph;
+  bool ready = false;
 };
 
 #endif

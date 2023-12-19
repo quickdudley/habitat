@@ -4,6 +4,10 @@ ContactGraph::ContactGraph() {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {
+  case 'DONE':
+    this->ready = true;
+    this->SendNotices('CTAC');
+    break;
   case 'JSOB':
     return logContact(message);
   default:
@@ -38,14 +42,19 @@ void ContactGraph::logContact(BMessage *message) {
                    std::tuple<int64, bool, int64, bool>(-1, false, -1, false));
   auto &edge = node.find(contact)->second;
   bool value = false;
+  bool changed = false;
   if (sequence > std::get<0>(edge) &&
       content.FindBool("following", &value) == B_OK) {
     std::get<0>(edge) = sequence;
     std::get<1>(edge) = value;
+    changed = true;
   }
   if (sequence > std::get<2>(edge) &&
       content.FindBool("blocking", &value) == B_OK) {
     std::get<2>(edge) = sequence;
     std::get<3>(edge) = value;
+    changed = true;
   }
+  if (changed && this->ready)
+    this->SendNotices('CTAC');
 }
