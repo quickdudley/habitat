@@ -247,8 +247,26 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
   // send)
 }
 
+namespace {
+class DummyOutput : public BDataIO {
+public:
+  ssize_t Read(void *buffer, size_t size) override;
+  ssize_t Write(const void *buffer, size_t size) override;
+};
+
+ssize_t DummyOutput::Read(void *buffer, size_t size) { return B_ERROR; }
+
+ssize_t DummyOutput::Write(const void *buffer, size_t size) { return B_ERROR; }
+
+DummyOutput dummyOutput;
+} // namespace
+
 BDataIO *SenderHandler::output() {
-  return dynamic_cast<Connection *>(this->Looper())->inner.get();
+  auto conn = dynamic_cast<Connection *>(this->Looper());
+  if (conn->stoppedRecv)
+    return &dummyOutput;
+  else
+    return conn->inner.get();
 }
 
 Connection::Connection(
@@ -482,7 +500,7 @@ int32 Connection::pullLoop() {
     if (has_data(this->pullThreadID)) {
       thread_id sender;
       if (receive_data(&sender, NULL, 0) == 'STOP')
-        return B_CANCELED;
+        result = B_CANCELED;
     }
   } while (result == B_OK);
   this->Lock();
@@ -746,11 +764,12 @@ status_t Connection::readOne() {
           overall = MethodMatch::WRONG_TYPE;
           break;
         case MethodMatch::MATCH:
-          SenderHandler *replies;
+          SenderHandler *replies = NULL;
           try {
             replies = new SenderHandler(this, -header.requestNumber);
           } catch (...) {
-            delete replies;
+            if (replies != NULL)
+              delete replies;
             throw;
           }
           this->Lock();
