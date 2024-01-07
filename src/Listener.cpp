@@ -38,9 +38,6 @@ void registerDefaultCall(std::shared_ptr<DefaultCall> call) {
 }
 
 int SSBListener::run_() {
-  if (defaultHandlers->size() == 0) {
-    //  	defaultHandlers->push_back(std::make_unique<GossipPing>());
-  }
   BHandler *printer = new PrintReply;
   be_app->Lock();
   be_app->AddHandler(printer);
@@ -85,12 +82,6 @@ int SSBListener::run_() {
       thread_id thread = rpc->Run();
       for (auto call : *defaultCalls)
         call->call(rpc);
-      std::vector<BString> call = {"blobs", "get"};
-      BMessage args('JSAR');
-      args.AddString("0",
-                     "&opAMOaQQ674De6DiUGi55ZEMiGk3xerWQLXE5nzRdlU=.sha256");
-      rpc->request(call, muxrpc::RequestType::SOURCE, &args,
-                   BMessenger(printer), NULL);
     }
   }
   return 0;

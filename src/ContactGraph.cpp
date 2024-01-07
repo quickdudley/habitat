@@ -1,5 +1,10 @@
 #include "ContactGraph.h"
 
+ContactLinkState::ContactLinkState()
+    :
+    following(false),
+    blocking(false) {}
+
 ContactGraph::ContactGraph() {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
@@ -35,26 +40,35 @@ void ContactGraph::logContact(BMessage *message) {
   BString contact;
   if (content.FindString("contact", &contact) != B_OK)
     return;
-  this->graph.try_emplace(
-      author, std::map<BString, std::tuple<int64, bool, int64, bool>>());
+  this->graph.try_emplace(author, std::map<BString, ContactLinkState>());
   auto &node = this->graph.find(author)->second;
-  node.try_emplace(contact,
-                   std::tuple<int64, bool, int64, bool>(-1, false, -1, false));
+  node.try_emplace(contact, ContactLinkState());
   auto &edge = node.find(contact)->second;
-  bool value = false;
   bool changed = false;
-  if (sequence > std::get<0>(edge) &&
-      content.FindBool("following", &value) == B_OK) {
-    std::get<0>(edge) = sequence;
-    std::get<1>(edge) = value;
-    changed = true;
-  }
-  if (sequence > std::get<2>(edge) &&
-      content.FindBool("blocking", &value) == B_OK) {
-    std::get<2>(edge) = sequence;
-    std::get<3>(edge) = value;
-    changed = true;
-  }
+  edge.following.check(
+      [&](auto &oldValue) {
+        bool value = oldValue;
+        if (content.FindBool("following", &value) == B_OK) {
+          changed = true;
+          oldValue = value;
+          return true;
+        } else {
+          return false;
+        }
+      },
+      sequence);
+  edge.blocking.check(
+      [&](auto &oldValue) {
+        bool value = oldValue;
+        if (content.FindBool("blocking", &value) == B_OK) {
+          changed = true;
+          oldValue = value;
+          return true;
+        } else {
+          return false;
+        }
+      },
+      sequence);
   if (changed && this->ready)
     this->SendNotices('CTAC');
 }

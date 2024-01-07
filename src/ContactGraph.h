@@ -1,10 +1,16 @@
 #ifndef CONTACTGRAPH_H
 #define CONTACTGRAPH_H
 
+#include "Updatable.h"
 #include <Handler.h>
 #include <String.h>
 #include <map>
-#include <tuple>
+
+struct ContactLinkState {
+  ContactLinkState();
+  Updatable<bool> following;
+  Updatable<bool> blocking;
+};
 
 class ContactGraph : public BHandler {
 public:
@@ -13,8 +19,7 @@ public:
 
 private:
   void logContact(BMessage *message);
-  std::map<BString, std::map<BString, std::tuple<int64, bool, int64, bool>>>
-      graph;
+  std::map<BString, std::map<BString, ContactLinkState>> graph;
   bool ready = false;
 };
 
