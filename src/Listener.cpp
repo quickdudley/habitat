@@ -85,12 +85,6 @@ int SSBListener::run_() {
       thread_id thread = rpc->Run();
       for (auto call : *defaultCalls)
         call->call(rpc);
-      std::vector<BString> call = {"blobs", "get"};
-      BMessage args('JSAR');
-      args.AddString("0",
-                     "&opAMOaQQ674De6DiUGi55ZEMiGk3xerWQLXE5nzRdlU=.sha256");
-      rpc->request(call, muxrpc::RequestType::SOURCE, &args,
-                   BMessenger(printer), NULL);
     }
   }
   return 0;
