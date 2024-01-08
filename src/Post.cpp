@@ -935,38 +935,47 @@ status_t postAttrs(BNode *sink, BMessage *message,
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
+  BString oldAttrString;
   BString attrString = messageCypherkey(msgHash);
-  if ((status = sink->WriteAttrString("HABITAT:cypherkey", &attrString)) !=
-      B_OK) {
-    return status;
+#define CHECK_STRING(attr)                                                     \
+  if (sink->ReadAttrString(attr, &oldAttrString) != B_OK ||                    \
+      oldAttrString != attrString) {                                           \
+    if ((status = sink->WriteAttrString(attr, &attrString)) != B_OK) {         \
+      return status;                                                           \
+    }                                                                          \
   }
+  CHECK_STRING("HABITAT:cypherkey")
+  int64 oldAttrNum;
   int64 attrNum;
-  if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
-    if (sink->WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
-                        sizeof(int64)) != sizeof(int64)) {
-      return B_IO_ERROR;
-    }
+#define CHECK_NUMBER(attr)                                                     \
+  if (sink->ReadAttr(attr, B_INT64_TYPE, 0, &oldAttrNum, sizeof(int64)) !=     \
+      sizeof(int64)) {                                                         \
+    if ((status = sink->WriteAttr(attr, B_INT64_TYPE, 0, &attrNum,             \
+                                  sizeof(int64))) != sizeof(int64) ||          \
+        oldAttrNum != attrNum) {                                               \
+      return status;                                                           \
+    }                                                                          \
   }
+  if (eitherNumber(&attrNum, message, "sequence") == B_OK)
+    CHECK_NUMBER("HABITAT:sequence")
   if ((status = message->FindString("author", &attrString)) != B_OK)
     return status;
-  if ((status = sink->WriteAttrString("HABITAT:author", &attrString)) != B_OK)
-    return status;
-  if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
-    if (sink->WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
-                        sizeof(int64)) != sizeof(int64)) {
-      return B_IO_ERROR;
-    }
-  }
+  CHECK_STRING("HABITAT:author")
+  if (eitherNumber(&attrNum, message, "timestamp") == B_OK)
+    CHECK_NUMBER("HABITAT:timestamp")
   if (BMessage content; message->FindMessage("content", &content) == B_OK) {
-    if (BString type; content.FindString("type", &type) == B_OK) {
-      sink->WriteAttrString("HABITAT:type", &type);
-      if (BString context; contextLink(&context, type, &content) == B_OK)
-        sink->WriteAttrString("HABITAT:context", &context);
+    if (content.FindString("type", &attrString) == B_OK) {
+      CHECK_STRING("HABITAT:type")
+      BString type = attrString;
+      if (contextLink(&attrString, type, &content) == B_OK)
+        CHECK_NUMBER("HABITAT:context")
       else
         sink->RemoveAttr("HABITAT:context");
     }
   }
   return B_OK;
+#undef CHECK_NUMBER
+#undef CHECK_STRING
 }
 } // namespace
 
