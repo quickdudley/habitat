@@ -5,18 +5,6 @@
 #include <arpa/inet.h>
 #include <iostream>
 
-<<<<<<< Updated upstream namespace {
-
-    BNetworkAddress
-    makeIp6Local() {
-  in6_addr inner;
-  inet_pton(AF_INET6, "::1", &inner);
-  return BNetworkAddress(inner);
-}
-
-BNetworkAddress localIpv6 = makeIp6Local();
-} // namespace
-
 namespace {
 
 BNetworkAddress makeIp6Local() {
