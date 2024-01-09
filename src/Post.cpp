@@ -925,6 +925,26 @@ status_t contextLink(BString *out, BString &type, BMessage *message) {
   return B_NAME_NOT_FOUND;
 }
 
+static inline status_t checkAttr(BNode *sink, const char *attr,
+                                 const BString &value) {
+  BString oldValue;
+  if (sink->ReadAttrString(attr, &oldValue) != B_OK || oldValue != value)
+    return sink->WriteAttrString(attr, &value);
+  else
+    return B_OK;
+}
+
+static inline status_t checkAttr(BNode *sink, const char *attr, int64 value) {
+  int64 oldValue;
+  if (sink->ReadAttr(attr, B_INT64_TYPE, 0, &oldValue, sizeof(int64)) !=
+          sizeof(int64) ||
+      oldValue != value) {
+    return sink->WriteAttr(attr, B_INT64_TYPE, 0, &value, sizeof(int64));
+  } else {
+    return B_OK;
+  }
+}
+
 status_t postAttrs(BNode *sink, BMessage *message,
                    const unsigned char *prehashed) {
   status_t status;
@@ -935,27 +955,15 @@ status_t postAttrs(BNode *sink, BMessage *message,
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
-  BString oldAttrString;
   BString attrString = messageCypherkey(msgHash);
 #define CHECK_STRING(attr)                                                     \
-  if (sink->ReadAttrString(attr, &oldAttrString) != B_OK ||                    \
-      oldAttrString != attrString) {                                           \
-    if ((status = sink->WriteAttrString(attr, &attrString)) != B_OK) {         \
-      return status;                                                           \
-    }                                                                          \
-  }
+  if ((status = checkAttr(sink, attr, attrString)) != B_OK)                    \
+    return status;
   CHECK_STRING("HABITAT:cypherkey")
-  int64 oldAttrNum;
   int64 attrNum;
 #define CHECK_NUMBER(attr)                                                     \
-  if (sink->ReadAttr(attr, B_INT64_TYPE, 0, &oldAttrNum, sizeof(int64)) !=     \
-      sizeof(int64)) {                                                         \
-    if ((status = sink->WriteAttr(attr, B_INT64_TYPE, 0, &attrNum,             \
-                                  sizeof(int64))) != sizeof(int64) ||          \
-        oldAttrNum != attrNum) {                                               \
-      return status;                                                           \
-    }                                                                          \
-  }
+  if ((status = checkAttr(sink, attr, attrNum)) != B_OK)                       \
+    return status;
   if (eitherNumber(&attrNum, message, "sequence") == B_OK)
     CHECK_NUMBER("HABITAT:sequence")
   if ((status = message->FindString("author", &attrString)) != B_OK)
