@@ -60,8 +60,10 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
     BString cypherkey;
     int64 sequence;
+    int64 saved;
     if (msg->FindString("feed", &cypherkey) == B_OK &&
-        msg->FindInt64("sequence", &sequence) == B_OK) {
+        msg->FindInt64("sequence", &sequence) == B_OK &&
+        msg->FindInt64("saved", &saved)) {
       {
         BString logText("Observer notice for ");
         logText << cypherkey;
@@ -84,6 +86,18 @@ void Dispatcher::MessageReceived(BMessage *msg) {
             link->ourState.insert(
                 {cypherkey, {true, justOne, (uint64)sequence}});
             changed = true;
+            link->unsent.insert(cypherkey);
+            link->sendSequence.push(cypherkey);
+          }
+          if (auto found = link->saved.find(cypherkey);
+              found != link->saved.end()) {
+            if (found->second != saved) {
+              found->second = saved;
+              link->unsent.insert(cypherkey);
+              link->sendSequence.push(cypherkey);
+            }
+          } else {
+            link->saved.insert({cypherkey, saved});
             link->unsent.insert(cypherkey);
             link->sendSequence.push(cypherkey);
           }

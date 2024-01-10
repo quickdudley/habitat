@@ -42,11 +42,14 @@ public:
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *msg) override;
   status_t findPost(BMessage *post, BString &cypherkey);
-  status_t findFeed(SSBFeed *&result, BString &cypherkey);
+  status_t findFeed(SSBFeed *&result, const BString &cypherkey);
+  void notifySaved(const BString &author, int64 sequence,
+                   unsigned char id[crypto_hash_sha256_BYTES]);
 
 private:
   BDirectory store;
   BQuery commonQuery;
+  BMessenger writes;
   bool pendingQueryMods = false;
 };
 
@@ -71,7 +74,7 @@ public:
   void notifyChanges(BMessenger target);
 
 protected:
-  status_t save(BMessage *message, BMessage *reply);
+  status_t save(BMessage *message);
   void cacheLatest();
   std::priority_queue<post_private_::FeedShuntEntry,
                       std::vector<post_private_::FeedShuntEntry>,
@@ -82,7 +85,9 @@ protected:
   entry_ref metastore;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = 0;
+  int64 savedSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
+  unsigned char savedHash[crypto_hash_sha256_BYTES];
 };
 
 class OwnFeed : public SSBFeed {
@@ -92,7 +97,7 @@ public:
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property);
-  status_t create(BMessage *message, BMessage *reply);
+  status_t create(BMessage *message);
 
 private:
   unsigned char seckey[crypto_sign_SECRETKEYBYTES];

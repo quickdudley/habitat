@@ -237,6 +237,23 @@ bool QueryHandler::queryMatch(entry_ref *entry) {
   }
   return true;
 }
+
+class Writer : public BLooper {
+public:
+  Writer(BDirectory *store, SSBDatabase *db);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  status_t save(BMessage *message);
+  BDirectory *store;
+  SSBDatabase *db;
+};
+
+Writer::Writer(BDirectory *store, SSBDatabase *db)
+    :
+    BLooper("Database write queue"),
+    store(store),
+    db(db) {}
 } // namespace
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
@@ -534,7 +551,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
   }
 }
 
-status_t SSBDatabase::findFeed(SSBFeed *&result, BString &cypherkey) {
+status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
   for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
     SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
     if (feed && feed->cypherkey() == cypherkey) {
@@ -562,6 +579,19 @@ status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
   BFile result(&ref, B_READ_ONLY);
   post->Unflatten(&result);
   return B_OK;
+}
+
+void SSBDatabase::notifySaved(const BString &author, int64 sequence,
+                              unsigned char id[crypto_hash_sha256_BYTES]) {
+  BMessage message('SNOT');
+  message.AddInt64("sequence", sequence);
+  message.AddData("id", B_RAW_TYPE, id, crypto_hash_sha256_BYTES, false, 1);
+  this->Lock();
+  SSBFeed *feed;
+  status_t found = this->findFeed(feed, author);
+  this->Unlock();
+  if (found == B_OK)
+    BMessenger(feed).SendMessage(&message);
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -690,6 +720,8 @@ status_t SSBFeed::load() {
   }
   if (stale)
     this->cacheLatest();
+  this->savedSequence = this->lastSequence;
+  memcpy(this->savedHash, this->lastHash, crypto_hash_sha256_BYTES);
   this->notifyChanges();
   return error;
 }
@@ -700,6 +732,7 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddInt64("saved", this->savedSequence);
   target.SendMessage(&notif);
 }
 
@@ -707,6 +740,7 @@ void SSBFeed::notifyChanges() {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddInt64("saved", this->savedSequence);
   this->Looper()->SendNotices('NMSG', &notif);
 }
 
@@ -816,19 +850,26 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     reply.AddString("message", strerror(error));
     if (msg->ReturnAddress().IsValid())
       msg->SendReply(&reply);
+  } else if (msg->what == 'SNOT') {
+    int64 sequence;
+    if (msg->FindInt64("sequence", &sequence) != B_OK)
+      return;
+    const void *id;
+    ssize_t idSize;
+    if (msg->FindData("id", B_RAW_TYPE, &id, &idSize) != B_OK ||
+        idSize != crypto_hash_sha256_BYTES) {
+      return;
+    }
+    this->savedSequence = sequence;
+    memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
+    this->notifyChanges();
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
     // TODO: Enqueue any that we get out of order.
-    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
-      BMessage reply;
-      if (this->save(msg, &reply) == B_OK) {
-        if (msg->ReturnAddress().IsValid())
-          msg->SendReply(&reply);
-        return;
-      }
-    }
+    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK)
+      this->save(msg);
   } else {
     return BHandler::MessageReceived(msg);
   }
@@ -985,40 +1026,68 @@ status_t postAttrs(BNode *sink, BMessage *message,
 #undef CHECK_NUMBER
 #undef CHECK_STRING
 }
+
+void Writer::MessageReceived(BMessage *message) {
+  if (message->HasString("author")) {
+    BMessage reply(B_REPLY);
+    status_t status = B_OK;
+    unsigned char msgHash[crypto_hash_sha256_BYTES];
+    {
+      {
+        JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+        JSON::fromBMessage(&rootSink, message);
+      }
+      BFile sink;
+      BString filename =
+          base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
+      if ((status = this->store->CreateFile(filename.String(), &sink, false)) !=
+          B_OK) {
+        goto sendReply;
+      }
+      if ((status = message->Flatten(&sink)) != B_OK)
+        goto sendReply;
+      BMessage result;
+      entry_ref ref;
+      BEntry entry(this->store, filename.String());
+      entry.GetRef(&ref);
+      result.AddRef("ref", &ref);
+      result.AddString("cypherkey", messageCypherkey(msgHash));
+
+      if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
+        goto sendReply;
+      {
+        BString author;
+        if ((status = message->FindString("author", &author)) != B_OK)
+          goto sendReply;
+        int64 sequence;
+        if ((status = message->FindInt64("sequence", &sequence)) != B_OK)
+          goto sendReply;
+        dynamic_cast<SSBDatabase *>(this->Looper())
+            ->notifySaved(author, sequence, msgHash);
+      }
+      reply.AddMessage("result", &result);
+    }
+  sendReply:
+    reply.AddInt32("error", status);
+    reply.AddString("message", strerror(status));
+    message->SendReply(&reply);
+  } else {
+    BLooper::MessageReceived(message);
+  }
+}
 } // namespace
 
-status_t SSBFeed::save(BMessage *message, BMessage *reply) {
-  status_t status;
+status_t SSBFeed::save(BMessage *message) {
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
-  BFile sink;
-  BString filename =
-      base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
-  if ((status = this->store->CreateFile(filename.String(), &sink, false)) !=
-      B_OK) {
-    return status;
-  }
-  if ((status = message->Flatten(&sink)) != B_OK)
-    return status;
-  BMessage result;
-  entry_ref ref;
-  BEntry entry(this->store, filename.String());
-  entry.GetRef(&ref);
-  result.AddRef("ref", &ref);
-  result.AddString("cypherkey", messageCypherkey(msgHash));
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   int64 attrNum;
   if (eitherNumber(&attrNum, message, "sequence") == B_OK)
     this->lastSequence = attrNum;
-  if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
-    return status;
-  this->cacheLatest();
   this->notifyChanges();
-  if (reply != NULL)
-    reply->AddMessage("result", &result);
   return B_OK;
 }
 
@@ -1078,8 +1147,8 @@ void OwnFeed::MessageReceived(BMessage *msg) {
   BPropertyInfo propertyInfo(ownFeedProperties);
   switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
   case 0: // Create post
-    error = this->create(msg, &reply);
-    break;
+    error = this->create(msg);
+    return;
   default:
     return SSBFeed::MessageReceived(msg);
   }
@@ -1098,7 +1167,7 @@ BHandler *OwnFeed::ResolveSpecifier(BMessage *msg, int32 index,
   return SSBFeed::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
-status_t OwnFeed::create(BMessage *message, BMessage *reply) {
+status_t OwnFeed::create(BMessage *message) {
   class SignRoot : public JSON::NodeSink {
   public:
     SignRoot(BMessage *target, unsigned char key[crypto_sign_SECRETKEYBYTES])
@@ -1145,7 +1214,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
     rootSink.closeNode();
     rootSink.closeNode();
   }
-  return this->save(&full, reply);
+  return this->save(&full);
 }
 
 namespace post {
