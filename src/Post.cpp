@@ -1012,13 +1012,19 @@ status_t postAttrs(BNode *sink, BMessage *message,
   }
   BString attrString = messageCypherkey(msgHash);
 #define CHECK_STRING(attr)                                                     \
-  if ((status = checkAttr(sink, attr, attrString)) != B_OK)                    \
-    return status;
+  {                                                                            \
+    if ((status = checkAttr(sink, attr, attrString)) != B_OK) {                \
+      return status;                                                           \
+    }                                                                          \
+  }
   CHECK_STRING("HABITAT:cypherkey")
   int64 attrNum;
 #define CHECK_NUMBER(attr)                                                     \
-  if ((status = checkAttr(sink, attr, attrNum)) != B_OK)                       \
-    return status;
+  {                                                                            \
+    if ((status = checkAttr(sink, attr, attrNum)) != B_OK) {                   \
+      return status;                                                           \
+    }                                                                          \
+  }
   if (eitherNumber(&attrNum, message, "sequence") == B_OK)
     CHECK_NUMBER("HABITAT:sequence")
   if ((status = message->FindString("author", &attrString)) != B_OK)
