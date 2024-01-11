@@ -276,6 +276,18 @@ SSBDatabase::SSBDatabase(BDirectory store)
 
 SSBDatabase::~SSBDatabase() {}
 
+thread_id SSBDatabase::Run() {
+  Writer *writer = new Writer(&this->store, this);
+  writer->Run();
+  this->writes = BMessenger(writer);
+  return BLooper::Run();
+}
+
+void SSBDatabase::Quit() {
+  this->writes.SendMessage(B_QUIT_REQUESTED);
+  BLooper::Quit();
+}
+
 enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
 
 property_info databaseProperties[] = {
@@ -584,14 +596,10 @@ status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
 void SSBDatabase::notifySaved(const BString &author, int64 sequence,
                               unsigned char id[crypto_hash_sha256_BYTES]) {
   BMessage message('SNOT');
+  message.AddString("author", author);
   message.AddInt64("sequence", sequence);
   message.AddData("id", B_RAW_TYPE, id, crypto_hash_sha256_BYTES, false, 1);
-  this->Lock();
-  SSBFeed *feed;
-  status_t found = this->findFeed(feed, author);
-  this->Unlock();
-  if (found == B_OK)
-    BMessenger(feed).SendMessage(&message);
+  BMessenger(this).SendMessage(&message);
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -718,10 +726,10 @@ status_t SSBFeed::load() {
       }
     }
   }
-  if (stale)
-    this->cacheLatest();
   this->savedSequence = this->lastSequence;
   memcpy(this->savedHash, this->lastHash, crypto_hash_sha256_BYTES);
+  if (stale)
+    this->cacheLatest();
   this->notifyChanges();
   return error;
 }
@@ -862,6 +870,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     }
     this->savedSequence = sequence;
     memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
+    this->cacheLatest();
     this->notifyChanges();
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
@@ -980,7 +989,12 @@ static inline status_t checkAttr(BNode *sink, const char *attr, int64 value) {
   if (sink->ReadAttr(attr, B_INT64_TYPE, 0, &oldValue, sizeof(int64)) !=
           sizeof(int64) ||
       oldValue != value) {
-    return sink->WriteAttr(attr, B_INT64_TYPE, 0, &value, sizeof(int64));
+    status_t result =
+        sink->WriteAttr(attr, B_INT64_TYPE, 0, &value, sizeof(int64));
+    if (result == sizeof(int64))
+      return B_OK;
+    else
+      return result;
   } else {
     return B_OK;
   }
@@ -1017,7 +1031,7 @@ status_t postAttrs(BNode *sink, BMessage *message,
       CHECK_STRING("HABITAT:type")
       BString type = attrString;
       if (contextLink(&attrString, type, &content) == B_OK)
-        CHECK_NUMBER("HABITAT:context")
+        CHECK_STRING("HABITAT:context")
       else
         sink->RemoveAttr("HABITAT:context");
     }
@@ -1060,10 +1074,9 @@ void Writer::MessageReceived(BMessage *message) {
         if ((status = message->FindString("author", &author)) != B_OK)
           goto sendReply;
         int64 sequence;
-        if ((status = message->FindInt64("sequence", &sequence)) != B_OK)
+        if ((status = eitherNumber(&sequence, message, "sequence")) != B_OK)
           goto sendReply;
-        dynamic_cast<SSBDatabase *>(this->Looper())
-            ->notifySaved(author, sequence, msgHash);
+        this->db->notifySaved(author, sequence, msgHash);
       }
       reply.AddMessage("result", &result);
     }
@@ -1088,6 +1101,7 @@ status_t SSBFeed::save(BMessage *message) {
   if (eitherNumber(&attrNum, message, "sequence") == B_OK)
     this->lastSequence = attrNum;
   this->notifyChanges();
+  dynamic_cast<SSBDatabase *>(this->Looper())->writes.SendMessage(message);
   return B_OK;
 }
 
@@ -1100,11 +1114,11 @@ void SSBFeed::cacheLatest() {
   }
   existing.RemoveName("lastID");
   existing.RemoveName("lastSequence");
-  existing.AddInt64("lastSequence", this->lastSequence);
-  existing.AddString(
-      "lastID",
-      base64::encode(this->lastHash, crypto_hash_sha256_BYTES, base64::STANDARD)
-          .String());
+  existing.AddInt64("lastSequence", this->savedSequence);
+  existing.AddString("lastID",
+                     base64::encode(this->savedHash, crypto_hash_sha256_BYTES,
+                                    base64::STANDARD)
+                         .String());
   store.Seek(0, SEEK_SET);
   store.SetSize(0);
   existing.Flatten(&store);

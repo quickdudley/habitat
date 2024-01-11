@@ -37,6 +37,8 @@ class SSBDatabase : public BLooper {
 public:
   SSBDatabase(BDirectory store);
   ~SSBDatabase() override;
+  thread_id Run() override;
+  void Quit() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
@@ -47,6 +49,7 @@ public:
                    unsigned char id[crypto_hash_sha256_BYTES]);
 
 private:
+  friend class SSBFeed;
   BDirectory store;
   BQuery commonQuery;
   BMessenger writes;

@@ -12,6 +12,7 @@ struct Note {
   bool replicate;
   bool receive;
   uint64 sequence;
+  uint64 savedSequence;
 };
 
 Note decodeNote(double note);
@@ -38,7 +39,6 @@ private:
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
-  std::map<BString, int64> saved;
   std::queue<BString> sendSequence;
   std::set<BString> unsent;
   friend class Dispatcher;

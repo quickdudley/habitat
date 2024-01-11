@@ -15,7 +15,7 @@ Note decodeNote(double note) {
 int64 encodeNote(Note &note) {
   if (!note.replicate)
     return -1;
-  return (note.sequence << 1) | (note.receive ? 0 : 1);
+  return note.receive ? note.sequence << 1 : (note.savedSequence << 1) | 1;
 }
 
 RemoteState::RemoteState(double note)
@@ -63,7 +63,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     int64 saved;
     if (msg->FindString("feed", &cypherkey) == B_OK &&
         msg->FindInt64("sequence", &sequence) == B_OK &&
-        msg->FindInt64("saved", &saved)) {
+        msg->FindInt64("saved", &saved) == B_OK) {
       {
         BString logText("Observer notice for ");
         logText << cypherkey;
@@ -84,20 +84,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
             }
           } else {
             link->ourState.insert(
-                {cypherkey, {true, justOne, (uint64)sequence}});
+                {cypherkey, {true, justOne, (uint64)sequence, (uint64)saved}});
             changed = true;
-            link->unsent.insert(cypherkey);
-            link->sendSequence.push(cypherkey);
-          }
-          if (auto found = link->saved.find(cypherkey);
-              found != link->saved.end()) {
-            if (found->second != saved) {
-              found->second = saved;
-              link->unsent.insert(cypherkey);
-              link->sendSequence.push(cypherkey);
-            }
-          } else {
-            link->saved.insert({cypherkey, saved});
             link->unsent.insert(cypherkey);
             link->sendSequence.push(cypherkey);
           }
