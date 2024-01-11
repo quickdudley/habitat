@@ -35,7 +35,7 @@ extern property_info databaseProperties[];
 
 class SSBDatabase : public BLooper {
 public:
-  SSBDatabase(BDirectory store);
+  SSBDatabase(BDirectory store, BDirectory contacts);
   ~SSBDatabase() override;
   thread_id Run() override;
   void Quit() override;
@@ -51,6 +51,7 @@ public:
 private:
   friend class SSBFeed;
   BDirectory store;
+  BDirectory contacts;
   BQuery commonQuery;
   BMessenger writes;
   bool pendingQueryMods = false;
@@ -58,7 +59,8 @@ private:
 
 class SSBFeed : public QueryBacked {
 public:
-  SSBFeed(BDirectory *store, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
+  SSBFeed(BDirectory *store, BDirectory *contactsDir,
+          unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
   BString cypherkey();
   BString previousLink();
@@ -95,7 +97,7 @@ protected:
 
 class OwnFeed : public SSBFeed {
 public:
-  OwnFeed(BDirectory *store, Ed25519Secret *secret);
+  OwnFeed(BDirectory *store, BDirectory *contactsDir, Ed25519Secret *secret);
   status_t GetSupportedSuites(BMessage *data);
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,

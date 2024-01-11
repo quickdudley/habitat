@@ -84,6 +84,7 @@ Habitat::Habitat(void)
         U_ICU_NAMESPACE::TimeZone::createTimeZone(
             defaultTimeZone.ID().String()));
   }
+  BDirectory contactsDir;
   {
     // Create settings directory
     BPath settings_path;
@@ -110,6 +111,17 @@ Habitat::Habitat(void)
       if (status != B_OK)
         throw status;
       this->postDir = std::make_unique<BDirectory>(&entry);
+    } else if (status != B_OK) {
+      throw status;
+    }
+    // Create contacts directory
+    status = this->settings->CreateDirectory("contacts", &contactsDir);
+    if (status == B_FILE_EXISTS) {
+      BEntry entry;
+      status = this->settings->FindEntry("contacts", &entry, true);
+      if (status != B_OK)
+        throw status;
+      contactsDir = BDirectory(&entry);
     } else if (status != B_OK) {
       throw status;
     }
@@ -142,8 +154,9 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new SSBDatabase(*this->postDir);
-  this->ownFeed = new OwnFeed(this->postDir.get(), this->myId.get());
+  this->databaseLooper = new SSBDatabase(*this->postDir, contactsDir);
+  this->ownFeed =
+      new OwnFeed(this->postDir.get(), &contactsDir, this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);

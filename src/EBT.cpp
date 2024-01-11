@@ -9,7 +9,8 @@ Note decodeNote(double note) {
   bool replicate = note >= 0;
   uint64 v = note;
   bool receive = replicate && (v & 1) == 0;
-  return {replicate, receive, replicate ? v >> 1 : 0};
+  uint64 sequence = replicate ? v >> 1 : 0;
+  return {replicate, receive, sequence, sequence};
 }
 
 int64 encodeNote(Note &note) {

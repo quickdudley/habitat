@@ -1,7 +1,6 @@
 #include "Post.h"
 #include "BJSON.h"
 #include "Base64.h"
-#include "Main.h"
 #include "SignJSON.h"
 #include <File.h>
 #include <MessageRunner.h>
@@ -253,7 +252,11 @@ Writer::Writer(BDirectory *store, SSBDatabase *db)
     :
     BLooper("Database write queue"),
     store(store),
-    db(db) {}
+    db(db) {
+  BHandler *check = new AttrCheck(*store);
+  this->AddHandler(check);
+  BMessenger(check).SendMessage(B_PULSE);
+}
 } // namespace
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
@@ -265,14 +268,11 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
-SSBDatabase::SSBDatabase(BDirectory store)
+SSBDatabase::SSBDatabase(BDirectory store, BDirectory contacts)
     :
     BLooper("SSB message database"),
-    store(store) {
-  BHandler *check = new AttrCheck(store);
-  this->AddHandler(check);
-  BMessenger(check).SendMessage(B_PULSE);
-}
+    store(store),
+    contacts(contacts) {}
 
 SSBDatabase::~SSBDatabase() {}
 
@@ -410,7 +410,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
           if (this->findFeed(feed, formatted) != B_OK)
-            feed = new SSBFeed(&this->store, key);
+            feed = new SSBFeed(&this->store, &this->contacts, key);
           this->AddHandler(feed);
           feed->load();
           reply.AddMessenger("result", BMessenger(feed));
@@ -622,7 +622,7 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
   return l.sequence > r.sequence;
 }
 
-SSBFeed::SSBFeed(BDirectory *store,
+SSBFeed::SSBFeed(BDirectory *store, BDirectory *contactsDir,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
     QueryBacked(),
@@ -642,19 +642,9 @@ SSBFeed::SSBFeed(BDirectory *store,
     return;
   }
 notfound: {
-  BDirectory &settingsDir = dynamic_cast<Habitat *>(be_app)->settingsDir();
-  BDirectory contactsDir;
-  status_t err = settingsDir.CreateDirectory("contacts", &contactsDir);
-  if (err == B_FILE_EXISTS) {
-    BEntry entry;
-    err = settingsDir.FindEntry("contacts", &entry, true);
-    if (err != B_OK)
-      return;
-    contactsDir.SetTo(&entry);
-  }
   BEntry entry;
   entry.SetTo(
-      &contactsDir,
+      contactsDir,
       base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES, base64::URL)
           .String());
   entry.GetRef(&this->metastore);
@@ -1137,9 +1127,9 @@ void SSBFeed::cacheLatest() {
   store.WriteAttrString("HABITAT:cypherkey", &attrString);
 }
 
-OwnFeed::OwnFeed(BDirectory *store, Ed25519Secret *secret)
+OwnFeed::OwnFeed(BDirectory *store, BDirectory *contacts, Ed25519Secret *secret)
     :
-    SSBFeed(store, secret->pubkey) {
+    SSBFeed(store, contacts, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 
