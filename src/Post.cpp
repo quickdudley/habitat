@@ -1090,7 +1090,7 @@ void Writer::MessageReceived(BMessage *message) {
 }
 } // namespace
 
-status_t SSBFeed::save(BMessage *message) {
+status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
@@ -1102,6 +1102,11 @@ status_t SSBFeed::save(BMessage *message) {
     this->lastSequence = attrNum;
   this->notifyChanges();
   dynamic_cast<SSBDatabase *>(this->Looper())->writes.SendMessage(message);
+  if (reply != NULL) {
+    BMessage result;
+    result.AddString("cypherkey", messageCypherkey(msgHash));
+    reply->AddMessage("result", &result);
+  }
   return B_OK;
 }
 
@@ -1161,8 +1166,8 @@ void OwnFeed::MessageReceived(BMessage *msg) {
   BPropertyInfo propertyInfo(ownFeedProperties);
   switch (propertyInfo.FindMatch(msg, index, &specifier, what, property)) {
   case 0: // Create post
-    error = this->create(msg);
-    return;
+    error = this->create(msg, &reply);
+    break;
   default:
     return SSBFeed::MessageReceived(msg);
   }
@@ -1181,7 +1186,7 @@ BHandler *OwnFeed::ResolveSpecifier(BMessage *msg, int32 index,
   return SSBFeed::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
-status_t OwnFeed::create(BMessage *message) {
+status_t OwnFeed::create(BMessage *message, BMessage *reply) {
   class SignRoot : public JSON::NodeSink {
   public:
     SignRoot(BMessage *target, unsigned char key[crypto_sign_SECRETKEYBYTES])
@@ -1228,7 +1233,7 @@ status_t OwnFeed::create(BMessage *message) {
     rootSink.closeNode();
     rootSink.closeNode();
   }
-  return this->save(&full);
+  return this->save(&full, reply);
 }
 
 namespace post {

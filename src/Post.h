@@ -77,7 +77,7 @@ public:
   void notifyChanges(BMessenger target);
 
 protected:
-  status_t save(BMessage *message);
+  status_t save(BMessage *message, BMessage *result = NULL);
   void cacheLatest();
   std::priority_queue<post_private_::FeedShuntEntry,
                       std::vector<post_private_::FeedShuntEntry>,
@@ -100,7 +100,7 @@ public:
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property);
-  status_t create(BMessage *message);
+  status_t create(BMessage *message, BMessage *result = NULL);
 
 private:
   unsigned char seckey[crypto_sign_SECRETKEYBYTES];
