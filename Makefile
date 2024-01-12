@@ -31,24 +31,26 @@ APP_MIME_SIG = application/x-vnd.habitat
 #	means this Makefile will not work correctly if two source files with the
 #	same name (source.c or source.cpp) are included from different directories.
 #	Also note that spaces in folder names do not work well with this Makefile.
-SRCS = \
+APP_SRCS = \
 	 src/Base64.cpp \
 	 src/BJSON.cpp \
 	 src/Blob.cpp \
 	 src/Connection.cpp \
-	 src/ContactGraph.cpp \
 	 src/EBT.cpp \
 	 src/Indices.cpp \
-	 src/JSON.cpp \
 	 src/Lan.cpp \
 	 src/Listener.cpp \
-	 src/Logging.cpp \
 	 src/Main.cpp \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
 	 src/SettingsWindow.cpp \
 	 src/SignJSON.cpp \
+
+LIB_SRCS = \
+	 src/ContactGraph.cpp \
+	 src/JSON.cpp \
+	 src/Logging.cpp \
 
 TESTABLE_SRCS = \
 	 src/Base64.cpp \
@@ -60,7 +62,7 @@ TESTABLE_SRCS = \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
-	 src/SignJSON.cpp \
+	 src/SignJSON.cpp
 
 TEST_SRCS = \
 	 $(wildcard  \
@@ -176,11 +178,13 @@ C++		:= $(CXX)
 ifeq ($(origin LD), default)
 	LD			:= $(CC)
 endif
+
 LDFLAGS += -Xlinker -soname=_APP_
 
 OBJ_DIR := generated/objects
 TARGET_DIR := generated/distro
 TARGET := $(TARGET_DIR)/$(NAME)
+TARGET_LIB := $(TARGET_DIR)/libhabitat.so
 TEST_DIR := generated/test
 TEST_TARGET := $(TEST_DIR)/test-habitat
 
@@ -192,7 +196,12 @@ LOCAL_INCLUDE_PATHS += $(OBJ_DIR) $(TEST_DIR)
 # off the directory name, leaving just the root file name. It then appends the
 # .o suffix and prepends the $(OBJ_DIR)/ path
 define SRCS_LIST_TO_OBJS
-	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(SRCS), \
+	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(APP_SRCS), \
+	$(basename $(notdir $(file))))))
+endef
+
+define LIB_LIST_TO_OBJS
+	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(LIB_SRCS), \
 	$(basename $(notdir $(file))))))
 endef
 
@@ -207,7 +216,7 @@ define TEST_LIST_TO_OBJS
 endef
 
 define SRCS_LIST_TO_DEPENDS
-	$(addprefix $(OBJ_DIR)/, $(addsuffix .d, $(foreach file, $(SRCS), \
+	$(addprefix $(OBJ_DIR)/, $(addsuffix .d, $(foreach file, $(APP_SRCS) $(LIB_SRCS), \
 	$(basename $(notdir $(file))))))
 endef
 
@@ -216,12 +225,13 @@ define TEST_LIST_TO_DEPENDS
 	$(basename $(notdir $(file))))))
 endef
 
-OBJS = $(SRCS_LIST_TO_OBJS)
+APP_OBJS = $(SRCS_LIST_TO_OBJS)
+LIB_OBJS = $(LIB_LIST_TO_OBJS)
 TEST_OBJS = $(TEST_LIST_TO_OBJS) $(TESTABLE_LIST_TO_OBJS)
 DEPENDS = $(SRCS_LIST_TO_DEPENDS) $(TEST_LIST_TO_DEPENDS)
 
 # Create a unique list of paths to our sourcefiles and resources.
-SRC_PATHS += $(sort $(foreach file, $(SRCS) $(RSRCS) $(RDEFS), $(dir $(file))))
+SRC_PATHS += $(sort $(foreach file, $(APP_SRCS) $(RSRCS) $(RDEFS), $(dir $(file))))
 
 # Add source paths to VPATH if not already present.
 VPATH :=
@@ -253,7 +263,7 @@ ifeq ($(CPU), ppc)
 endif
 endif
 # Add the -L prefix to all of the library paths.
-LINK_PATHS = $(foreach path, $(SRC_PATHS) $(LIBPATHS), \
+LINK_PATHS = $(foreach path, $(SRC_PATHS) $(LIBPATHS) $(TARGET_DIR), \
 	$(addprefix -L, $(path)))
 
 # Handle the additional libraries specified. If the libraries have a .so or
@@ -275,18 +285,13 @@ CFLAGS += $(COMPILER_FLAGS)
 # Add the additional linkflags to LDFLAGS
 LDFLAGS += $(LINKER_FLAGS)
 
+LIB_LDFLAGS := -shared $(LINK_PATHS) $(LINK_LIBS)
 TEST_LDFLAGS := $(LINK_PATHS) $(LINK_LIBS) $(shell pkg-config --libs catch2) \
 	-lCatch2Main -lCatch2
 
-# Use the archiving tools to create an an archive if we're building a static
-# library, otherwise use the linker.
-ifeq ($(strip $(TYPE)), STATIC)
-	BUILD_LINE = ar -cru "$(TARGET)" $(OBJS)
-	TEST_BUILD_LINE = ar -cru "$(TEST_TARGET)" $(TEST_OBJS)
-else
-	BUILD_LINE = $(LD) -o "$@" $(OBJS) $(LDFLAGS)
-	TEST_BUILD_LINE = $(LD) -o "$@" $(TEST_OBJS) $(TEST_LDFLAGS)
-endif
+BUILD_LINE = $(LD) -o "$@" $(APP_OBJS) $(LDFLAGS) -lhabitat
+LIB_BUILD_LINE = $(LD) -o "$@" $(LIB_OBJS) $(LIB_LDFLAGS)
+TEST_BUILD_LINE = $(LD) -o "$@" $(TEST_OBJS) $(TEST_LDFLAGS)
 
 # Pseudo-function for converting a list of resource definition files in RDEFS
 # variable to a corresponding list of object files in $(OBJ_DIR)/xxx.rsrc.
@@ -323,11 +328,14 @@ CATKEYS = $(LOCALES_LIST_TO_CATKEYS)
 
 default: $(TARGET)
 
-$(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(OBJS) $(RSRCS) $(CATKEYS)
+$(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(APP_OBJS) $(RSRCS) $(CATKEYS) $(TARGET_LIB)
 	$(BUILD_LINE)
 	$(DO_RSRCS)
 	$(MIMESET) -f "$@"
 	for lc in $(LOCALES); do linkcatkeys -o $(TARGET) -s $(APP_MIME_SIG) -tr -l $$lc $(CATKEYS_DIR)/$$lc.catkeys; done
+
+$(TARGET_LIB): $(OBJ_DIR) $(TARGET_DIR) $(LIB_OBJS)
+	$(LIB_BUILD_LINE)
 
 $(TEST_TARGET): $(OBJ_DIR) $(TEST_DIR) $(TEST_OBJS)
 	$(TEST_BUILD_LINE)
@@ -415,8 +423,8 @@ $(OBJ_DIR)/%.rsrc : %.RDEF
 	cat $< | $(CC) -E $(INCLUDES) $(CFLAGS) - | grep -av '^#' | $(RESCOMP) -I $(dir $<) -o "$@" -
 
 # Rule to preprocess program sources into file ready for collecting catkeys.
-$(OBJ_DIR)/$(NAME).pre : $(SRCS)
-	-cat $(SRCS) | $(CC) -E -x c++ $(INCLUDES) $(CFLAGS) -DB_COLLECTING_CATKEYS - | grep -av '^#' > $(OBJ_DIR)/$(NAME).pre
+$(OBJ_DIR)/$(NAME).pre : $(APP_SRCS) $(LIB_SRCS)
+	-cat $(APP_SRCS) $(LIB_SRCS) | $(CC) -E -x c++ $(INCLUDES) $(CFLAGS) -DB_COLLECTING_CATKEYS - | grep -av '^#' > $(OBJ_DIR)/$(NAME).pre
 
 $(CATKEYS_DIR)/en.catkeys : $(CATKEYS_DIR) $(OBJ_DIR)/$(NAME).pre
 	collectcatkeys -s $(APP_MIME_SIG) $(OBJ_DIR)/$(NAME).pre -o $(CATKEYS_DIR)/en.catkeys
@@ -437,7 +445,7 @@ rmapp ::
 
 .PHONY: run
 run: $(TARGET)
-	$(TARGET)
+	env LIBRARY_PATH=$(TARGET_DIR):$(LIBRARY_PATH) $(TARGET)
 
 # For embedding the ssb validation dataset into the test executable
 $(TEST_DIR)/ssb_validation_dataset.json:
