@@ -182,11 +182,14 @@ endif
 LDFLAGS += -Xlinker -soname=_APP_
 
 OBJ_DIR := generated/objects
-TARGET_DIR := generated/distro
+TARGET_DIR := $(PWD)/generated/distro
 TARGET := $(TARGET_DIR)/$(NAME)
 TARGET_LIB := $(TARGET_DIR)/libhabitat.so
 TEST_DIR := generated/test
 TEST_TARGET := $(TEST_DIR)/test-habitat
+PLUGINS_TARGET := $(TARGET_DIR)/plugins
+export TARGET_DIR
+export PLUGINS_TARGET
 
 LOCAL_INCLUDE_PATHS += $(OBJ_DIR) $(TEST_DIR)
 
@@ -292,6 +295,7 @@ TEST_LDFLAGS := $(LINK_PATHS) $(LINK_LIBS) $(shell pkg-config --libs catch2) \
 BUILD_LINE = $(LD) -o "$@" $(APP_OBJS) $(LDFLAGS) -lhabitat
 LIB_BUILD_LINE = $(LD) -o "$@" $(LIB_OBJS) $(LIB_LDFLAGS)
 TEST_BUILD_LINE = $(LD) -o "$@" $(TEST_OBJS) $(TEST_LDFLAGS)
+export LD
 
 # Pseudo-function for converting a list of resource definition files in RDEFS
 # variable to a corresponding list of object files in $(OBJ_DIR)/xxx.rsrc.
@@ -328,7 +332,7 @@ CATKEYS = $(LOCALES_LIST_TO_CATKEYS)
 
 default: $(TARGET)
 
-$(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(APP_OBJS) $(RSRCS) $(CATKEYS) $(TARGET_LIB)
+$(TARGET):	$(OBJ_DIR) $(TARGET_DIR) $(APP_OBJS) $(RSRCS) $(CATKEYS) $(TARGET_LIB) plugins
 	$(BUILD_LINE)
 	$(DO_RSRCS)
 	$(MIMESET) -f "$@"
@@ -340,6 +344,10 @@ $(TARGET_LIB): $(OBJ_DIR) $(TARGET_DIR) $(LIB_OBJS)
 $(TEST_TARGET): $(OBJ_DIR) $(TEST_DIR) $(TEST_OBJS)
 	$(TEST_BUILD_LINE)
 
+.PHONY: plugins
+plugins: $(TARGET_LIB) $(PLUGINS_TARGET)
+	for pd in $(wildcard src/plugins/*); do $(MAKE) -C $$pd; done
+
 # Create OBJ_DIR if it doesn't exist.
 $(OBJ_DIR)::
 	@[ -d $(OBJ_DIR) ] || mkdir $(OBJ_DIR) >/dev/null 2>&1
@@ -350,6 +358,9 @@ $(TEST_DIR)::
 
 $(TARGET_DIR)::
 	@[ -d $(TARGET_DIR) ] || mkdir $(TARGET_DIR) >/dev/null 2>&1
+
+$(PLUGINS_TARGET)::
+	@[ -d $(PLUGINS_TARGET) ] || mkdir $(PLUGINS_TARGET) >/dev/null 2>&1
 
 # Create the localization sources directory if it doesn't exist.
 $(CATKEYS_DIR)::
@@ -437,6 +448,7 @@ test: $(TEST_TARGET)
 .PHONY: clean
 clean:
 	-rm -rf "$(OBJ_DIR)" "$(TEST_DIR)"
+	for pd in $(wildcard src/plugins/*); do $(MAKE) -C $$pd clean; done
 
 # Remove just the application from the object folder.
 .PHONY: rmapp
