@@ -1,10 +1,11 @@
 #include "ContactGraph.h"
 #include <set>
 
-const char *pluginName = "n-hops";
+extern "C" const char *pluginName() { return "n-hops"; }
 
-status_t selectContacts(ContactSelection *target, std::set<BString> *roots,
-                        BMessage *config, BMessage *graph) {
+extern "C" status_t selectContacts(ContactSelection *target,
+                                   std::set<BString> *roots, BMessage *config,
+                                   BMessage *graph) {
   int32 hops;
   if (status_t status = config->FindInt32("hops", &hops); status != B_OK)
     return status;
@@ -58,4 +59,6 @@ status_t selectContacts(ContactSelection *target, std::set<BString> *roots,
   return B_OK;
 }
 
-status_t defaultConfig(BMessage *target) { return target->AddInt32("hops", 2); }
+extern "C" status_t defaultConfig(BMessage *target) {
+  return target->AddInt32("hops", 2);
+}

@@ -42,6 +42,7 @@ APP_SRCS = \
 	 src/Listener.cpp \
 	 src/Main.cpp \
 	 src/MUXRPC.cpp \
+	 src/Plugin.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
 	 src/SettingsWindow.cpp \
@@ -187,7 +188,7 @@ TARGET := $(TARGET_DIR)/$(NAME)
 TARGET_LIB := $(TARGET_DIR)/libhabitat.so
 TEST_DIR := generated/test
 TEST_TARGET := $(TEST_DIR)/test-habitat
-PLUGINS_TARGET := $(TARGET_DIR)/plugins
+PLUGINS_TARGET := $(TARGET_DIR)/habitat_plugins
 export TARGET_DIR
 export PLUGINS_TARGET
 
