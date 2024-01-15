@@ -1,17 +1,31 @@
 #include "ContactGraph.h"
+#include <Looper.h>
 
 ContactLinkState::ContactLinkState()
     :
     following(false),
-    blocking(false) {}
+    blocking(false),
+    pub(false) {}
 
 ContactGraph::ContactGraph() {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {
+  case B_GET_PROPERTY:
+    if (this->ready)
+      this->sendState(message);
+    else
+      this->pending.push_back(this->Looper()->DetachCurrentMessage());
+    break;
   case 'DONE':
     this->ready = true;
     this->SendNotices('CTAC');
+    for (auto rq : this->pending) {
+      this->sendState(rq);
+      delete rq;
+    }
+    this->pending.clear();
+    this->pending.shrink_to_fit();
     break;
   case 'JSOB':
     return logContact(message);
@@ -69,6 +83,34 @@ void ContactGraph::logContact(BMessage *message) {
         }
       },
       sequence);
+  edge.pub.check(
+      [&](auto &oldValue) {
+        bool value = oldValue;
+        if (content.FindBool("pub", &value) == B_OK) {
+          changed = true;
+          oldValue = value;
+          return true;
+        } else {
+          return false;
+        }
+      },
+      sequence);
   if (changed && this->ready)
     this->SendNotices('CTAC');
+}
+
+void ContactGraph::sendState(BMessage *request) {
+  BMessage reply(B_REPLY);
+  for (const auto &[node, edges] : this->graph) {
+    BMessage branch;
+    for (const auto &[subject, edge] : edges) {
+      BMessage leaf;
+      leaf.AddBool("following", edge.following.peek());
+      leaf.AddBool("blocked", edge.blocking.peek());
+      leaf.AddBool("pub", edge.pub.peek());
+      branch.AddMessage(subject, &leaf);
+    }
+    reply.AddMessage(node, &branch);
+  }
+  request->SendReply(&reply);
 }

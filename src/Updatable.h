@@ -8,7 +8,7 @@ public:
   Updatable(const T &value)
       :
       value(value) {}
-  T &peek() { return value; }
+  const T &peek() const { return value; }
   void put(const T &value, int64 weight) {
     if (weight > this->weight) {
       this->value = value;
@@ -31,4 +31,3 @@ private:
 };
 
 #endif // UPDATABLE_H
-

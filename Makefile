@@ -45,6 +45,7 @@ APP_SRCS = \
 	 src/Plugin.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
+	 src/SelectContacts.cpp \
 	 src/SettingsWindow.cpp \
 	 src/SignJSON.cpp \
 
