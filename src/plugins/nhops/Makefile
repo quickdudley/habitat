@@ -6,7 +6,8 @@ OBJ_DIR := objects
 .PHONY: default
 default: $(TARGET)
 
-LOC_INCLUDES = -I.
+LOC_INCLUDES = -I. -I../..
+INCLUDES = $(LOC_INCLUDES)
 
 define SRCS_LIST_TO_OBJS
 	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(SRCS), \

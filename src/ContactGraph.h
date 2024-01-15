@@ -5,6 +5,13 @@
 #include <Handler.h>
 #include <String.h>
 #include <map>
+#include <set>
+
+struct ContactSelection {
+  std::set<BString> selected;
+  std::set<BString> blocked;
+  std::set<BString> own;
+};
 
 struct ContactLinkState {
   ContactLinkState();
