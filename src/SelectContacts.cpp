@@ -2,7 +2,6 @@
 #include "ContactGraph.h"
 #include "Plugin.h"
 #include <map>
-#include <set>
 
 SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
     :
@@ -69,10 +68,18 @@ void SelectContacts::makeSelection(BMessage *graph) {
     if (algorithm(&single, &ownFeeds, &config, graph) == B_OK)
       full += single;
   }
-  for (auto item : full.combine()) {
+  auto leftover = this->current;
+  this->current = full.combine();
+  for (auto item : this->current) {
     BMessage create(B_CREATE_PROPERTY);
     create.AddSpecifier("ReplicatedFeed");
     create.AddString("cypherkey", item);
     this->db.SendMessage(&create);
+    leftover.erase(item);
+  }
+  for (auto item : leftover) {
+  	BMessage request(B_DELETE_PROPERTY);
+  	request.AddSpecifier("ReplicatedFeed", item);
+  	this->db.SendMessage(&request);
   }
 }

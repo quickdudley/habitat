@@ -4,6 +4,7 @@
 #include <Handler.h>
 #include <Message.h>
 #include <Messenger.h>
+#include <set>
 
 class SelectContacts : public BHandler {
 public:
@@ -14,6 +15,7 @@ private:
   void makeSelection(BMessage *graph);
   BMessenger db;
   BMessenger graph;
+  std::set<BString> current;
   bool fetching = false;
 };
 
