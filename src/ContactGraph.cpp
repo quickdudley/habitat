@@ -1,6 +1,36 @@
 #include "ContactGraph.h"
 #include <Looper.h>
 
+ContactSelection &ContactSelection::operator+=(const ContactSelection &other) {
+#define MERGE_IN(prop)                                                         \
+  for (auto item : other.prop)                                                 \
+  this->prop.insert(item)
+  MERGE_IN(selected);
+  MERGE_IN(blocked);
+  MERGE_IN(own);
+#undef MERGE_IN
+  return *this;
+}
+
+ContactSelection
+ContactSelection::operator+(const ContactSelection &other) const {
+  ContactSelection result;
+  result += *this;
+  result += other;
+  return result;
+}
+
+std::set<BString> ContactSelection::combine() const {
+  std::set<BString> result;
+  for (auto item : this->selected)
+    result.insert(item);
+  for (auto item : this->blocked)
+    result.erase(item);
+  for (auto item : this->own)
+    result.insert(item);
+  return result;
+}
+
 ContactLinkState::ContactLinkState()
     :
     following(false),
@@ -101,6 +131,7 @@ void ContactGraph::logContact(BMessage *message) {
 
 void ContactGraph::sendState(BMessage *request) {
   BMessage reply(B_REPLY);
+  BMessage result;
   for (const auto &[node, edges] : this->graph) {
     BMessage branch;
     for (const auto &[subject, edge] : edges) {
@@ -110,7 +141,9 @@ void ContactGraph::sendState(BMessage *request) {
       leaf.AddBool("pub", edge.pub.peek());
       branch.AddMessage(subject, &leaf);
     }
-    reply.AddMessage(node, &branch);
+    result.AddMessage(node, &branch);
   }
+  reply.AddMessage("result", &result);
+  reply.AddInt32("error", B_OK);
   request->SendReply(&reply);
 }

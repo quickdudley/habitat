@@ -1,6 +1,8 @@
 #include "Main.h"
+#include "ContactGraph.h"
 #include "Indices.h"
 #include "Logging.h"
+#include "SelectContacts.h"
 #include "SettingsWindow.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
@@ -331,6 +333,26 @@ void Habitat::ReadyToRun() {
   this->ebt = new ebt::Dispatcher(this->databaseLooper);
   this->ebt->Run();
   this->RegisterLooper(this->ebt);
+  auto worker = new BLooper("Worker thread");
+  worker->Run();
+  worker->Lock();
+  auto graph = new ContactGraph();
+  worker->AddHandler(graph);
+  {
+    BMessage rq(B_GET_PROPERTY);
+    BMessage specifier('CPLX');
+    specifier.AddString("property", "Post");
+    specifier.AddString("type", "contact");
+    rq.AddSpecifier(&specifier);
+    rq.AddMessenger("target", BMessenger(graph));
+    BMessenger(this->databaseLooper).SendMessage(&rq);
+  }
+  auto selector =
+      new SelectContacts(BMessenger(this->databaseLooper), BMessenger(graph));
+  worker->AddHandler(selector);
+  BMessenger(selector).SendMessage('INIT');
+  worker->Unlock();
+  this->RegisterLooper(worker);
   registerMethod(std::make_shared<ebt::Begin>(this->ebt));
 }
 

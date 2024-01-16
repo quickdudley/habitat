@@ -288,7 +288,7 @@ void SSBDatabase::Quit() {
   BLooper::Quit();
 }
 
-enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
+enum { kReplicatedFeed, kAReplicatedFeed, kOwnID, kPostByID };
 
 property_info databaseProperties[] = {
     {"ReplicatedFeed",
@@ -302,6 +302,12 @@ property_info databaseProperties[] = {
      {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
      kAReplicatedFeed,
+     {}},
+    {"OwnFeed",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "Our own SSB ID(s)",
+     kOwnID,
      {}},
     {"Post",
      {B_GET_PROPERTY, 0},
@@ -450,6 +456,16 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         error = B_DONT_DO_THAT;
       }
       break;
+    case kOwnID:
+      error = B_ENTRY_NOT_FOUND;
+      for (int32 i = 0; i < this->CountHandlers(); i++) {
+        if (OwnFeed * feed;
+            (feed = dynamic_cast<OwnFeed *>(this->HandlerAt(i))) != NULL) {
+          error = B_OK;
+          reply.AddString("result", feed->cypherkey());
+        }
+      }
+      break;
     case kPostByID: {
       QueryHandler *qh;
       bool live;
@@ -539,6 +555,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       this->commonQuery.Fetch();
       if (nonEmpty)
         BMessenger(this).SendMessage(B_PULSE);
+    } else {
+      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i)))
+          BMessenger(handler).SendMessage('DONE');
+      }
     }
   } else if (msg->what == 'UQRY') {
     if (!this->pendingQueryMods) {

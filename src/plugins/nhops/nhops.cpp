@@ -36,7 +36,8 @@ extern "C" status_t selectContacts(ContactSelection *target,
     pending.clear();
     for (const BString &key : layer) {
       BMessage node;
-      if (graph->FindMessage(key, &node) == B_OK) {
+      if (visited.find(key) == visited.end() &&
+          graph->FindMessage(key, &node) == B_OK) {
         status_t err;
         char *attrname;
         type_code attrtype;
@@ -47,12 +48,14 @@ extern "C" status_t selectContacts(ContactSelection *target,
           if (err == B_OK && visited.find(attrname) == visited.end() &&
               target->blocked.find(attrname) == target->blocked.end() &&
               node.FindMessage(attrname, &edge) == B_OK &&
-              edge.GetBool("following", true) &&
+              edge.GetBool("following", false) &&
               !edge.GetBool("blocked", false)) {
             pending.insert(attrname);
             target->selected.insert(attrname);
           }
+          index++;
         }
+        visited.insert(key);
       }
     }
   }

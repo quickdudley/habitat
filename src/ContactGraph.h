@@ -12,6 +12,9 @@ struct ContactSelection {
   std::set<BString> selected;
   std::set<BString> blocked;
   std::set<BString> own;
+  ContactSelection &operator+=(const ContactSelection &other);
+  ContactSelection operator+(const ContactSelection &other) const;
+  std::set<BString> combine() const;
 };
 
 struct ContactLinkState {
