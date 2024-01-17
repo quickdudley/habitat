@@ -14,6 +14,8 @@
 #include <vector>
 
 namespace {
+SSBDatabase *runningDB = NULL;
+
 status_t postAttrs(BNode *sink, BMessage *message,
                    const unsigned char *prehashed = NULL);
 
@@ -40,12 +42,16 @@ void AttrCheck::MessageReceived(BMessage *msg) {
       if (BMessage contents;
           file.IsReadable() && contents.Unflatten(&file) == B_OK) {
         postAttrs(&file, &contents);
+        if (entry_ref ref; entry.GetRef(&ref) == B_OK) {
+          BMessage gc('CHCK');
+          gc.AddRef("entry", &ref);
+          BMessenger(runningDB).SendMessage(&gc);
+        }
       }
-      BMessenger(this).SendMessage(&tick);
-      //  BMessageRunner::StartSending(this, &tick, 250000, 1);
+      BMessageRunner::StartSending(this, &tick, 5000, 1); // 5 milliseconds
     } else {
       this->dir.Rewind();
-      BMessageRunner::StartSending(this, &tick, 86400000000, 1); // 24 hours
+      BMessageRunner::StartSending(this, &tick, 30000000, 1); // 30 seconds
     }
   } else {
     BHandler::MessageReceived(msg);
@@ -272,9 +278,15 @@ SSBDatabase::SSBDatabase(BDirectory store, BDirectory contacts)
     :
     BLooper("SSB message database"),
     store(store),
-    contacts(contacts) {}
+    contacts(contacts) {
+  if (runningDB == NULL)
+    runningDB = this;
+}
 
-SSBDatabase::~SSBDatabase() {}
+SSBDatabase::~SSBDatabase() {
+  if (runningDB == this)
+    runningDB = NULL;
+}
 
 thread_id SSBDatabase::Run() {
   Writer *writer = new Writer(&this->store, this);
@@ -579,6 +591,19 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           BMessenger(handler).SendMessage(msg);
       }
     }
+  } else if (msg->what == 'CHCK' && this->collectingGarbage) {
+    if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
+      BEntry entry(&ref);
+      BNode node(&entry);
+      BString author;
+      if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
+        return;
+      SSBFeed *feed;
+      if (this->findFeed(feed, author) != B_OK || feed == NULL)
+        entry.Remove();
+    }
+  } else if (msg->what == 'GCOK') {
+    this->collectingGarbage = true;
   } else {
     return BLooper::MessageReceived(msg);
   }
@@ -819,6 +844,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
+        BEntry(&this->metastore).Remove();
         this->Looper()->RemoveHandler(this);
         delete this;
         error = B_OK;

@@ -55,6 +55,7 @@ private:
   BQuery commonQuery;
   BMessenger writes;
   bool pendingQueryMods = false;
+  bool collectingGarbage = false;
 };
 
 class SSBFeed : public QueryBacked {

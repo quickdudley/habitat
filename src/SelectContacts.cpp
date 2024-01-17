@@ -78,8 +78,9 @@ void SelectContacts::makeSelection(BMessage *graph) {
     leftover.erase(item);
   }
   for (auto item : leftover) {
-  	BMessage request(B_DELETE_PROPERTY);
-  	request.AddSpecifier("ReplicatedFeed", item);
-  	this->db.SendMessage(&request);
+    BMessage request(B_DELETE_PROPERTY);
+    request.AddSpecifier("ReplicatedFeed", item);
+    this->db.SendMessage(&request);
   }
+  this->db.SendMessage('GCOK');
 }
