@@ -40,7 +40,7 @@ private:
   std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
-  std::map<BString, int32> lastSent;
+  std::map<BString, int64> lastSent;
   friend class Dispatcher;
 };
 

@@ -427,10 +427,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         if (error == B_OK &&
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
-          if (this->findFeed(feed, formatted) != B_OK)
+          if (this->findFeed(feed, formatted) != B_OK) {
             feed = new SSBFeed(&this->store, &this->contacts, key);
-          this->AddHandler(feed);
-          feed->load();
+            this->AddHandler(feed);
+            feed->load();
+          }
           reply.AddMessenger("result", BMessenger(feed));
         }
       } break;
@@ -610,14 +611,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
-  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-    SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
-    if (feed && feed->cypherkey() == cypherkey) {
-      result = feed;
-      return B_OK;
-    }
-  }
-  return B_NAME_NOT_FOUND;
+  if (auto entry = this->feeds.find(cypherkey); entry != this->feeds.end()) {
+  	result = entry->second;
+  	return B_OK;
+  } else
+    return B_NAME_NOT_FOUND;
 }
 
 status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
@@ -730,8 +728,6 @@ status_t SSBFeed::load() {
     query.PushOp(B_GT);
     query.PushOp(B_AND);
   }
-  if (this->Looper())
-    query.SetTarget(BMessenger(this));
   if ((error = query.Fetch()) == B_OK) {
     entry_ref ref;
     while (query.GetNextRef(&ref) == B_OK) {
@@ -764,6 +760,9 @@ status_t SSBFeed::load() {
   }
   this->savedSequence = this->lastSequence;
   memcpy(this->savedHash, this->lastHash, crypto_hash_sha256_BYTES);
+  if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL) {
+  	db->feeds.insert({this->cypherkey(), this});
+  }
   if (stale)
     this->cacheLatest();
   this->notifyChanges();
@@ -846,6 +845,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       if (msg->what == B_DELETE_PROPERTY) {
         BEntry(&this->metastore).Remove();
         this->Looper()->RemoveHandler(this);
+        dynamic_cast<SSBDatabase *>(this->Looper())->feeds.erase(this->cypherkey());
         delete this;
         error = B_OK;
       } else {

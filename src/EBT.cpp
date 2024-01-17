@@ -354,8 +354,8 @@ void Link::tick(const BString &author) {
     line->second.updated = system_time();
   } else {
     auto [entry, inserted] = this->lastSent.insert({author, INT64_MIN});
-    if (inserted || entry.second != INT64_MIN) {
-      entry.second = INT64_MIN;
+    if (inserted || entry->second != INT64_MIN) {
+      entry->second = INT64_MIN;
       this->sendSequence.push(author);
       dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
     }

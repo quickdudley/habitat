@@ -7,6 +7,7 @@
 #include <PropertyInfo.h>
 #include <Query.h>
 #include <Volume.h>
+#include <map>
 #include <queue>
 #include <vector>
 
@@ -54,6 +55,7 @@ private:
   BDirectory contacts;
   BQuery commonQuery;
   BMessenger writes;
+  std::map<BString, SSBFeed *> feeds;
   bool pendingQueryMods = false;
   bool collectingGarbage = false;
 };
