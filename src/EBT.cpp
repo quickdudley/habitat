@@ -80,14 +80,12 @@ void Dispatcher::MessageReceived(BMessage *msg) {
             if (foundNote->second.sequence != sequence) {
               foundNote->second.sequence = sequence;
               changed = true;
-              link->unsent.insert(cypherkey);
               link->sendSequence.push(cypherkey);
             }
           } else {
             link->ourState.insert(
                 {cypherkey, {true, justOne, (uint64)sequence, (uint64)saved}});
             changed = true;
-            link->unsent.insert(cypherkey);
             link->sendSequence.push(cypherkey);
           }
         }
@@ -128,7 +126,6 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       } else if (cypherkey != "") {
         for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
           if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-            link->unsent.insert(cypherkey);
             link->sendSequence.push(cypherkey);
             this->startNotesTimer(1000);
             return;
@@ -170,7 +167,6 @@ void Dispatcher::MessageReceived(BMessage *msg) {
           if (line->second.receive != receiving) {
             anyChanged = true;
             line->second.receive = receiving;
-            link->unsent.insert(cypherkey);
             link->sendSequence.push(cypherkey);
           }
         }
@@ -184,19 +180,24 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     for (int i = this->CountHandlers() - 1; i >= 0; i--) {
       if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
         BMessage content;
-        int counter = 20;
+        int counter = 50;
         bool nonempty;
         while (counter > 0 && !link->sendSequence.empty()) {
-          if (link->unsent.erase(link->sendSequence.front()) > 0) {
+          auto &feedID = link->sendSequence.front();
+          int64 noteValue;
+          if (auto state = link->ourState.find(feedID);
+              state != link->ourState.end()) {
+            noteValue = encodeNote(state->second);
+          } else {
+            noteValue = -1;
+          }
+          auto [sentValue, insertedSent] =
+              link->lastSent.insert({feedID, noteValue});
+          if (insertedSent || sentValue->second != noteValue) {
             nonempty = true;
             counter--;
-            if (auto state = link->ourState.find(link->sendSequence.front());
-                state != link->ourState.end()) {
-              content.AddInt64(link->sendSequence.front(),
-                               encodeNote(state->second));
-            } else {
-              content.AddInt64(link->sendSequence.front(), -1);
-            }
+            sentValue->second = noteValue;
+            content.AddInt64(feedID, noteValue);
           }
           link->sendSequence.pop();
         }
@@ -306,7 +307,6 @@ void Link::MessageReceived(BMessage *message) {
                     inserted.first->second.note.sequence + 1);
               }
             } else {
-              this->unsent.insert(attrname);
               this->sendSequence.push(attrname);
               dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
             }
@@ -325,13 +325,11 @@ void Link::MessageReceived(BMessage *message) {
       if (content.FindUInt64("sequence", &sequence) == B_OK &&
           content.FindString("cypherkey", &feedId) == B_OK) {
         this->ourState.insert({feedId, {true, shouldReplicate, sequence}});
-        this->unsent.emplace(feedId);
         this->sendSequence.push(feedId);
       }
       i++;
     }
-    if (!this->unsent.empty())
-      dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
+    dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
   }
   if (!message->GetBool("stream", true) || message->GetBool("end", false)) {
     Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
@@ -354,6 +352,13 @@ void Link::tick(const BString &author) {
   if (auto line = this->remoteState.find(author);
       line != this->remoteState.end()) {
     line->second.updated = system_time();
+  } else {
+    auto [entry, inserted] = this->lastSent.insert({author, INT64_MIN});
+    if (inserted || entry.second != INT64_MIN) {
+      entry.second = INT64_MIN;
+      this->sendSequence.push(author);
+      dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
+    }
   }
 }
 
