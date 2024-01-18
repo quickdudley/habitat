@@ -13,6 +13,7 @@
 #include <Path.h>
 #include <Window.h>
 #include <memory>
+#include <set>
 #include <unicode/timezone.h>
 
 class MainWindow : public BWindow {
@@ -50,6 +51,7 @@ private:
   std::unique_ptr<SSBListener> ipListener;
   std::unique_ptr<BHandler> lanBroadcaster;
   std::shared_ptr<Ed25519Secret> myId;
+  std::set<void *> cloggedChannels;
 };
 
 extern Habitat *app;

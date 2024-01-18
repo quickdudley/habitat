@@ -2,7 +2,9 @@
 #include "BJSON.h"
 #include "Base64.h"
 #include "SignJSON.h"
+#include <Application.h>
 #include <File.h>
+#include <MessageQueue.h>
 #include <MessageRunner.h>
 #include <NodeMonitor.h>
 #include <Path.h>
@@ -243,7 +245,7 @@ bool QueryHandler::queryMatch(entry_ref *entry) {
   return true;
 }
 
-class Writer : public BLooper {
+class Writer : public AntiClog {
 public:
   Writer(BDirectory *store, SSBDatabase *db);
   void MessageReceived(BMessage *message) override;
@@ -256,7 +258,7 @@ private:
 
 Writer::Writer(BDirectory *store, SSBDatabase *db)
     :
-    BLooper("Database write queue"),
+    AntiClog("Database write queue", 2048, 1536),
     store(store),
     db(db) {
   BHandler *check = new AttrCheck(*store);
@@ -274,9 +276,30 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
+AntiClog::AntiClog(const char *name, int32 capacity, int32 lax)
+    :
+    BLooper(name),
+    capacity(capacity),
+    lax(lax),
+    clogged(false) {}
+
+void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
+  {
+    auto count = this->MessageQueue()->CountMessages();
+    if (this->clogged ? (count <= this->lax) : (count >= this->capacity)) {
+      this->clogged = !this->clogged;
+      BMessage notify('CLOG');
+      notify.AddPointer("channel", this);
+      notify.AddBool("clogged", this->clogged);
+      BMessenger(be_app).SendMessage(&notify);
+    }
+  }
+  BLooper::DispatchMessage(message, handler);
+}
+
 SSBDatabase::SSBDatabase(BDirectory store, BDirectory contacts)
     :
-    BLooper("SSB message database"),
+    AntiClog("SSB message database", 512, 32),
     store(store),
     contacts(contacts) {
   if (runningDB == NULL)
@@ -612,10 +635,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
   if (auto entry = this->feeds.find(cypherkey); entry != this->feeds.end()) {
-  	result = entry->second;
-  	return B_OK;
-  } else
+    result = entry->second;
+    return B_OK;
+  } else {
     return B_NAME_NOT_FOUND;
+  }
 }
 
 status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
@@ -760,9 +784,8 @@ status_t SSBFeed::load() {
   }
   this->savedSequence = this->lastSequence;
   memcpy(this->savedHash, this->lastHash, crypto_hash_sha256_BYTES);
-  if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL) {
-  	db->feeds.insert({this->cypherkey(), this});
-  }
+  if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
+    db->feeds.insert({this->cypherkey(), this});
   if (stale)
     this->cacheLatest();
   this->notifyChanges();
@@ -845,7 +868,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       if (msg->what == B_DELETE_PROPERTY) {
         BEntry(&this->metastore).Remove();
         this->Looper()->RemoveHandler(this);
-        dynamic_cast<SSBDatabase *>(this->Looper())->feeds.erase(this->cypherkey());
+        dynamic_cast<SSBDatabase *>(this->Looper())
+            ->feeds.erase(this->cypherkey());
         delete this;
         error = B_OK;
       } else {

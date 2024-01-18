@@ -94,6 +94,26 @@ void Dispatcher::MessageReceived(BMessage *msg) {
         this->startNotesTimer(1000);
     }
     return;
+  } else if (msg->what == 'CLOG') {
+    bool nowClogged;
+    if (msg->FindBool("clogged", &nowClogged) != B_OK ||
+        nowClogged == this->clogged) {
+      return;
+    }
+    this->clogged = nowClogged;
+    bool toggled;
+    for (int i = 0; i < this->CountHandlers(); i++) {
+      if (auto link = dynamic_cast<Link *>(this->HandlerAt(i))) {
+        for (auto &state : link->ourState) {
+          if (state.second.receive) {
+            link->sendSequence.push(state.first);
+            toggled = true;
+          }
+        }
+      }
+    }
+    if (toggled)
+      this->startNotesTimer(0);
   }
   if (msg->IsReply()) {
     if (status_t response; msg->FindInt32("error", &response) == B_OK &&
@@ -187,7 +207,10 @@ void Dispatcher::MessageReceived(BMessage *msg) {
           int64 noteValue;
           if (auto state = link->ourState.find(feedID);
               state != link->ourState.end()) {
-            noteValue = encodeNote(state->second);
+            auto noteStruct = state->second;
+            if (this->clogged)
+              noteStruct.receive = false;
+            noteValue = encodeNote(noteStruct);
           } else {
             noteValue = -1;
           }

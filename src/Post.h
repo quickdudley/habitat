@@ -30,11 +30,22 @@ public:
   virtual bool queryMatch(entry_ref *entry) = 0;
 };
 
+class AntiClog : public BLooper {
+public:
+  AntiClog(const char *name, int32 capacity, int32 lax);
+  void DispatchMessage(BMessage *message, BHandler *handler) override;
+
+private:
+  int32 capacity;
+  int32 lax;
+  bool clogged;
+};
+
 class SSBFeed;
 
 extern property_info databaseProperties[];
 
-class SSBDatabase : public BLooper {
+class SSBDatabase : public AntiClog {
 public:
   SSBDatabase(BDirectory store, BDirectory contacts);
   ~SSBDatabase() override;

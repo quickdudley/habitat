@@ -60,6 +60,7 @@ private:
   bool polyLink();
   SSBDatabase *db;
   bool buildingNotes = false;
+  bool clogged = false;
   friend class Link;
 };
 

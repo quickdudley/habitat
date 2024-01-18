@@ -225,6 +225,23 @@ void Habitat::MessageReceived(BMessage *msg) {
         }
       }
       return;
+    } else if (msg->what == 'CLOG' && !msg->IsSourceRemote()) {
+      bool currentlyClogged = this->cloggedChannels.empty();
+      void *channel;
+      if (msg->FindPointer("channel", &channel) != B_OK)
+        return;
+      bool clogged;
+      if (msg->FindBool("clogged", &clogged) != B_OK)
+        return;
+      if (clogged)
+        cloggedChannels.insert(channel);
+      else
+        cloggedChannels.erase(channel);
+      if (currentlyClogged != cloggedChannels.empty()) {
+        BMessage forward('CLOG');
+        forward.AddBool("clogged", !currentlyClogged);
+        BMessenger(this->ebt).SendMessage(&forward);
+      }
     } else {
       return BApplication::MessageReceived(msg);
     }

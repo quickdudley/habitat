@@ -2,13 +2,9 @@
 #include <Looper.h>
 
 ContactSelection &ContactSelection::operator+=(const ContactSelection &other) {
-#define MERGE_IN(prop)                                                         \
-  for (auto item : other.prop)                                                 \
-  this->prop.insert(item)
-  MERGE_IN(selected);
-  MERGE_IN(blocked);
-  MERGE_IN(own);
-#undef MERGE_IN
+  this->selected.insert(other.selected.begin(), other.selected.end());
+  this->blocked.insert(other.blocked.begin(), other.selected.end());
+  this->own.insert(other.own.begin(), other.own.end());
   return *this;
 }
 
@@ -48,14 +44,16 @@ void ContactGraph::MessageReceived(BMessage *message) {
       this->pending.push_back(this->Looper()->DetachCurrentMessage());
     break;
   case 'DONE':
-    this->ready = true;
-    this->SendNotices('CTAC');
-    for (auto rq : this->pending) {
-      this->sendState(rq);
-      delete rq;
+    if (!this->ready) {
+      this->ready = true;
+      this->SendNotices('CTAC');
+      for (auto rq : this->pending) {
+        this->sendState(rq);
+        delete rq;
+      }
+      this->pending.clear();
+      this->pending.shrink_to_fit();
     }
-    this->pending.clear();
-    this->pending.shrink_to_fit();
     break;
   case 'JSOB':
     return logContact(message);
