@@ -63,5 +63,5 @@ extern "C" status_t selectContacts(ContactSelection *target,
 }
 
 extern "C" status_t defaultConfig(BMessage *target) {
-  return target->AddInt32("hops", 0);
+  return target->AddInt32("hops", 2);
 }
