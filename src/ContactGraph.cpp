@@ -2,9 +2,13 @@
 #include <Looper.h>
 
 ContactSelection &ContactSelection::operator+=(const ContactSelection &other) {
-  this->selected.insert(other.selected.begin(), other.selected.end());
-  this->blocked.insert(other.blocked.begin(), other.selected.end());
-  this->own.insert(other.own.begin(), other.own.end());
+#define MERGE_ONE(prop) \
+  if (other.prop.size() > 0) \
+    this->prop.insert(other.prop.begin(), other.prop.end())
+  MERGE_ONE(selected);
+  MERGE_ONE(blocked);
+  MERGE_ONE(own);
+#undef MERGE_ONE
   return *this;
 }
 
