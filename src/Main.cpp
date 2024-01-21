@@ -353,13 +353,16 @@ void Habitat::ReadyToRun() {
   auto worker = new BLooper("Worker thread");
   worker->Run();
   worker->Lock();
-  auto graph = new ContactGraph();
+  BVolume volume;
+  this->settings->GetVolume(&volume);
+  auto graph = new ContactGraph(volume);
   worker->AddHandler(graph);
   {
     BMessage rq(B_GET_PROPERTY);
     BMessage specifier('CPLX');
     specifier.AddString("property", "Post");
     specifier.AddString("type", "contact");
+    specifier.AddBool("dregs", true);
     rq.AddSpecifier(&specifier);
     rq.AddMessenger("target", BMessenger(graph));
     BMessenger(this->databaseLooper).SendMessage(&rq);

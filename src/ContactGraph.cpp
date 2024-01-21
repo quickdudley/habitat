@@ -1,10 +1,11 @@
 #include "ContactGraph.h"
 #include <Looper.h>
+#include <Query.h>
 
 ContactSelection &ContactSelection::operator+=(const ContactSelection &other) {
-#define MERGE_ONE(prop) \
-  if (other.prop.size() > 0) \
-    this->prop.insert(other.prop.begin(), other.prop.end())
+#define MERGE_ONE(prop)                                                        \
+  if (other.prop.size() > 0)                                                   \
+  this->prop.insert(other.prop.begin(), other.prop.end())
   MERGE_ONE(selected);
   MERGE_ONE(blocked);
   MERGE_ONE(own);
@@ -37,27 +38,74 @@ ContactLinkState::ContactLinkState()
     blocking(false),
     pub(false) {}
 
-ContactGraph::ContactGraph() {}
+void ContactLinkState::archive(BMessage *message) const {
+#define ARCHIVE_FIELD(field)                                                   \
+  {                                                                            \
+    BMessage pack;                                                             \
+    pack.AddBool("value", this->field.peek());                                 \
+    pack.AddInt64("sequence", this->field.threshold());                        \
+    message->AddMessage(#field, &pack);                                        \
+  }
+  ARCHIVE_FIELD(following)
+  ARCHIVE_FIELD(blocking)
+  ARCHIVE_FIELD(pub)
+#undef ARCHIVE_FIELD
+}
+
+void ContactLinkState::unarchive(BMessage *message) {
+  BMessage pack;
+#define UNARCHIVE_FIELD(field)                                                 \
+  if (message->FindMessage(#field, &pack) == B_OK) {                           \
+    int64 sequence;                                                            \
+    bool value;                                                                \
+    if (pack.FindInt64("sequence", &sequence) == B_OK &&                       \
+        pack.FindBool("value", &value) == B_OK)                                \
+      this->field.put(value, sequence);                                        \
+  }
+  UNARCHIVE_FIELD(following)
+  UNARCHIVE_FIELD(blocking)
+  UNARCHIVE_FIELD(pub)
+#undef UNARCHIVE_FIELD
+}
+
+ContactGraph::ContactGraph(const BVolume &volume)
+    :
+    volume(volume) {
+  BQuery query;
+  query.SetVolume(&volume);
+  query.PushAttr("HABITAT:cypherkey");
+  query.PushString("@");
+  query.PushOp(B_BEGINS_WITH);
+  query.Fetch();
+  entry_ref ref;
+  while (query.GetNextRef(&ref) == B_OK) {
+    BMessage metadata;
+    BMessage contacts;
+    BFile file(&ref, B_READ_ONLY);
+    auto &node =
+        this->graph.insert({ref.name, std::map<BString, ContactLinkState>()})
+            .first->second;
+    if (metadata.Unflatten(&file) == B_OK &&
+        metadata.FindMessage("contacts", &contacts) == B_OK) {
+      status_t err;
+      char *attrname;
+      type_code attrtype;
+      int32 index = 0;
+      while ((err = contacts.GetInfo(B_MESSAGE_TYPE, index, &attrname,
+                                     &attrtype)) != B_BAD_INDEX) {
+        BMessage edge;
+        auto &sedge = node.insert({attrname, ContactLinkState()}).first->second;
+        sedge.unarchive(&edge);
+        index++;
+      }
+    }
+  }
+}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_GET_PROPERTY:
-    if (this->ready)
-      this->sendState(message);
-    else
-      this->pending.push_back(this->Looper()->DetachCurrentMessage());
-    break;
-  case 'DONE':
-    if (!this->ready) {
-      this->ready = true;
-      this->SendNotices('CTAC');
-      for (auto rq : this->pending) {
-        this->sendState(rq);
-        delete rq;
-      }
-      this->pending.clear();
-      this->pending.shrink_to_fit();
-    }
+    this->sendState(message);
     break;
   case 'JSOB':
     return logContact(message);
@@ -127,8 +175,39 @@ void ContactGraph::logContact(BMessage *message) {
         }
       },
       sequence);
-  if (changed && this->ready)
+  if (changed) {
+    BMessage metadata;
+    BMessage contacts;
+    BQuery query;
+    entry_ref entry;
+    BFile metafile;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(author);
+    query.PushOp(B_EQ);
+    if (query.Fetch() != B_OK)
+      goto notices;
+    if (query.GetNextRef(&entry) != B_OK)
+      goto notices;
+    if (metafile.SetTo(&entry, B_READ_WRITE) != B_OK)
+      goto notices;
+    if (metadata.Unflatten(&metafile) != B_OK)
+      goto notices;
+    if (metafile.Seek(0, SEEK_SET) != B_OK)
+      goto notices;
+    if (metafile.SetSize(0) != B_OK)
+      goto notices;
+    metadata.RemoveName("contacts");
+    for (const auto &[peer, status] : node) {
+      BMessage subrecord;
+      status.archive(&subrecord);
+      contacts.AddMessage(peer, &subrecord);
+    }
+    metadata.AddMessage("contacts", &contacts);
+    metadata.Flatten(&metafile);
+  notices:
     this->SendNotices('CTAC');
+  }
 }
 
 void ContactGraph::sendState(BMessage *request) {

@@ -9,6 +9,7 @@ public:
       :
       value(value) {}
   const T &peek() const { return value; }
+  int64 threshold() const { return weight; }
   void put(const T &value, int64 weight) {
     if (weight > this->weight) {
       this->value = value;

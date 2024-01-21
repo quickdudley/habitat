@@ -74,12 +74,15 @@ private:
   bool started = false;
   bool ongoing = false;
   bool drips = false;
+  bool dregs;
+  friend void SSBDatabase::MessageReceived(BMessage *);
 };
 
 QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
     :
     target(target),
-    specifier(specifier) {}
+    specifier(specifier),
+    dregs(specifier.GetBool("dregs", false)) {}
 
 status_t populateQuery(BQuery &query, BMessage *specifier) {
   bool already = false;
@@ -161,7 +164,7 @@ void QueryHandler::MessageReceived(BMessage *message) {
     }
     break;
   case 'DONE':
-    if (this->started && !this->drips) {
+    if (!this->dregs && this->started && !this->drips) {
       this->drips = true;
       this->target.SendMessage('DONE');
     } else {
@@ -183,14 +186,13 @@ void QueryHandler::MessageReceived(BMessage *message) {
 bool QueryHandler::fillQuery(BQuery *query, time_t reset) {
   if (populateQuery(*query, &this->specifier) != B_OK)
     return false;
-  if (this->ongoing) {
+  if (this->ongoing || this->dregs) {
     query->PushAttr("last_modified");
     query->PushInt64((int64)reset);
     query->PushOp(B_GE);
     query->PushOp(B_AND);
-  } else {
-    this->ongoing = true;
   }
+  this->ongoing = true;
   return true;
 }
 
@@ -623,8 +625,21 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
         return;
       SSBFeed *feed;
-      if (this->findFeed(feed, author) != B_OK || feed == NULL)
+      if (this->findFeed(feed, author) != B_OK || feed == NULL) {
         entry.Remove();
+      } else {
+        BMessage mimic(B_QUERY_UPDATE);
+        mimic.AddInt32("opcode", B_ENTRY_CREATED);
+        mimic.AddInt32("device", ref.device);
+        mimic.AddInt64("directory", ref.directory);
+        mimic.AddString("name", ref.name);
+        for (int i = 0; i < this->CountHandlers(); i++) {
+          if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
+              qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
+            BMessenger(qh).SendMessage(&mimic);
+          }
+        }
+      }
     }
   } else if (msg->what == 'GCOK') {
     this->collectingGarbage = true;
@@ -867,9 +882,9 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
         BEntry(&this->metastore).Remove();
+        if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
+          db->feeds.erase(this->cypherkey());
         this->Looper()->RemoveHandler(this);
-        dynamic_cast<SSBDatabase *>(this->Looper())
-            ->feeds.erase(this->cypherkey());
         delete this;
         error = B_OK;
       } else {
