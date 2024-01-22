@@ -638,6 +638,13 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             BMessenger(qh).SendMessage(&mimic);
           }
         }
+        int64 sequence;
+        if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
+                          sizeof(int64)) == B_OK) {
+          BMessage check('CHCK');
+          check.AddInt64("sequence", sequence);
+          BMessenger(this).SendMessage(&check);
+        }
       }
     }
   } else if (msg->what == 'GCOK') {
@@ -733,7 +740,7 @@ notfound: {
 }
 }
 
-status_t SSBFeed::load() {
+status_t SSBFeed::load(bool useCache) {
   status_t error;
   BQuery query;
   bool stale = false;
@@ -742,21 +749,23 @@ status_t SSBFeed::load() {
   BString attrValue = this->cypherkey();
   query.PushString(attrValue.String());
   query.PushOp(B_EQ);
-  BMessage metadata;
-  {
-    BFile chkMeta(&this->metastore, B_READ_ONLY);
-    if (chkMeta.IsReadable())
-      metadata.Unflatten(&chkMeta);
-  }
-  {
-    BString cachedID;
-    int64 cachedSequence;
-    if (metadata.FindString("lastID", &cachedID) == B_OK &&
-        metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
-      auto rawid = base64::decode(cachedID);
-      if (rawid.size() == crypto_hash_sha256_BYTES) {
-        this->lastSequence = cachedSequence;
-        memcpy(this->lastHash, rawid.data(), crypto_hash_sha256_BYTES);
+  if (useCache) {
+    BMessage metadata;
+    {
+      BFile chkMeta(&this->metastore, B_READ_ONLY);
+      if (chkMeta.IsReadable())
+        metadata.Unflatten(&chkMeta);
+    }
+    {
+      BString cachedID;
+      int64 cachedSequence;
+      if (metadata.FindString("lastID", &cachedID) == B_OK &&
+          metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
+        auto rawid = base64::decode(cachedID);
+        if (rawid.size() == crypto_hash_sha256_BYTES) {
+          this->lastSequence = cachedSequence;
+          memcpy(this->lastHash, rawid.data(), crypto_hash_sha256_BYTES);
+        }
       }
     }
   }
@@ -803,6 +812,11 @@ status_t SSBFeed::load() {
   if (stale)
     this->cacheLatest();
   this->notifyChanges();
+  {
+    BMessage check('CHCK');
+    check.AddInt64("sequence", this->lastSequence);
+    BMessenger(this).SendMessage(&check);
+  }
   return error;
 }
 
@@ -951,6 +965,24 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
     this->cacheLatest();
     this->notifyChanges();
+  } else if (msg->what == 'CHCK') {
+    int64 sequence;
+    if (msg->FindInt64("sequence", &sequence) != B_OK)
+      return;
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:author");
+    query.PushString(this->cypherkey());
+    query.PushOp(B_EQ);
+    query.PushAttr("HABITAT:sequence");
+    query.PushInt64(sequence);
+    query.PushOp(B_EQ);
+    query.PushOp(B_AND);
+    if (query.Fetch() != B_OK)
+      return;
+    entry_ref ref;
+    if (query.GetNextRef(&ref) != B_OK)
+      this->load(false);
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
@@ -1151,7 +1183,6 @@ void Writer::MessageReceived(BMessage *message) {
       entry.GetRef(&ref);
       result.AddRef("ref", &ref);
       result.AddString("cypherkey", messageCypherkey(msgHash));
-
       if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
         goto sendReply;
       {

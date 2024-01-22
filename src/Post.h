@@ -82,7 +82,7 @@ public:
   void MessageReceived(BMessage *msg) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
-  status_t load();
+  status_t load(bool useCache = true);
   bool fillQuery(BQuery *query, time_t reset) override;
   bool queryMatch(entry_ref *entry) override;
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
