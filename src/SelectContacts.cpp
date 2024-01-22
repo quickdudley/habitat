@@ -71,16 +71,21 @@ void SelectContacts::makeSelection(BMessage *graph) {
   auto leftover = this->current;
   this->current = full.combine();
   for (auto item : this->current) {
-    BMessage create(B_CREATE_PROPERTY);
-    create.AddSpecifier("ReplicatedFeed");
-    create.AddString("cypherkey", item);
-    this->db.SendMessage(&create);
-    leftover.erase(item);
+    if (leftover.find(item) == leftover.end()) {
+      BMessage create(B_CREATE_PROPERTY);
+      BMessage reply;
+      create.AddSpecifier("ReplicatedFeed");
+      create.AddString("cypherkey", item);
+      this->db.SendMessage(&create, &reply);
+    } else {
+      leftover.erase(item);
+    }
   }
   for (auto item : leftover) {
     BMessage request(B_DELETE_PROPERTY);
+    BMessage reply;
     request.AddSpecifier("ReplicatedFeed", item);
-    this->db.SendMessage(&request);
+    this->db.SendMessage(&request, &reply);
   }
   this->db.SendMessage('GCOK');
 }

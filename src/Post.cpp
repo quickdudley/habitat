@@ -573,7 +573,6 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     } else if (this->pendingQueryMods) {
       time_t reset = time(NULL);
       this->commonQuery.Clear();
-      this->commonQuery.SetTarget(this);
       {
         BVolume volume;
         this->store.GetVolume(&volume);
@@ -887,49 +886,53 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         this->Looper()->RemoveHandler(this);
         delete this;
         error = B_OK;
+        goto reply;
       } else {
         return BHandler::MessageReceived(msg);
       }
     }
-    BPropertyInfo propertyInfo(ssbFeedProperties);
-    if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
-        0) {
-      return BHandler::MessageReceived(msg);
-    }
-    switch (match) {
-    case kFeedCypherkey:
-      reply.AddString("result", this->cypherkey());
-      error = B_OK;
-      break;
-    case kFeedLastSequence:
-      reply.AddInt64("result", this->lastSequence);
-      error = B_OK;
-      break;
-    case kFeedLastID:
-      reply.AddString("result", this->previousLink());
-      error = B_OK;
-      break;
-    case kOnePost: {
-      int32 index;
-      BMessage specifier;
-      int32 spWhat;
-      const char *property;
-      if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
-                                            &property)) != B_OK) {
+    {
+      BPropertyInfo propertyInfo(ssbFeedProperties);
+      if (propertyInfo.FindMatch(msg, index, &specifier, what, property,
+                                 &match) < 0) {
+        return BHandler::MessageReceived(msg);
+      }
+      switch (match) {
+      case kFeedCypherkey:
+        reply.AddString("result", this->cypherkey());
+        error = B_OK;
         break;
-      }
-      if (spWhat == B_INDEX_SPECIFIER) {
-        if ((error = specifier.FindInt32("index", &index)) != B_OK)
+      case kFeedLastSequence:
+        reply.AddInt64("result", this->lastSequence);
+        error = B_OK;
+        break;
+      case kFeedLastID:
+        reply.AddString("result", this->previousLink());
+        error = B_OK;
+        break;
+      case kOnePost: {
+        int32 index;
+        BMessage specifier;
+        int32 spWhat;
+        const char *property;
+        if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
+                                              &property)) != B_OK) {
           break;
-        BMessage post;
-        if ((error = this->findPost(&post, index)) != B_OK)
-          break;
-        reply.AddMessage("result", &post);
+        }
+        if (spWhat == B_INDEX_SPECIFIER) {
+          if ((error = specifier.FindInt32("index", &index)) != B_OK)
+            break;
+          BMessage post;
+          if ((error = this->findPost(&post, index)) != B_OK)
+            break;
+          reply.AddMessage("result", &post);
+        }
+      } break;
+      default:
+        return BHandler::MessageReceived(msg);
       }
-    } break;
-    default:
-      return BHandler::MessageReceived(msg);
     }
+  reply:
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     if (msg->ReturnAddress().IsValid())
@@ -1161,6 +1164,12 @@ void Writer::MessageReceived(BMessage *message) {
         this->db->notifySaved(author, sequence, msgHash);
       }
       reply.AddMessage("result", &result);
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", ref.device);
+      mimic.AddInt64("directory", ref.directory);
+      mimic.AddString("name", ref.name);
+      BMessenger(this->db).SendMessage(&mimic);
     }
   sendReply:
     reply.AddInt32("error", status);

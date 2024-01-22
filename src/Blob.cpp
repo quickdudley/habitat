@@ -372,6 +372,14 @@ void FetchSink::MessageReceived(BMessage *message) {
     if (std::equal(gotHash, gotHash + crypto_hash_sha256_BYTES,
                    this->expectedHash)) {
       file.WriteAttrString("HABITAT:cypherkey", &cypherkey);
+      entry_ref ref;
+      this->entry.GetRef(&ref);
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", ref.device);
+      mimic.AddInt64("directory", ref.directory);
+      mimic.AddString("name", ref.name);
+      BMessenger(this->Looper()).SendMessage(&mimic);
     } else {
       this->entry.Remove();
     }
