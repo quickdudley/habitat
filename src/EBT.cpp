@@ -199,6 +199,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     bool anyRemaining = false;
     for (int i = this->CountHandlers() - 1; i >= 0; i--) {
       if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
+      	if (link->waiting)
+      	  continue;
         BMessage content;
         int counter = 50;
         bool nonempty;
@@ -297,15 +299,16 @@ Begin::Begin(Dispatcher *dispatcher)
 
 Begin::~Begin() {}
 
-Link::Link(muxrpc::Sender sender)
+Link::Link(muxrpc::Sender sender, bool waiting)
     :
-    sender(sender) {}
+    sender(sender), waiting(waiting) {}
 
 void Link::MessageReceived(BMessage *message) {
   BMessage content;
   if (message->FindMessage("content", &content) == B_OK) {
     BString author;
     if (content.FindString("author", &author) == B_OK) {
+      this->stopWaiting();
       this->tick(author);
       if (auto dsp = dynamic_cast<Dispatcher *>(this->Looper());
           dsp != NULL && dsp->clogged) {
@@ -322,6 +325,7 @@ void Link::MessageReceived(BMessage *message) {
         if (err == B_OK) {
           double note;
           if (content.FindDouble(attrname, &note) == B_OK) {
+          	this->stopWaiting();
             const auto &inserted = this->remoteState.insert_or_assign(
                 BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
@@ -386,6 +390,15 @@ void Link::tick(const BString &author) {
       this->sendSequence.push(author);
       dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
     }
+  }
+}
+
+void Link::stopWaiting() {
+  if (this->waiting) {
+  	if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper()); dispatcher != NULL) {
+	  this->waiting = false;
+	  dispatcher->startNotesTimer(1000);
+  	}
   }
 }
 

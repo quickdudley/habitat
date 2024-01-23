@@ -29,18 +29,20 @@ class Dispatcher;
 
 class Link : public BHandler {
 public:
-  Link(muxrpc::Sender sender);
+  Link(muxrpc::Sender sender, bool waiting = false);
   void MessageReceived(BMessage *message) override;
   void loadState();
 
 private:
   SSBDatabase *db();
   void tick(const BString &author);
+  void stopWaiting();
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
   std::map<BString, int64> lastSent;
+  bool waiting;
   friend class Dispatcher;
 };
 
