@@ -637,56 +637,55 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       }
     }
   } else if (msg->what == 'CHCK') {
-    if (this->collectingGarbage) {
-      if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
-        BEntry entry(&ref);
-        BNode node(&entry);
-        BString author;
-        if (node.ReadAttrString("HABITAT:author", &author) != B_OK) {
-          AttrCheck::resume(msg);
-          return;
-        }
-        SSBFeed *feed;
-        if (this->findFeed(feed, author) != B_OK || feed == NULL) {
-          entry.Remove();
-          AttrCheck::resume(msg);
-        } else {
-          BMessage mimic(B_QUERY_UPDATE);
-          mimic.AddInt32("opcode", B_ENTRY_CREATED);
-          mimic.AddInt32("device", ref.device);
-          mimic.AddInt64("directory", ref.directory);
-          mimic.AddString("name", ref.name);
-          for (int i = 0; i < this->CountHandlers(); i++) {
-            if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
-                qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
-              BMessenger(qh).SendMessage(&mimic);
-            }
-          }
-          int64 sequence;
-          if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
-                            sizeof(int64)) == B_OK &&
-              sequence > 1) {
-            BMessage check('CHCK');
-            check.AddInt64("sequence", sequence - 1);
-            BMessenger resume;
-            if (msg->FindMessenger("resume", &resume) == B_OK)
-              check.AddMessenger("resume", resume);
-            BMessenger(feed).SendMessage(&check);
-          } else {
-            AttrCheck::resume(msg);
-          }
-        }
-      } else {
-        AttrCheck::resume(msg);
-      }
-    } else {
+    if (!this->runCheck(msg))
       AttrCheck::resume(msg);
-    }
   } else if (msg->what == 'GCOK') {
     this->collectingGarbage = true;
   } else {
     return BLooper::MessageReceived(msg);
   }
+}
+
+bool SSBDatabase::runCheck(BMessage *msg) {
+  if (this->collectingGarbage) {
+    if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
+      BEntry entry(&ref);
+      BNode node(&entry);
+      BString author;
+      if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
+        return false;
+      SSBFeed *feed;
+      if (this->findFeed(feed, author) != B_OK || feed == NULL) {
+        entry.Remove();
+        return false;
+      } else {
+        BMessage mimic(B_QUERY_UPDATE);
+        mimic.AddInt32("opcode", B_ENTRY_CREATED);
+        mimic.AddInt32("device", ref.device);
+        mimic.AddInt64("directory", ref.directory);
+        mimic.AddString("name", ref.name);
+        for (int i = 0; i < this->CountHandlers(); i++) {
+          if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
+              qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
+            BMessenger(qh).SendMessage(&mimic);
+          }
+        }
+        int64 sequence;
+        if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
+                          sizeof(int64)) == B_OK &&
+            sequence > 1) {
+          BMessage check('CHCK');
+          check.AddInt64("sequence", sequence - 1);
+          BMessenger resume;
+          if (msg->FindMessenger("resume", &resume) == B_OK)
+            check.AddMessenger("resume", resume);
+          BMessenger(feed).SendMessage(&check);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
@@ -1013,7 +1012,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     }
     this->savedSequence = sequence;
     memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
-    if (this->flushQueue()) {
+    if (this->flushQueue() &&
+        (this->savedSequence > this->lastSequence || !this->pending.empty())) {
       this->lastSequence = this->savedSequence;
       memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
     }

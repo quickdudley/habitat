@@ -62,6 +62,7 @@ public:
 
 private:
   friend class SSBFeed;
+  bool runCheck(BMessage *msg);
   BDirectory store;
   BDirectory contacts;
   BQuery commonQuery;
