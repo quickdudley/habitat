@@ -89,8 +89,9 @@ private:
   bool started = false;
   bool ongoing = false;
   bool drips = false;
+
+public:
   bool dregs;
-  friend void SSBDatabase::MessageReceived(BMessage *);
 };
 
 QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
