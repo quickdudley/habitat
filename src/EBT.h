@@ -12,6 +12,7 @@ struct Note {
   bool replicate;
   bool receive;
   uint64 sequence;
+  uint64 savedSequence;
 };
 
 Note decodeNote(double note);
@@ -39,7 +40,7 @@ private:
   std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
   std::queue<BString> sendSequence;
-  std::set<BString> unsent;
+  std::map<BString, int64> lastSent;
   friend class Dispatcher;
 };
 
@@ -59,6 +60,7 @@ private:
   bool polyLink();
   SSBDatabase *db;
   bool buildingNotes = false;
+  bool clogged = false;
   friend class Link;
 };
 

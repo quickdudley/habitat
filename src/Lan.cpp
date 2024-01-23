@@ -2,7 +2,19 @@
 #include "Base64.h"
 #include <NetworkInterface.h>
 #include <NetworkRoster.h>
+#include <arpa/inet.h>
 #include <iostream>
+
+namespace {
+
+BNetworkAddress makeIp6Local() {
+  in6_addr inner;
+  inet_pton(AF_INET6, "::1", &inner);
+  return BNetworkAddress(inner);
+}
+
+BNetworkAddress localIpv6 = makeIp6Local();
+} // namespace
 
 static BString
 generatePayload(BNetworkAddress *addr,
@@ -81,8 +93,7 @@ status_t LanBroadcaster::sendBroadcast() {
         break;
       BNetworkAddress myAddress = address.Address();
       myAddress.SetPort(this->ssbPort);
-      if (!myAddress.IsEmpty() &&
-          myAddress != BNetworkAddress("::1", this->ssbPort)) {
+      if (!myAddress.IsEmpty() && myAddress != localIpv6) {
         BNetworkAddress broadcastAddress = address.Broadcast();
         BString payload = generatePayload(&myAddress, this->pubkey);
         broadcastAddress.SetPort(8008);

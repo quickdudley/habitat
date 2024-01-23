@@ -50,7 +50,7 @@ int SSBListener::run_() {
     }
     BAbstractSocket *peer;
     if (this->listenSocket->Accept(peer) == B_OK) {
-      peer->SetTimeout(B_INFINITE_TIMEOUT);
+      peer->SetTimeout(5000000);
       std::unique_ptr<BoxStream> shsPeer;
       try {
         shsPeer = std::make_unique<BoxStream>(std::unique_ptr<BDataIO>(peer),
@@ -61,6 +61,7 @@ int SSBListener::run_() {
         delete peer;
         throw;
       }
+      peer->SetTimeout(B_INFINITE_TIMEOUT);
       muxrpc::Connection *rpc =
           new muxrpc::Connection(std::move(shsPeer), this->methods);
       be_app->RegisterLooper(rpc);

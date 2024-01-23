@@ -2,6 +2,7 @@
 #define BLOB_H
 
 #include "MUXRPC.h"
+#include "Post.h"
 #include <Directory.h>
 #include <Query.h>
 #include <Volume.h>
@@ -59,7 +60,7 @@ private:
   Wanted *wanted;
 };
 
-class Wanted : public BHandler {
+class Wanted : public QueryBacked {
 public:
   Wanted(BDirectory dir);
   ~Wanted();
@@ -72,14 +73,15 @@ public:
   void registerMethods(muxrpc::MethodSuite &methods);
   status_t hashFile(entry_ref *ref);
   void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
+  bool fillQuery(BQuery *query, time_t reset) override;
+  bool queryMatch(entry_ref *entry) override;
 
 private:
   void _addWant_(BString &cypherkey, int8 distance,
                  BMessenger replyTo = BMessenger());
   status_t fetch(const BString &cypherkey, muxrpc::Connection *connection);
-  std::vector<
-      std::tuple<BString, int8, std::unique_ptr<BQuery>,
-                 std::vector<BMessenger>, std::queue<muxrpc::Connection *>>>
+  std::vector<std::tuple<BString, int8, std::vector<BMessenger>,
+                         std::queue<muxrpc::Connection *>>>
       wanted;
   BDirectory dir;
   BVolume volume;

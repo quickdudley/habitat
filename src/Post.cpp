@@ -1,8 +1,11 @@
 #include "Post.h"
 #include "BJSON.h"
 #include "Base64.h"
+#include "Logging.h"
 #include "SignJSON.h"
+#include <Application.h>
 #include <File.h>
+#include <MessageQueue.h>
 #include <MessageRunner.h>
 #include <NodeMonitor.h>
 #include <Path.h>
@@ -14,6 +17,8 @@
 #include <vector>
 
 namespace {
+SSBDatabase *runningDB = NULL;
+
 status_t postAttrs(BNode *sink, BMessage *message,
                    const unsigned char *prehashed = NULL);
 
@@ -21,6 +26,7 @@ class AttrCheck : public BHandler {
 public:
   AttrCheck(BDirectory dir);
   void MessageReceived(BMessage *msg);
+  static void resume(BMessage *msg);
 
 private:
   BDirectory dir;
@@ -34,38 +40,65 @@ AttrCheck::AttrCheck(BDirectory dir)
 
 void AttrCheck::MessageReceived(BMessage *msg) {
   if (msg->what == B_PULSE) {
+    bool requeue = true;
     BMessage tick(B_PULSE);
     if (BEntry entry; this->dir.GetNextEntry(&entry, true) == B_OK) {
       BFile file(&entry, B_READ_ONLY);
       if (BMessage contents;
           file.IsReadable() && contents.Unflatten(&file) == B_OK) {
         postAttrs(&file, &contents);
+        if (entry_ref ref; entry.GetRef(&ref) == B_OK) {
+          BMessage gc('CHCK');
+          gc.AddRef("entry", &ref);
+          gc.AddMessenger("resume", BMessenger(this));
+          BMessenger(runningDB).SendMessage(&gc);
+          requeue = false;
+        }
       }
-      BMessenger(this).SendMessage(&tick);
-      //  BMessageRunner::StartSending(this, &tick, 250000, 1);
+      if (requeue)
+        BMessageRunner::StartSending(this, &tick, 5000, 1); // 5 milliseconds
     } else {
       this->dir.Rewind();
-      BMessageRunner::StartSending(this, &tick, 86400000000, 1); // 24 hours
+      BMessageRunner::StartSending(this, &tick, 30000000, 1); // 30 seconds
     }
   } else {
     BHandler::MessageReceived(msg);
   }
 }
 
-class QueryHandler : public BHandler {
+void AttrCheck::resume(BMessage *msg) {
+  BMessenger self;
+  BMessage tick(B_PULSE);
+  if (msg->FindMessenger("resume", &self) == B_OK) {
+    BMessageRunner::StartSending(self, &tick, 5000, 1); // 5 milliseconds
+    msg->RemoveName("resume");
+  }
+}
+
+class QueryHandler : public QueryBacked {
 public:
-  QueryHandler(BMessenger target);
-  void MessageReceived(BMessage *message);
-  BQuery query;
+  QueryHandler(BMessenger target, const BMessage &specifier);
+  void MessageReceived(BMessage *message) override;
+  bool fillQuery(BQuery *query, time_t reset) override;
+  bool queryMatch(entry_ref *entry) override;
   int32 limit = -1;
 
 private:
   BMessenger target;
+  BMessage specifier;
+  bool started = false;
+  bool ongoing = false;
+  bool drips = false;
+
+public:
+  bool dregs;
 };
 
-QueryHandler::QueryHandler(BMessenger target)
+QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
     :
-    target(target) {}
+    target(target),
+    specifier(specifier),
+    dregs(specifier.GetBool("dregs", false)) {}
 
 status_t populateQuery(BQuery &query, BMessage *specifier) {
   bool already = false;
@@ -124,30 +157,8 @@ status_t populateQuery(BQuery &query, BMessage *specifier) {
 }
 
 void QueryHandler::MessageReceived(BMessage *message) {
+  this->ongoing = true;
   switch (message->what) {
-  case B_PULSE: {
-    if (this->limit == 0)
-      goto canceled;
-    entry_ref ref;
-    if (query.GetNextRef(&ref) != B_OK) {
-      if (this->target.IsValid())
-        this->target.SendMessage('DONE');
-      else
-        goto canceled;
-      break;
-    }
-    BMessage post;
-    BFile file(&ref, B_READ_ONLY);
-    if (post.Unflatten(&file) == B_OK) {
-      if (this->target.IsValid())
-        this->target.SendMessage(&post);
-      else
-        goto canceled;
-    }
-    if (this->limit > 0 && --this->limit == 0)
-      goto canceled;
-    BMessenger(this).SendMessage(B_PULSE);
-  } break;
   case B_QUERY_UPDATE:
     if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
       entry_ref ref;
@@ -168,6 +179,15 @@ void QueryHandler::MessageReceived(BMessage *message) {
       }
     }
     break;
+  case 'DONE':
+    if (!this->dregs && this->started && !this->drips) {
+      this->drips = true;
+      this->target.SendMessage('DONE');
+    } else {
+      this->started = true;
+    }
+    if (this->target.IsValid())
+      break;
   case B_QUIT_REQUESTED:
   canceled: {
     BLooper *looper = this->Looper();
@@ -177,6 +197,91 @@ void QueryHandler::MessageReceived(BMessage *message) {
     delete this;
   } break;
   }
+}
+
+bool QueryHandler::fillQuery(BQuery *query, time_t reset) {
+  if (populateQuery(*query, &this->specifier) != B_OK)
+    return false;
+  if (this->ongoing || this->dregs) {
+    query->PushAttr("last_modified");
+    query->PushInt64((int64)reset);
+    query->PushOp(B_GE);
+    query->PushOp(B_AND);
+  }
+  this->ongoing = true;
+  return true;
+}
+
+bool QueryHandler::queryMatch(entry_ref *entry) {
+  BNode node(entry);
+  bool specifierHas;
+  bool found;
+  BString value;
+  BString foundValue;
+#define CKS(specKey, attrKey)                                                  \
+  found = false;                                                               \
+  foundValue = false;                                                          \
+  for (int32 i = 0; this->specifier.FindString(specKey, i, &value) == B_OK;    \
+    i++) {                                                                     \
+    specifierHas = true;                                                       \
+    if (i == 0) {                                                              \
+      if (node.ReadAttrString(attrKey, &foundValue) != B_OK)                   \
+        return false;                                                          \
+    }                                                                          \
+    if (value == foundValue) {                                                 \
+      found = true;                                                            \
+      break;                                                                   \
+    }                                                                          \
+  }                                                                            \
+  if (specifierHas && !found)                                                  \
+    return false;                                                              \
+  specifierHas = false
+  CKS(this->specifier.what == 'CPLX' ? "cypherkey" : "name",
+      "HABITAT:cypherkey");
+  CKS("author", "HABITAT:author");
+  CKS("context", "HABITAT:context");
+  CKS("type", "HABITAT:type");
+#undef CKS
+  if (uint64 earliest; this->specifier.FindUInt64("earliest", &earliest) == 0) {
+    int64 timestamp;
+    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
+                      sizeof(int64)) != B_OK) {
+      return false;
+    }
+    if ((uint64)timestamp < earliest)
+      return false;
+  }
+  if (uint64 latest; this->specifier.FindUInt64("earliest", &latest) == 0) {
+    int64 timestamp;
+    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
+                      sizeof(int64)) != B_OK) {
+      return false;
+    }
+    if ((uint64)timestamp < latest)
+      return false;
+  }
+  return true;
+}
+
+class Writer : public AntiClog {
+public:
+  Writer(BDirectory *store, SSBDatabase *db);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  status_t save(BMessage *message);
+  BDirectory *store;
+  SSBDatabase *db;
+};
+
+Writer::Writer(BDirectory *store, SSBDatabase *db)
+    :
+    AntiClog("Database write queue", 2048, 1536),
+    store(store),
+    db(db) {
+  BHandler *check = new AttrCheck(*store);
+  this->AddHandler(check);
+  BMessenger(check).SendMessage(B_PULSE);
 }
 } // namespace
 
@@ -189,18 +294,59 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
-SSBDatabase::SSBDatabase(BDirectory store)
+AntiClog::AntiClog(const char *name, int32 capacity, int32 lax)
     :
-    BLooper("SSB message database"),
-    store(store) {
-  BHandler *check = new AttrCheck(store);
-  this->AddHandler(check);
-  BMessenger(check).SendMessage(B_PULSE);
+    BLooper(name),
+    capacity(capacity),
+    lax(lax),
+    clogged(false) {}
+
+void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
+  {
+    auto count = this->MessageQueue()->CountMessages();
+    {
+      BString logText("Message count: ");
+      logText << count;
+      writeLog('CLOG', logText);
+    }
+    if (this->clogged ? (count <= this->lax) : (count >= this->capacity)) {
+      this->clogged = !this->clogged;
+      BMessage notify('CLOG');
+      notify.AddPointer("channel", this);
+      notify.AddBool("clogged", this->clogged);
+      BMessenger(be_app).SendMessage(&notify);
+    }
+  }
+  BLooper::DispatchMessage(message, handler);
 }
 
-SSBDatabase::~SSBDatabase() {}
+SSBDatabase::SSBDatabase(BDirectory store, BDirectory contacts)
+    :
+    AntiClog("SSB message database", 512, 32),
+    store(store),
+    contacts(contacts) {
+  if (runningDB == NULL)
+    runningDB = this;
+}
 
-enum { kReplicatedFeed, kAReplicatedFeed, kPostByID };
+SSBDatabase::~SSBDatabase() {
+  if (runningDB == this)
+    runningDB = NULL;
+}
+
+thread_id SSBDatabase::Run() {
+  Writer *writer = new Writer(&this->store, this);
+  writer->Run();
+  this->writes = BMessenger(writer);
+  return BLooper::Run();
+}
+
+void SSBDatabase::Quit() {
+  this->writes.SendMessage(B_QUIT_REQUESTED);
+  BLooper::Quit();
+}
+
+enum { kReplicatedFeed, kAReplicatedFeed, kOwnID, kPostByID };
 
 property_info databaseProperties[] = {
     {"ReplicatedFeed",
@@ -214,6 +360,12 @@ property_info databaseProperties[] = {
      {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
      kAReplicatedFeed,
+     {}},
+    {"OwnFeed",
+     {B_GET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "Our own SSB ID(s)",
+     kOwnID,
      {}},
     {"Post",
      {B_GET_PROPERTY, 0},
@@ -321,10 +473,11 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         if (error == B_OK &&
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
-          if (this->findFeed(feed, formatted) != B_OK)
-            feed = new SSBFeed(this->store, key);
-          this->AddHandler(feed);
-          feed->load();
+          if (this->findFeed(feed, formatted) != B_OK) {
+            feed = new SSBFeed(&this->store, &this->contacts, key);
+            this->AddHandler(feed);
+            feed->load();
+          }
           reply.AddMessenger("result", BMessenger(feed));
         }
       } break;
@@ -362,41 +515,55 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         error = B_DONT_DO_THAT;
       }
       break;
+    case kOwnID:
+      error = B_ENTRY_NOT_FOUND;
+      for (int32 i = 0; i < this->CountHandlers(); i++) {
+        if (OwnFeed * feed;
+            (feed = dynamic_cast<OwnFeed *>(this->HandlerAt(i))) != NULL) {
+          error = B_OK;
+          reply.AddString("result", feed->cypherkey());
+        }
+      }
+      break;
     case kPostByID: {
       QueryHandler *qh;
       bool live;
       if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-        qh = new QueryHandler(target);
-        qh->query.SetTarget(BMessenger(qh));
+        qh = new QueryHandler(target, specifier);
         live = true;
       } else {
-        qh = new QueryHandler(BMessenger());
+        qh = new QueryHandler(BMessenger(), specifier);
         live = false;
       }
       qh->limit = msg->GetInt32("limit", -1);
-      BVolume volume;
-      this->store.GetVolume(&volume);
-      qh->query.SetVolume(&volume);
-      populateQuery(qh->query, &specifier);
-      if ((error = qh->query.Fetch()) != B_OK) {
-        delete qh;
-        break;
-      }
       if (live) {
         this->Lock();
         this->AddHandler(qh);
         this->Unlock();
-        BMessenger(qh).SendMessage(B_PULSE);
-        reply.AddMessenger("result", BMessenger(qh));
+        if (!this->pendingQueryMods) {
+          this->pendingQueryMods = true;
+          BMessenger(this).SendMessage(B_PULSE);
+        }
+        error = B_OK;
       } else {
+        error = B_ENTRY_NOT_FOUND;
         entry_ref ref;
-        while (qh->limit != 0 && qh->query.GetNextRef(&ref) == B_OK) {
+        BQuery query;
+        {
+          BVolume volume;
+          this->store.GetVolume(&volume);
+          query.SetVolume(&volume);
+        }
+        qh->fillQuery(&query, 0);
+        query.Fetch();
+        while (qh->limit != 0 && query.GetNextRef(&ref) == B_OK) {
+          error = B_OK;
           BMessage post;
           BFile file(&ref, B_READ_ONLY);
           if (post.Unflatten(&file) == B_OK) {
             reply.AddMessage("result", &post);
             if (qh->limit > 0)
-              qh--;
+              qh->limit--;
           }
         }
         delete qh;
@@ -415,19 +582,120 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     if (this->findFeed(feed, author) == B_OK)
       BMessenger(feed).SendMessage(msg);
     return;
+  } else if (msg->what == B_PULSE) {
+    if (entry_ref entry; this->commonQuery.GetNextRef(&entry) == B_OK) {
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", entry.device);
+      mimic.AddInt64("directory", entry.directory);
+      mimic.AddString("name", entry.name);
+      BMessenger(this).SendMessage(&mimic);
+      BMessenger(this).SendMessage(B_PULSE);
+    } else if (this->pendingQueryMods) {
+      time_t reset = time(NULL);
+      this->commonQuery.Clear();
+      {
+        BVolume volume;
+        this->store.GetVolume(&volume);
+        this->commonQuery.SetVolume(&volume);
+      }
+      bool nonEmpty = false;
+      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
+          BMessenger(handler).SendMessage('DONE');
+          bool flag = handler->fillQuery(&this->commonQuery, reset);
+          if (flag && nonEmpty)
+            this->commonQuery.PushOp(B_OR);
+          nonEmpty = nonEmpty || flag;
+        }
+      }
+      this->pendingQueryMods = false;
+      this->commonQuery.Fetch();
+      if (nonEmpty)
+        BMessenger(this).SendMessage(B_PULSE);
+    } else {
+      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i)))
+          BMessenger(handler).SendMessage('DONE');
+      }
+    }
+  } else if (msg->what == 'UQRY') {
+    if (!this->pendingQueryMods) {
+      this->pendingQueryMods = true;
+      BMessenger(this).SendMessage(B_PULSE);
+    }
+  } else if (msg->what == B_QUERY_UPDATE &&
+             msg->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
+    entry_ref ref;
+    ref.device = msg->GetInt32("device", B_ERROR);
+    ref.directory = msg->GetInt64("directory", B_ERROR);
+    if (BString name; msg->FindString("name", &name) == B_OK)
+      ref.set_name(name.String());
+    for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
+      if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
+        if (handler->queryMatch(&ref))
+          BMessenger(handler).SendMessage(msg);
+      }
+    }
+  } else if (msg->what == 'CHCK') {
+    if (!this->runCheck(msg))
+      AttrCheck::resume(msg);
+  } else if (msg->what == 'GCOK') {
+    this->collectingGarbage = true;
+  } else {
+    return BLooper::MessageReceived(msg);
   }
-  return BLooper::MessageReceived(msg);
 }
 
-status_t SSBDatabase::findFeed(SSBFeed *&result, BString &cypherkey) {
-  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-    SSBFeed *feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
-    if (feed && feed->cypherkey() == cypherkey) {
-      result = feed;
-      return B_OK;
+bool SSBDatabase::runCheck(BMessage *msg) {
+  if (this->collectingGarbage) {
+    if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
+      BEntry entry(&ref);
+      BNode node(&entry);
+      BString author;
+      if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
+        return false;
+      SSBFeed *feed;
+      if (this->findFeed(feed, author) != B_OK || feed == NULL) {
+        entry.Remove();
+        return false;
+      } else {
+        BMessage mimic(B_QUERY_UPDATE);
+        mimic.AddInt32("opcode", B_ENTRY_CREATED);
+        mimic.AddInt32("device", ref.device);
+        mimic.AddInt64("directory", ref.directory);
+        mimic.AddString("name", ref.name);
+        for (int i = 0; i < this->CountHandlers(); i++) {
+          if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
+              qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
+            BMessenger(qh).SendMessage(&mimic);
+          }
+        }
+        int64 sequence;
+        if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
+                          sizeof(int64)) == B_OK &&
+            sequence > 1) {
+          BMessage check('CHCK');
+          check.AddInt64("sequence", sequence - 1);
+          BMessenger resume;
+          if (msg->FindMessenger("resume", &resume) == B_OK)
+            check.AddMessenger("resume", resume);
+          BMessenger(feed).SendMessage(&check);
+          return true;
+        }
+      }
     }
   }
-  return B_NAME_NOT_FOUND;
+  return false;
+}
+
+status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
+  if (auto entry = this->feeds.find(cypherkey); entry != this->feeds.end()) {
+    result = entry->second;
+    return B_OK;
+  } else {
+    return B_NAME_NOT_FOUND;
+  }
 }
 
 status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
@@ -447,6 +715,15 @@ status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
   BFile result(&ref, B_READ_ONLY);
   post->Unflatten(&result);
   return B_OK;
+}
+
+void SSBDatabase::notifySaved(const BString &author, int64 sequence,
+                              unsigned char id[crypto_hash_sha256_BYTES]) {
+  BMessage message('SNOT');
+  message.AddString("author", author);
+  message.AddInt64("sequence", sequence);
+  message.AddData("id", B_RAW_TYPE, id, crypto_hash_sha256_BYTES, false, 1);
+  BMessenger(this).SendMessage(&message);
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -469,59 +746,128 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
   return l.sequence > r.sequence;
 }
 
-SSBFeed::SSBFeed(BDirectory store,
+SSBFeed::SSBFeed(BDirectory *store, BDirectory *contactsDir,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
-    BHandler(),
+    QueryBacked(),
     store(store) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
-  this->store.GetVolume(&this->volume);
+  this->store->GetVolume(&this->volume);
+  {
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:cypherkey");
+    query.PushString(this->cypherkey().String());
+    query.PushOp(B_EQ);
+    if (query.Fetch() != B_OK)
+      goto notfound;
+    if (query.GetNextRef(&this->metastore) != B_OK)
+      goto notfound;
+    return;
+  }
+notfound: {
+  BEntry entry;
+  entry.SetTo(
+      contactsDir,
+      base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES, base64::URL)
+          .String());
+  entry.GetRef(&this->metastore);
+}
 }
 
-status_t SSBFeed::load() {
+status_t SSBFeed::load(bool useCache) {
   status_t error;
-  this->query.Clear();
-  this->query.SetVolume(&this->volume);
-  this->query.PushAttr("HABITAT:author");
+  BQuery query;
+  bool stale = false;
+  query.SetVolume(&this->volume);
+  query.PushAttr("HABITAT:author");
   BString attrValue = this->cypherkey();
-  this->query.PushString(attrValue.String());
-  this->query.PushOp(B_EQ);
-  if (this->Looper()) {
-    // TODO: Ensure the messages we get from this are handled, including
-    // call to SendNotices
-    this->query.SetTarget(BMessenger(this));
+  query.PushString(attrValue.String());
+  query.PushOp(B_EQ);
+  if (useCache) {
+    BMessage metadata;
+    {
+      BFile chkMeta(&this->metastore, B_READ_ONLY);
+      if (chkMeta.IsReadable())
+        metadata.Unflatten(&chkMeta);
+    }
+    {
+      BString cachedID;
+      int64 cachedSequence;
+      if (metadata.FindString("lastID", &cachedID) == B_OK &&
+          metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
+        auto rawid = base64::decode(cachedID);
+        if (rawid.size() == crypto_hash_sha256_BYTES) {
+          this->savedSequence = cachedSequence;
+          memcpy(this->savedHash, rawid.data(), crypto_hash_sha256_BYTES);
+        }
+      }
+    }
+  } else {
+    stale = true;
+    this->savedSequence = 0;
   }
-  if ((error = this->query.Fetch()) == B_OK) {
+  if (this->savedSequence > 0) {
+    query.PushAttr("HABITAT:sequence");
+    query.PushInt64(this->savedSequence);
+    query.PushOp(B_GT);
+    query.PushOp(B_AND);
+  }
+  if ((error = query.Fetch()) == B_OK) {
     entry_ref ref;
-    while (this->query.GetNextRef(&ref) == B_OK) {
+    while (query.GetNextRef(&ref) == B_OK) {
       BNode node(&ref);
       int64 sequence;
+      stale = true;
       node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
                     sizeof(int64));
       if (sequence > this->lastSequence)
         this->pending.push({sequence, ref});
-      while (!this->pending.empty() &&
-             this->pending.top().sequence == this->lastSequence + 1) {
-        sequence = this->pending.top().sequence;
-        BEntry processingEntry(&this->pending.top().ref);
-        BNode processingNode(&processingEntry);
-        BString cypherkey;
-        processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
-        this->pending.pop();
-        BString b64;
-        // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
-        for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
-          b64.Append(cypherkey[i], 1);
-        std::vector<unsigned char> hash =
-            base64::decode(b64.String(), b64.Length());
-        this->lastSequence = sequence;
-        memcpy(this->lastHash, &hash[0],
-               std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
-      }
+      this->flushQueue();
     }
   }
+  this->lastSequence = this->savedSequence;
+  memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
+  if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
+    db->feeds.insert({this->cypherkey(), this});
+  if (stale)
+    this->cacheLatest();
   this->notifyChanges();
+  if (useCache) {
+    BMessage check('CHCK');
+    check.AddInt64("sequence", this->lastSequence);
+    BMessenger(this).SendMessage(&check);
+  }
   return error;
+}
+
+bool SSBFeed::flushQueue() {
+  bool stale = false;
+  while (!this->pending.empty() &&
+         this->pending.top().sequence == this->savedSequence + 1) {
+    int64 sequence = this->pending.top().sequence;
+    BEntry processingEntry(&this->pending.top().ref);
+    BNode processingNode(&processingEntry);
+    BString cypherkey;
+    processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
+    this->pending.pop();
+    BString b64;
+    // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
+    for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
+      b64.Append(cypherkey[i], 1);
+    std::vector<unsigned char> hash =
+        base64::decode(b64.String(), b64.Length());
+    this->savedSequence = sequence;
+    memcpy(this->savedHash, &hash[0],
+           std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
+    stale = true;
+  }
+  if (this->pending.empty()) {
+    pending = std::priority_queue<post_private_::FeedShuntEntry,
+                                  std::vector<post_private_::FeedShuntEntry>,
+                                  post_private_::FeedBuildComparator>();
+  }
+  return stale;
 }
 
 SSBFeed::~SSBFeed() {}
@@ -530,6 +876,7 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddInt64("saved", this->savedSequence);
   target.SendMessage(&notif);
 }
 
@@ -537,6 +884,7 @@ void SSBFeed::notifyChanges() {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddInt64("saved", this->savedSequence);
   this->Looper()->SendNotices('NMSG', &notif);
 }
 
@@ -596,69 +944,116 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
+        BEntry(&this->metastore).Remove();
+        if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
+          db->feeds.erase(this->cypherkey());
         this->Looper()->RemoveHandler(this);
         delete this;
         error = B_OK;
+        goto reply;
       } else {
         return BHandler::MessageReceived(msg);
       }
     }
-    BPropertyInfo propertyInfo(ssbFeedProperties);
-    if (propertyInfo.FindMatch(msg, index, &specifier, what, property, &match) <
-        0) {
-      return BHandler::MessageReceived(msg);
-    }
-    switch (match) {
-    case kFeedCypherkey:
-      reply.AddString("result", this->cypherkey());
-      error = B_OK;
-      break;
-    case kFeedLastSequence:
-      reply.AddInt64("result", this->lastSequence);
-      error = B_OK;
-      break;
-    case kFeedLastID:
-      reply.AddString("result", this->previousLink());
-      error = B_OK;
-      break;
-    case kOnePost: {
-      int32 index;
-      BMessage specifier;
-      int32 spWhat;
-      const char *property;
-      if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
-                                            &property)) != B_OK) {
+    {
+      BPropertyInfo propertyInfo(ssbFeedProperties);
+      if (propertyInfo.FindMatch(msg, index, &specifier, what, property,
+                                 &match) < 0) {
+        return BHandler::MessageReceived(msg);
+      }
+      switch (match) {
+      case kFeedCypherkey:
+        reply.AddString("result", this->cypherkey());
+        error = B_OK;
         break;
-      }
-      if (spWhat == B_INDEX_SPECIFIER) {
-        if ((error = specifier.FindInt32("index", &index)) != B_OK)
+      case kFeedLastSequence:
+        reply.AddInt64("result", this->lastSequence);
+        error = B_OK;
+        break;
+      case kFeedLastID:
+        reply.AddString("result", this->previousLink());
+        error = B_OK;
+        break;
+      case kOnePost: {
+        int32 index;
+        BMessage specifier;
+        int32 spWhat;
+        const char *property;
+        if ((error = msg->GetCurrentSpecifier(&index, &specifier, &spWhat,
+                                              &property)) != B_OK) {
           break;
-        BMessage post;
-        if ((error = this->findPost(&post, index)) != B_OK)
-          break;
-        reply.AddMessage("result", &post);
+        }
+        if (spWhat == B_INDEX_SPECIFIER) {
+          if ((error = specifier.FindInt32("index", &index)) != B_OK)
+            break;
+          BMessage post;
+          if ((error = this->findPost(&post, index)) != B_OK)
+            break;
+          reply.AddMessage("result", &post);
+        }
+      } break;
+      default:
+        return BHandler::MessageReceived(msg);
       }
-    } break;
-    default:
-      return BHandler::MessageReceived(msg);
     }
+  reply:
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     if (msg->ReturnAddress().IsValid())
       msg->SendReply(&reply);
+  } else if (msg->what == 'SNOT') {
+    int64 sequence;
+    if (msg->FindInt64("sequence", &sequence) != B_OK)
+      return;
+    const void *id;
+    ssize_t idSize;
+    if (msg->FindData("id", B_RAW_TYPE, &id, &idSize) != B_OK ||
+        idSize != crypto_hash_sha256_BYTES) {
+      return;
+    }
+    this->savedSequence = sequence;
+    memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
+    if (this->flushQueue() &&
+        (this->savedSequence > this->lastSequence || !this->pending.empty())) {
+      this->lastSequence = this->savedSequence;
+      memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
+    }
+    this->cacheLatest();
+    this->notifyChanges();
+  } else if (msg->what == 'CHCK') {
+    int64 sequence;
+    if (msg->FindInt64("sequence", &sequence) != B_OK) {
+      AttrCheck::resume(msg);
+      return;
+    }
+    if (sequence > this->savedSequence || sequence < 1) {
+      AttrCheck::resume(msg);
+      return;
+    }
+    BQuery query;
+    query.SetVolume(&this->volume);
+    query.PushAttr("HABITAT:author");
+    query.PushString(this->cypherkey());
+    query.PushOp(B_EQ);
+    query.PushAttr("HABITAT:sequence");
+    query.PushInt64(sequence);
+    query.PushOp(B_EQ);
+    query.PushOp(B_AND);
+    if (query.Fetch() != B_OK) {
+      AttrCheck::resume(msg);
+      return;
+    }
+    entry_ref ref;
+    if (query.GetNextRef(&ref) != B_OK)
+      this->load(false);
+    AttrCheck::resume(msg);
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
     // TODO: Enqueue any that we get out of order.
-    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
-      BMessage reply;
-      if (this->save(msg, &reply) == B_OK) {
-        if (msg->ReturnAddress().IsValid())
-          msg->SendReply(&reply);
-        return;
-      }
-    }
+    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK)
+      this->save(msg);
   } else {
     return BHandler::MessageReceived(msg);
   }
@@ -727,6 +1122,16 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
   return B_ERROR;
 }
 
+bool SSBFeed::fillQuery(BQuery *query, time_t reset) {
+  // TODO
+  return false;
+}
+
+bool SSBFeed::queryMatch(entry_ref *entry) {
+  // TODO
+  return false;
+}
+
 namespace {
 // TODO: Use something more flexible
 const char *contextAttrs[] = {"link", "fork", "root", "project", "repo"};
@@ -745,6 +1150,31 @@ status_t contextLink(BString *out, BString &type, BMessage *message) {
   return B_NAME_NOT_FOUND;
 }
 
+static inline status_t checkAttr(BNode *sink, const char *attr,
+                                 const BString &value) {
+  BString oldValue;
+  if (sink->ReadAttrString(attr, &oldValue) != B_OK || oldValue != value)
+    return sink->WriteAttrString(attr, &value);
+  else
+    return B_OK;
+}
+
+static inline status_t checkAttr(BNode *sink, const char *attr, int64 value) {
+  int64 oldValue;
+  if (sink->ReadAttr(attr, B_INT64_TYPE, 0, &oldValue, sizeof(int64)) !=
+          sizeof(int64) ||
+      oldValue != value) {
+    status_t result =
+        sink->WriteAttr(attr, B_INT64_TYPE, 0, &value, sizeof(int64));
+    if (result == sizeof(int64))
+      return B_OK;
+    else
+      return result;
+  } else {
+    return B_OK;
+  }
+}
+
 status_t postAttrs(BNode *sink, BMessage *message,
                    const unsigned char *prehashed) {
   status_t status;
@@ -756,77 +1186,140 @@ status_t postAttrs(BNode *sink, BMessage *message,
     JSON::fromBMessage(&rootSink, message);
   }
   BString attrString = messageCypherkey(msgHash);
-  if ((status = sink->WriteAttrString("HABITAT:cypherkey", &attrString)) !=
-      B_OK) {
-    return status;
+#define CHECK_STRING(attr)                                                     \
+  {                                                                            \
+    if ((status = checkAttr(sink, attr, attrString)) != B_OK) {                \
+      return status;                                                           \
+    }                                                                          \
   }
+  CHECK_STRING("HABITAT:cypherkey")
   int64 attrNum;
-  if (eitherNumber(&attrNum, message, "sequence") == B_OK) {
-    if (sink->WriteAttr("HABITAT:sequence", B_INT64_TYPE, 0, &attrNum,
-                        sizeof(int64)) != sizeof(int64)) {
-      return B_IO_ERROR;
-    }
+#define CHECK_NUMBER(attr)                                                     \
+  {                                                                            \
+    if ((status = checkAttr(sink, attr, attrNum)) != B_OK) {                   \
+      return status;                                                           \
+    }                                                                          \
   }
+  if (eitherNumber(&attrNum, message, "sequence") == B_OK)
+    CHECK_NUMBER("HABITAT:sequence")
   if ((status = message->FindString("author", &attrString)) != B_OK)
     return status;
-  if ((status = sink->WriteAttrString("HABITAT:author", &attrString)) != B_OK)
-    return status;
-  if (eitherNumber(&attrNum, message, "timestamp") == B_OK) {
-    if (sink->WriteAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &attrNum,
-                        sizeof(int64)) != sizeof(int64)) {
-      return B_IO_ERROR;
-    }
-  }
+  CHECK_STRING("HABITAT:author")
+  if (eitherNumber(&attrNum, message, "timestamp") == B_OK)
+    CHECK_NUMBER("HABITAT:timestamp")
   if (BMessage content; message->FindMessage("content", &content) == B_OK) {
-    if (BString type; content.FindString("type", &type) == B_OK) {
-      sink->WriteAttrString("HABITAT:type", &type);
-      if (BString context; contextLink(&context, type, &content) == B_OK)
-        sink->WriteAttrString("HABITAT:context", &context);
+    if (content.FindString("type", &attrString) == B_OK) {
+      CHECK_STRING("HABITAT:type")
+      BString type = attrString;
+      if (contextLink(&attrString, type, &content) == B_OK)
+        CHECK_STRING("HABITAT:context")
       else
         sink->RemoveAttr("HABITAT:context");
     }
   }
   return B_OK;
+#undef CHECK_NUMBER
+#undef CHECK_STRING
+}
+
+void Writer::MessageReceived(BMessage *message) {
+  if (message->HasString("author")) {
+    BMessage reply(B_REPLY);
+    status_t status = B_OK;
+    unsigned char msgHash[crypto_hash_sha256_BYTES];
+    {
+      {
+        JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+        JSON::fromBMessage(&rootSink, message);
+      }
+      BFile sink;
+      BString filename =
+          base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
+      if ((status = this->store->CreateFile(filename.String(), &sink, false)) !=
+          B_OK) {
+        goto sendReply;
+      }
+      if ((status = message->Flatten(&sink)) != B_OK)
+        goto sendReply;
+      BMessage result;
+      entry_ref ref;
+      BEntry entry(this->store, filename.String());
+      entry.GetRef(&ref);
+      result.AddRef("ref", &ref);
+      result.AddString("cypherkey", messageCypherkey(msgHash));
+      if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
+        goto sendReply;
+      {
+        BString author;
+        if ((status = message->FindString("author", &author)) != B_OK)
+          goto sendReply;
+        int64 sequence;
+        if ((status = eitherNumber(&sequence, message, "sequence")) != B_OK)
+          goto sendReply;
+        this->db->notifySaved(author, sequence, msgHash);
+      }
+      reply.AddMessage("result", &result);
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", ref.device);
+      mimic.AddInt64("directory", ref.directory);
+      mimic.AddString("name", ref.name);
+      BMessenger(this->db).SendMessage(&mimic);
+    }
+  sendReply:
+    reply.AddInt32("error", status);
+    reply.AddString("message", strerror(status));
+    message->SendReply(&reply);
+  } else {
+    BLooper::MessageReceived(message);
+  }
 }
 } // namespace
 
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
-  status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
-  BFile sink;
-  BString filename =
-      base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
-  if ((status = this->store.CreateFile(filename.String(), &sink, false)) !=
-      B_OK) {
-    return status;
-  }
-  if ((status = message->Flatten(&sink)) != B_OK)
-    return status;
-  BMessage result;
-  entry_ref ref;
-  BEntry entry(&this->store, filename.String());
-  entry.GetRef(&ref);
-  result.AddRef("ref", &ref);
-  result.AddString("cypherkey", messageCypherkey(msgHash));
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   int64 attrNum;
   if (eitherNumber(&attrNum, message, "sequence") == B_OK)
     this->lastSequence = attrNum;
-  if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
-    return status;
   this->notifyChanges();
-  if (reply != NULL)
+  dynamic_cast<SSBDatabase *>(this->Looper())->writes.SendMessage(message);
+  if (reply != NULL) {
+    BMessage result;
+    result.AddString("cypherkey", messageCypherkey(msgHash));
     reply->AddMessage("result", &result);
+  }
   return B_OK;
 }
 
-OwnFeed::OwnFeed(BDirectory store, Ed25519Secret *secret)
+void SSBFeed::cacheLatest() {
+  BMessage existing;
+  BFile store(&this->metastore, B_READ_WRITE | B_CREATE_FILE);
+  if (store.IsReadable()) {
+    if (existing.Unflatten(&store) != B_OK)
+      existing.MakeEmpty();
+  }
+  existing.RemoveName("lastID");
+  existing.RemoveName("lastSequence");
+  existing.AddInt64("lastSequence", this->savedSequence);
+  existing.AddString("lastID",
+                     base64::encode(this->savedHash, crypto_hash_sha256_BYTES,
+                                    base64::STANDARD)
+                         .String());
+  store.Seek(0, SEEK_SET);
+  store.SetSize(0);
+  existing.Flatten(&store);
+  BString attrString = this->cypherkey();
+  store.WriteAttrString("HABITAT:cypherkey", &attrString);
+}
+
+OwnFeed::OwnFeed(BDirectory *store, BDirectory *contacts, Ed25519Secret *secret)
     :
-    SSBFeed(store, secret->pubkey) {
+    SSBFeed(store, contacts, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 

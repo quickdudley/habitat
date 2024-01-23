@@ -139,6 +139,7 @@ private:
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
   std::map<BString, BMessenger> crossTalk;
+  bool stoppedRecv = false;
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);
   static int32 pullThreadFunction(void *data);

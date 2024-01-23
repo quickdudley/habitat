@@ -13,6 +13,7 @@
 #include <Path.h>
 #include <Window.h>
 #include <memory>
+#include <set>
 #include <unicode/timezone.h>
 
 class MainWindow : public BWindow {
@@ -54,6 +55,7 @@ public:
   thread_id Run();
   void ReadyToRun();
   void Quit();
+  BDirectory &settingsDir();
 
 private:
   void loadSettings();
@@ -71,6 +73,7 @@ private:
   std::unique_ptr<BHandler> lanBroadcaster;
   std::shared_ptr<Ed25519Secret> myId;
   std::vector<ServerRecord> servers;
+  std::set<void *> cloggedChannels;
 };
 
 extern Habitat *app;

@@ -1,7 +1,9 @@
 #include "Main.h"
 #include "Connection.h"
+#include "ContactGraph.h"
 #include "Indices.h"
 #include "Logging.h"
+#include "SelectContacts.h"
 #include "SettingsWindow.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
@@ -97,6 +99,7 @@ Habitat::Habitat(void)
         U_ICU_NAMESPACE::TimeZone::createTimeZone(
             defaultTimeZone.ID().String()));
   }
+  BDirectory contactsDir;
   {
     // Create settings directory
     BPath settings_path;
@@ -124,6 +127,17 @@ Habitat::Habitat(void)
       if (status != B_OK)
         throw status;
       this->postDir = std::make_unique<BDirectory>(&entry);
+    } else if (status != B_OK) {
+      throw status;
+    }
+    // Create contacts directory
+    status = this->settings->CreateDirectory("contacts", &contactsDir);
+    if (status == B_FILE_EXISTS) {
+      BEntry entry;
+      status = this->settings->FindEntry("contacts", &entry, true);
+      if (status != B_OK)
+        throw status;
+      contactsDir = BDirectory(&entry);
     } else if (status != B_OK) {
       throw status;
     }
@@ -156,8 +170,9 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new SSBDatabase(*this->postDir);
-  this->ownFeed = new OwnFeed(*this->postDir, this->myId.get());
+  this->databaseLooper = new SSBDatabase(*this->postDir, contactsDir);
+  this->ownFeed =
+      new OwnFeed(this->postDir.get(), &contactsDir, this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);
@@ -224,6 +239,23 @@ void Habitat::MessageReceived(BMessage *msg) {
         }
       }
       return;
+    } else if (msg->what == 'CLOG' && !msg->IsSourceRemote()) {
+      bool currentlyClogged = !this->cloggedChannels.empty();
+      void *channel;
+      if (msg->FindPointer("channel", &channel) != B_OK)
+        return;
+      bool clogged;
+      if (msg->FindBool("clogged", &clogged) != B_OK)
+        return;
+      if (clogged)
+        this->cloggedChannels.insert(channel);
+      else
+        this->cloggedChannels.erase(channel);
+      if (currentlyClogged == cloggedChannels.empty()) {
+        BMessage forward('CLOG');
+        forward.AddBool("clogged", !currentlyClogged);
+        BMessenger(this->ebt).SendMessage(&forward);
+      }
     } else {
       return BApplication::MessageReceived(msg);
     }
@@ -366,6 +398,29 @@ void Habitat::ReadyToRun() {
   this->ebt->Run();
   this->RegisterLooper(this->ebt);
   this->serverMethods.registerMethod(std::make_shared<ebt::Begin>(this->ebt));
+  auto worker = new BLooper("Worker thread");
+  worker->Run();
+  worker->Lock();
+  BVolume volume;
+  this->settings->GetVolume(&volume);
+  auto graph = new ContactGraph(volume);
+  worker->AddHandler(graph);
+  {
+    BMessage rq(B_GET_PROPERTY);
+    BMessage specifier('CPLX');
+    specifier.AddString("property", "Post");
+    specifier.AddString("type", "contact");
+    specifier.AddBool("dregs", true);
+    rq.AddSpecifier(&specifier);
+    rq.AddMessenger("target", BMessenger(graph));
+    BMessenger(this->databaseLooper).SendMessage(&rq);
+  }
+  auto selector =
+      new SelectContacts(BMessenger(this->databaseLooper), BMessenger(graph));
+  worker->AddHandler(selector);
+  BMessenger(selector).SendMessage('INIT');
+  worker->Unlock();
+  this->RegisterLooper(worker);
 }
 
 void Habitat::loadSettings() {
@@ -412,6 +467,8 @@ void Habitat::Quit() {
   this->ipListener->halt();
   BApplication::Quit();
 }
+
+BDirectory &Habitat::settingsDir() { return *this->settings; }
 
 MainWindow::MainWindow(void)
     :

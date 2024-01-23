@@ -54,6 +54,28 @@ void GetSender::MessageReceived(BMessage *message) {
     delete this;
   }
 }
+
+class Reopen : public BDataIO {
+public:
+  Reopen(entry_ref *ref);
+  ssize_t Read(void *buffer, size_t size) override;
+
+private:
+  entry_ref ref;
+  ssize_t position = 0;
+};
+
+Reopen::Reopen(entry_ref *ref)
+    :
+    ref(*ref) {}
+
+ssize_t Reopen::Read(void *buffer, size_t size) {
+  BFile file(&this->ref, B_READ_ONLY);
+  ssize_t result = file.ReadAt(this->position, buffer, size);
+  if (result > 0)
+    this->position += result;
+  return result;
+}
 } // namespace
 
 status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
@@ -86,8 +108,7 @@ status_t Get::call(muxrpc::Connection *connection, muxrpc::RequestType type,
           if (size > maxSize)
             goto failed;
         }
-        auto sender =
-            new GetSender(std::make_unique<BFile>(&ref, B_READ_ONLY), replyTo);
+        auto sender = new GetSender(std::make_unique<Reopen>(&ref), replyTo);
         this->looper->Lock();
         this->looper->AddHandler(sender);
         this->looper->Unlock();
@@ -133,7 +154,7 @@ void Wanted::MessageReceived(BMessage *message) {
         for (auto item = this->wanted.begin(); item != this->wanted.end();
             item++) {
           if (std::get<0>(*item) == cypherkey) {
-            for (auto &target : std::get<3>(*item))
+            for (auto &target : std::get<2>(*item))
               target.SendMessage(message);
             this->wanted.erase(item);
             return;
@@ -148,7 +169,7 @@ void Wanted::MessageReceived(BMessage *message) {
       break;
     for (auto &item : this->wanted) {
       if (std::get<0>(item) == cypherkey) {
-        auto &q = std::get<4>(item);
+        auto &q = std::get<3>(item);
         if (!q.empty())
           q.pop();
         if (!q.empty())
@@ -315,7 +336,6 @@ public:
   void MessageReceived(BMessage *message) override;
 
 private:
-  BFile file;
   BEntry entry;
   unsigned char expectedHash[crypto_hash_sha256_BYTES];
   crypto_hash_sha256_state hashState;
@@ -327,7 +347,8 @@ FetchSink::FetchSink(unsigned char expectedHash[crypto_hash_sha256_BYTES],
   BString filename =
       base64::encode(this->expectedHash, crypto_hash_sha256_BYTES, base64::URL);
   this->entry.SetTo(&dir, filename);
-  dir.CreateFile(filename.String(), &this->file, false);
+  BFile file;
+  dir.CreateFile(filename.String(), &file, false);
   crypto_hash_sha256_init(&this->hashState);
 }
 
@@ -336,10 +357,12 @@ void FetchSink::MessageReceived(BMessage *message) {
   ssize_t bytes;
   if (message->FindData("content", B_RAW_TYPE, (const void **)&data, &bytes) ==
       B_OK) {
-    this->file.WriteExactly(data, bytes);
+    BFile file(&this->entry, B_WRITE_ONLY | B_OPEN_AT_END);
+    file.WriteExactly(data, bytes);
     crypto_hash_sha256_update(&this->hashState, data, bytes);
   }
   if (message->GetBool("end", false)) {
+    BNode file(&this->entry);
     unsigned char gotHash[crypto_hash_sha256_BYTES];
     crypto_hash_sha256_final(&this->hashState, gotHash);
     BString cypherkey("&");
@@ -349,7 +372,15 @@ void FetchSink::MessageReceived(BMessage *message) {
     BLooper *looper = this->Looper();
     if (std::equal(gotHash, gotHash + crypto_hash_sha256_BYTES,
                    this->expectedHash)) {
-      this->file.WriteAttrString("HABITAT:cypherkey", &cypherkey);
+      file.WriteAttrString("HABITAT:cypherkey", &cypherkey);
+      entry_ref ref;
+      this->entry.GetRef(&ref);
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", ref.device);
+      mimic.AddInt64("directory", ref.directory);
+      mimic.AddString("name", ref.name);
+      BMessenger(this->Looper()).SendMessage(&mimic);
     } else {
       this->entry.Remove();
       BMessage msg('TNXT');
@@ -380,42 +411,38 @@ void Wanted::_addWant_(BString &cypherkey, int8 distance, BMessenger replyTo) {
         std::get<1>(item) = distance;
         this->propagateWant(cypherkey, distance);
       }
-      std::remove_if(std::get<3>(item).begin(), std::get<3>(item).end(),
+      std::remove_if(std::get<2>(item).begin(), std::get<2>(item).end(),
                      [&replyTo](auto existingTarget) {
                        return !existingTarget.IsValid() ||
                            existingTarget == replyTo;
                      });
       if (replyTo.IsValid())
-        std::get<3>(item).push_back(replyTo);
+        std::get<2>(item).push_back(replyTo);
       return;
     }
   }
   {
-    this->wanted.push_back(std::tuple(
-        BString(cypherkey), distance, std::make_unique<BQuery>(),
-        std::vector<BMessenger>{replyTo}, std::queue<muxrpc::Connection *>()));
-    BQuery &query = *std::get<2>(this->wanted.back());
-    query.SetVolume(&this->volume);
-    query.PushAttr("HABITAT:cypherkey");
-    query.PushString(cypherkey.String());
-    query.PushOp(B_EQ);
-    if (this->Looper())
-      query.SetTarget(BMessenger(this));
-    status_t result;
-    if ((result = query.Fetch()) == B_OK) {
-      entry_ref ref;
-      while (query.GetNextRef(&ref) == B_OK) {
-        BMessage mimic(B_QUERY_UPDATE);
-        mimic.AddInt32("opcode", B_ENTRY_CREATED);
-        mimic.AddInt32("device", ref.device);
-        mimic.AddInt64("directory", ref.directory);
-        mimic.AddString("name", ref.name);
-        BMessenger(this).SendMessage(&mimic);
-      }
-      this->propagateWant(cypherkey, distance);
-    } else {
-      writeLog('QRST', strerror(result));
+    BQuery check;
+    check.SetVolume(&this->volume);
+    check.PushAttr("HABITAT:cypherkey");
+    check.PushString(cypherkey.String());
+    check.PushOp(B_EQ);
+    entry_ref ref;
+    if (check.Fetch() == B_OK && check.GetNextRef(&ref) == B_OK) {
+      BMessage mimic(B_QUERY_UPDATE);
+      mimic.AddInt32("opcode", B_ENTRY_CREATED);
+      mimic.AddInt32("device", ref.device);
+      mimic.AddInt64("directory", ref.directory);
+      mimic.AddString("name", ref.name);
+      BMessenger(this).SendMessage(&mimic);
     }
+  }
+  {
+    this->wanted.push_back(std::tuple(BString(cypherkey), distance,
+                                      std::vector<BMessenger>{replyTo},
+                                      std::queue<muxrpc::Connection *>()));
+    this->propagateWant(cypherkey, distance);
+    BMessenger(this->Looper()).SendMessage('UQRY');
   }
 }
 
@@ -423,7 +450,7 @@ void Wanted::sawSource(const BString &cypherkey,
                        muxrpc::Connection *connection) {
   for (auto &item : this->wanted) {
     if (std::get<0>(item) == cypherkey) {
-      auto &q = std::get<4>(item);
+      auto &q = std::get<3>(item);
       bool needStart = q.empty();
       q.push(connection);
       if (needStart)
@@ -445,6 +472,16 @@ status_t Wanted::fetch(const BString &cypherkey,
   }
   if (rawHash.size() != crypto_hash_sha256_BYTES)
     return B_BAD_VALUE;
+  {
+    BQuery check;
+    check.SetVolume(&this->volume);
+    check.PushAttr("HABITAT:cypherkey");
+    check.PushString(cypherkey.String());
+    check.PushOp(B_EQ);
+    entry_ref ref;
+    if (check.Fetch() == B_OK && check.GetNextRef(&ref) == B_OK)
+      return B_OK;
+  }
   FetchSink *sink = new FetchSink(rawHash.data(), this->dir);
   BLooper *looper = this->Looper();
   looper->Lock();
@@ -456,6 +493,39 @@ status_t Wanted::fetch(const BString &cypherkey,
   connection->request(methodName, muxrpc::RequestType::SOURCE, &args,
                       BMessenger(sink), NULL);
   return B_OK;
+}
+
+bool Wanted::fillQuery(BQuery *query, time_t reset) {
+  if (this->wanted.empty()) {
+    return false;
+  } else {
+    query->PushAttr("HABITAT:cypherkey");
+    query->PushString("&");
+    query->PushOp(B_BEGINS_WITH);
+    query->PushAttr("HABITAT:cypherkey");
+    query->PushString(".sha256");
+    query->PushOp(B_ENDS_WITH);
+    query->PushOp(B_AND);
+    query->PushAttr("last_modified");
+    query->PushInt64((int64)reset);
+    query->PushOp(B_GE);
+    query->PushOp(B_AND);
+    return true;
+  }
+}
+
+bool Wanted::queryMatch(entry_ref *entry) {
+  BString cypherkey;
+  {
+    BNode node(entry);
+    if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
+      return false;
+  }
+  for (auto &item : this->wanted) {
+    if (std::get<0>(item) == cypherkey)
+      return true;
+  }
+  return false;
 }
 
 status_t CreateWants::call(muxrpc::Connection *connection,

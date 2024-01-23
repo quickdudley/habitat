@@ -232,13 +232,13 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     header.writeToBuffer(headerBytes);
     if (output->WriteExactly(headerBytes, 9) != B_OK) {
       BLooper *looper = this->Looper();
-      looper->Lock();
-      looper->Quit();
+      if (looper->Lock())
+        looper->Quit();
     }
     if (output->WriteExactly(content.String(), content.Length()) != B_OK) {
       BLooper *looper = this->Looper();
-      looper->Lock();
-      looper->Quit();
+      if (looper->Lock())
+        looper->Quit();
     }
     return;
   }
@@ -247,8 +247,26 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
   // send)
 }
 
+namespace {
+class DummyOutput : public BDataIO {
+public:
+  ssize_t Read(void *buffer, size_t size) override;
+  ssize_t Write(const void *buffer, size_t size) override;
+};
+
+ssize_t DummyOutput::Read(void *buffer, size_t size) { return B_ERROR; }
+
+ssize_t DummyOutput::Write(const void *buffer, size_t size) { return B_ERROR; }
+
+DummyOutput dummyOutput;
+} // namespace
+
 BDataIO *SenderHandler::output() {
-  return dynamic_cast<Connection *>(this->Looper())->inner.get();
+  auto conn = dynamic_cast<Connection *>(this->Looper());
+  if (conn->stoppedRecv)
+    return &dummyOutput;
+  else
+    return conn->inner.get();
 }
 
 namespace {
@@ -305,7 +323,13 @@ Connection::~Connection() {
     else
       i++;
   }
-  // TODO: Send termination notices to `inboundOngoing`
+  acquire_sem(this->ongoingLock);
+  for (auto &link : this->inboundOngoing) {
+    BMessage stop('MXRP');
+    stop.AddBool("content", false);
+    stop.AddBool("end", true);
+    link.second.target.SendMessage(&stop);
+  }
   delete_sem(this->ongoingLock);
 }
 
@@ -323,8 +347,17 @@ void Connection::Quit() {
     int32 locks = this->CountLocks();
     for (int32 i = 0; i < locks; i++)
       this->Unlock();
-    suspend_thread(this->pullThreadID);
-    resume_thread(this->pullThreadID);
+    // The loop is in case the other thread blocks immediately after we unblock
+    // it.
+    while (this->Lock()) {
+      if (this->stoppedRecv) {
+        this->Unlock();
+        break;
+      }
+      this->Unlock();
+      suspend_thread(this->pullThreadID);
+      resume_thread(this->pullThreadID);
+    }
     wait_for_thread(this->pullThreadID, &exitValue);
     for (int32 i = 0; i < locks; i++)
       this->Lock();
@@ -333,12 +366,9 @@ void Connection::Quit() {
     if (BHandler *handler = this->HandlerAt(i); handler != this)
       delete handler;
   }
-  for (auto link : this->inboundOngoing) {
-    BMessage stop('MXRP');
-    stop.AddBool("content", false);
-    stop.AddBool("end", true);
-    link.second.target.SendMessage(&stop);
-  }
+  if (acquire_sem(this->ongoingLock) == B_OK)
+
+    release_sem(this->ongoingLock);
   BLooper::Quit();
 }
 
@@ -460,7 +490,7 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
     BMessage content('JSOB');
     {
       BMessage methodName('JSAR');
-      for (int i = 0; i < name.size(); i++) {
+      for (uint32 i = 0; i < name.size(); i++) {
         BString k;
         k << i;
         methodName.AddString(k.String(), name[i]);
@@ -481,9 +511,10 @@ status_t Connection::request(std::vector<BString> &name, RequestType type,
     content.AddMessage("args", args);
     if (type == RequestType::DUPLEX && outbound)
       *outbound = BMessenger(handler);
-    acquire_sem(this->ongoingLock);
-    this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
-    release_sem(this->ongoingLock);
+    if (acquire_sem(this->ongoingLock) == B_OK) {
+      this->inboundOngoing.insert({-requestNumber, {replyTo, 1}});
+      release_sem(this->ongoingLock);
+    }
     return Sender(BMessenger(handler))
         .send(&content, type != RequestType::ASYNC, false, false);
   } catch (...) {
@@ -499,9 +530,12 @@ int32 Connection::pullLoop() {
     if (has_data(this->pullThreadID)) {
       thread_id sender;
       if (receive_data(&sender, NULL, 0) == 'STOP')
-        return B_CANCELED;
+        result = B_CANCELED;
     }
   } while (result == B_OK);
+  this->Lock();
+  this->stoppedRecv = true;
+  this->Unlock();
   {
     BString logtext("Closing connection to ");
     logtext << this->cypherkey() << ": " << strerror(result);
@@ -528,7 +562,7 @@ SenderHandler *Connection::findSend(uint32 requestNumber) {
 status_t Header::readFromBuffer(unsigned char *buffer) {
   status_t last_error;
   this->flags = buffer[0];
-  if (this->flags & 3 == 3)
+  if ((this->flags & 3) == 3)
     return B_BAD_DATA;
   memcpy(&(this->bodyLength), buffer + 1, sizeof(uint32));
   if ((last_error = swap_data(B_UINT32_TYPE, &this->bodyLength, sizeof(uint32),
@@ -665,7 +699,8 @@ status_t Connection::readOne() {
     if ((err = this->populateHeader(&header)) != B_OK)
       return err;
   }
-  acquire_sem(this->ongoingLock);
+  if (status_t err = acquire_sem(this->ongoingLock); err != B_OK)
+    return err;
   if (auto search = this->inboundOngoing.find(header.requestNumber);
       search != this->inboundOngoing.end()) {
     release_sem(this->ongoingLock);
@@ -691,7 +726,8 @@ status_t Connection::readOne() {
       while (remaining > 0) {
         char buffer[1024];
         ssize_t count = this->inner->Read(
-            buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
+            buffer,
+            remaining > ((ssize_t)sizeof(buffer)) ? sizeof(buffer) : remaining);
         remaining -= count;
         if (count <= 0)
           return B_PARTIAL_READ;
@@ -714,9 +750,10 @@ status_t Connection::readOne() {
     wrapper.AddUInt32("sequence", search->second.sequence);
     BMessenger next = search->second.target;
     if (header.endOrError() || !header.stream()) {
-      acquire_sem(this->ongoingLock);
-      this->inboundOngoing.erase(header.requestNumber);
-      release_sem(this->ongoingLock);
+      if (acquire_sem(this->ongoingLock) == B_OK) {
+        this->inboundOngoing.erase(header.requestNumber);
+        release_sem(this->ongoingLock);
+      }
       this->Lock();
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
         if (auto handler = dynamic_cast<SenderHandler *>(this->HandlerAt(i));
@@ -757,11 +794,12 @@ status_t Connection::readOne() {
           overall = MethodMatch::WRONG_TYPE;
           break;
         case MethodMatch::MATCH:
-          SenderHandler *replies;
+          SenderHandler *replies = NULL;
           try {
             replies = new SenderHandler(this, -header.requestNumber);
           } catch (...) {
-            delete replies;
+            if (replies != NULL)
+              delete replies;
             throw;
           }
           this->Lock();
@@ -771,21 +809,16 @@ status_t Connection::readOne() {
           status_t result = (*this->handlers)[i]->call(
               this, requestType, &args, BMessenger(replies), &inbound);
           if (header.stream() && !header.endOrError()) {
-            acquire_sem(this->ongoingLock);
-            this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
-            release_sem(this->ongoingLock);
+            if (acquire_sem(this->ongoingLock) == B_OK) {
+              this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});
+              release_sem(this->ongoingLock);
+            }
           }
           return B_OK;
         }
       }
       {
-        SenderHandler *replies;
-        try {
-          replies = new SenderHandler(this, -header.requestNumber);
-        } catch (...) {
-          delete replies;
-          throw;
-        }
+        SenderHandler *replies = new SenderHandler(this, -header.requestNumber);
         this->Lock();
         this->AddHandler(replies);
         this->Unlock();
@@ -793,7 +826,7 @@ status_t Connection::readOne() {
         BString errorText("method:");
         BString logText = this->cypherkey();
         logText << " called unknown method ";
-        for (int i = 0; i < name.size(); i++) {
+        for (uint32 i = 0; i < name.size(); i++) {
           if (i > 0) {
             errorText << ",";
             logText << ".";
@@ -811,6 +844,11 @@ status_t Connection::readOne() {
         case RequestType::ASYNC:
           logText << " (async)";
           break;
+        case RequestType::MISSING:
+          logText << " (type missing)";
+          break;
+        case RequestType::UNKNOWN:
+          logText << " (type unrecognised)";
         }
         logText << " ";
         {
@@ -825,10 +863,11 @@ status_t Connection::readOne() {
         Sender(BMessenger(replies))
             .send(&errorMessage, header.stream(), true, false);
         if (header.stream() && !header.endOrError()) {
-          acquire_sem(this->ongoingLock);
-          BMessenger dummy;
-          this->inboundOngoing.insert({header.requestNumber, {dummy, 1}});
-          release_sem(this->ongoingLock);
+          if (acquire_sem(this->ongoingLock) == B_OK) {
+            BMessenger dummy;
+            this->inboundOngoing.insert({header.requestNumber, {dummy, 1}});
+            release_sem(this->ongoingLock);
+          }
         }
       }
     } break;
