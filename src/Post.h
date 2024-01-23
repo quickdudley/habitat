@@ -95,6 +95,7 @@ public:
 protected:
   status_t save(BMessage *message, BMessage *result = NULL);
   void cacheLatest();
+  bool flushQueue();
   std::priority_queue<post_private_::FeedShuntEntry,
                       std::vector<post_private_::FeedShuntEntry>,
                       post_private_::FeedBuildComparator>

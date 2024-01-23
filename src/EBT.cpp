@@ -307,6 +307,10 @@ void Link::MessageReceived(BMessage *message) {
     BString author;
     if (content.FindString("author", &author) == B_OK) {
       this->tick(author);
+      if (auto dsp = dynamic_cast<Dispatcher *>(this->Looper());
+          dsp != NULL && dsp->clogged) {
+        writeLog('CLOG', "Receiving messages while clogged!");
+      }
       BMessenger(this->db()).SendMessage(&content);
     } else {
       status_t err;
@@ -397,7 +401,10 @@ void Link::loadState() {
 void Dispatcher::startNotesTimer(bigtime_t delay) {
   if (this->buildingNotes == false) {
     BMessage timerMsg('SDNT');
-    BMessageRunner::StartSending(BMessenger(this), &timerMsg, delay, 1);
+    if (delay > 0)
+      BMessageRunner::StartSending(BMessenger(this), &timerMsg, delay, 1);
+    else
+      BMessenger(this).SendMessage(&timerMsg);
     this->buildingNotes = true;
   }
 }

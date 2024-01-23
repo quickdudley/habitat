@@ -82,8 +82,11 @@ ContactGraph::ContactGraph(const BVolume &volume)
     BMessage metadata;
     BMessage contacts;
     BFile file(&ref, B_READ_ONLY);
+    BString who;
+    if (file.ReadAttrString("HABITAT:cypherkey", &who) != B_OK)
+      continue;
     auto &node =
-        this->graph.insert({ref.name, std::map<BString, ContactLinkState>()})
+        this->graph.insert({who, std::map<BString, ContactLinkState>()})
             .first->second;
     if (metadata.Unflatten(&file) == B_OK &&
         metadata.FindMessage("contacts", &contacts) == B_OK) {
@@ -94,9 +97,12 @@ ContactGraph::ContactGraph(const BVolume &volume)
       while ((err = contacts.GetInfo(B_MESSAGE_TYPE, index, &attrname,
                                      &attrtype)) != B_BAD_INDEX) {
         BMessage edge;
-        auto &sedge = node.insert({attrname, ContactLinkState()}).first->second;
-        sedge.unarchive(&edge);
-        index++;
+        if (contacts.FindMessage(attrname, &edge) == B_OK) {
+          auto &sedge =
+              node.insert({attrname, ContactLinkState()}).first->second;
+          sedge.unarchive(&edge);
+          index++;
+        }
       }
     }
   }

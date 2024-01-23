@@ -1,6 +1,7 @@
 #include "Post.h"
 #include "BJSON.h"
 #include "Base64.h"
+#include "Logging.h"
 #include "SignJSON.h"
 #include <Application.h>
 #include <File.h>
@@ -25,6 +26,7 @@ class AttrCheck : public BHandler {
 public:
   AttrCheck(BDirectory dir);
   void MessageReceived(BMessage *msg);
+  static void resume(BMessage *msg);
 
 private:
   BDirectory dir;
@@ -38,6 +40,7 @@ AttrCheck::AttrCheck(BDirectory dir)
 
 void AttrCheck::MessageReceived(BMessage *msg) {
   if (msg->what == B_PULSE) {
+    bool requeue = true;
     BMessage tick(B_PULSE);
     if (BEntry entry; this->dir.GetNextEntry(&entry, true) == B_OK) {
       BFile file(&entry, B_READ_ONLY);
@@ -47,16 +50,28 @@ void AttrCheck::MessageReceived(BMessage *msg) {
         if (entry_ref ref; entry.GetRef(&ref) == B_OK) {
           BMessage gc('CHCK');
           gc.AddRef("entry", &ref);
+          gc.AddMessenger("resume", BMessenger(this));
           BMessenger(runningDB).SendMessage(&gc);
+          requeue = false;
         }
       }
-      BMessageRunner::StartSending(this, &tick, 5000, 1); // 5 milliseconds
+      if (requeue)
+        BMessageRunner::StartSending(this, &tick, 5000, 1); // 5 milliseconds
     } else {
       this->dir.Rewind();
       BMessageRunner::StartSending(this, &tick, 30000000, 1); // 30 seconds
     }
   } else {
     BHandler::MessageReceived(msg);
+  }
+}
+
+void AttrCheck::resume(BMessage *msg) {
+  BMessenger self;
+  BMessage tick(B_PULSE);
+  if (msg->FindMessenger("resume", &self) == B_OK) {
+    BMessageRunner::StartSending(self, &tick, 5000, 1); // 5 milliseconds
+    msg->RemoveName("resume");
   }
 }
 
@@ -288,6 +303,11 @@ AntiClog::AntiClog(const char *name, int32 capacity, int32 lax)
 void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
   {
     auto count = this->MessageQueue()->CountMessages();
+    {
+      BString logText("Message count: ");
+      logText << count;
+      writeLog('CLOG', logText);
+    }
     if (this->clogged ? (count <= this->lax) : (count >= this->capacity)) {
       this->clogged = !this->clogged;
       BMessage notify('CLOG');
@@ -616,36 +636,51 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           BMessenger(handler).SendMessage(msg);
       }
     }
-  } else if (msg->what == 'CHCK' && this->collectingGarbage) {
-    if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
-      BEntry entry(&ref);
-      BNode node(&entry);
-      BString author;
-      if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
-        return;
-      SSBFeed *feed;
-      if (this->findFeed(feed, author) != B_OK || feed == NULL) {
-        entry.Remove();
-      } else {
-        BMessage mimic(B_QUERY_UPDATE);
-        mimic.AddInt32("opcode", B_ENTRY_CREATED);
-        mimic.AddInt32("device", ref.device);
-        mimic.AddInt64("directory", ref.directory);
-        mimic.AddString("name", ref.name);
-        for (int i = 0; i < this->CountHandlers(); i++) {
-          if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
-              qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
-            BMessenger(qh).SendMessage(&mimic);
+  } else if (msg->what == 'CHCK') {
+    if (this->collectingGarbage) {
+      if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
+        BEntry entry(&ref);
+        BNode node(&entry);
+        BString author;
+        if (node.ReadAttrString("HABITAT:author", &author) != B_OK) {
+          AttrCheck::resume(msg);
+          return;
+        }
+        SSBFeed *feed;
+        if (this->findFeed(feed, author) != B_OK || feed == NULL) {
+          entry.Remove();
+          AttrCheck::resume(msg);
+        } else {
+          BMessage mimic(B_QUERY_UPDATE);
+          mimic.AddInt32("opcode", B_ENTRY_CREATED);
+          mimic.AddInt32("device", ref.device);
+          mimic.AddInt64("directory", ref.directory);
+          mimic.AddString("name", ref.name);
+          for (int i = 0; i < this->CountHandlers(); i++) {
+            if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
+                qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
+              BMessenger(qh).SendMessage(&mimic);
+            }
+          }
+          int64 sequence;
+          if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
+                            sizeof(int64)) == B_OK &&
+              sequence > 1) {
+            BMessage check('CHCK');
+            check.AddInt64("sequence", sequence - 1);
+            BMessenger resume;
+            if (msg->FindMessenger("resume", &resume) == B_OK)
+              check.AddMessenger("resume", resume);
+            BMessenger(feed).SendMessage(&check);
+          } else {
+            AttrCheck::resume(msg);
           }
         }
-        int64 sequence;
-        if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
-                          sizeof(int64)) == B_OK) {
-          BMessage check('CHCK');
-          check.AddInt64("sequence", sequence);
-          BMessenger(this).SendMessage(&check);
-        }
+      } else {
+        AttrCheck::resume(msg);
       }
+    } else {
+      AttrCheck::resume(msg);
     }
   } else if (msg->what == 'GCOK') {
     this->collectingGarbage = true;
@@ -763,15 +798,18 @@ status_t SSBFeed::load(bool useCache) {
           metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
         auto rawid = base64::decode(cachedID);
         if (rawid.size() == crypto_hash_sha256_BYTES) {
-          this->lastSequence = cachedSequence;
-          memcpy(this->lastHash, rawid.data(), crypto_hash_sha256_BYTES);
+          this->savedSequence = cachedSequence;
+          memcpy(this->savedHash, rawid.data(), crypto_hash_sha256_BYTES);
         }
       }
     }
+  } else {
+    stale = true;
+    this->savedSequence = 0;
   }
-  if (this->lastSequence > 0) {
+  if (this->savedSequence > 0) {
     query.PushAttr("HABITAT:sequence");
-    query.PushInt64(this->lastSequence);
+    query.PushInt64(this->savedSequence);
     query.PushOp(B_GT);
     query.PushOp(B_AND);
   }
@@ -785,39 +823,51 @@ status_t SSBFeed::load(bool useCache) {
                     sizeof(int64));
       if (sequence > this->lastSequence)
         this->pending.push({sequence, ref});
-      while (!this->pending.empty() &&
-             this->pending.top().sequence == this->lastSequence + 1) {
-        sequence = this->pending.top().sequence;
-        BEntry processingEntry(&this->pending.top().ref);
-        BNode processingNode(&processingEntry);
-        BString cypherkey;
-        processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
-        this->pending.pop();
-        BString b64;
-        // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
-        for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
-          b64.Append(cypherkey[i], 1);
-        std::vector<unsigned char> hash =
-            base64::decode(b64.String(), b64.Length());
-        this->lastSequence = sequence;
-        memcpy(this->lastHash, &hash[0],
-               std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
-      }
+      this->flushQueue();
     }
   }
-  this->savedSequence = this->lastSequence;
-  memcpy(this->savedHash, this->lastHash, crypto_hash_sha256_BYTES);
+  this->lastSequence = this->savedSequence;
+  memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
   if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
     db->feeds.insert({this->cypherkey(), this});
   if (stale)
     this->cacheLatest();
   this->notifyChanges();
-  {
+  if (useCache) {
     BMessage check('CHCK');
     check.AddInt64("sequence", this->lastSequence);
     BMessenger(this).SendMessage(&check);
   }
   return error;
+}
+
+bool SSBFeed::flushQueue() {
+  bool stale = false;
+  while (!this->pending.empty() &&
+         this->pending.top().sequence == this->savedSequence + 1) {
+    int64 sequence = this->pending.top().sequence;
+    BEntry processingEntry(&this->pending.top().ref);
+    BNode processingNode(&processingEntry);
+    BString cypherkey;
+    processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
+    this->pending.pop();
+    BString b64;
+    // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
+    for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
+      b64.Append(cypherkey[i], 1);
+    std::vector<unsigned char> hash =
+        base64::decode(b64.String(), b64.Length());
+    this->savedSequence = sequence;
+    memcpy(this->savedHash, &hash[0],
+           std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
+    stale = true;
+  }
+  if (this->pending.empty()) {
+    pending = std::priority_queue<post_private_::FeedShuntEntry,
+                                  std::vector<post_private_::FeedShuntEntry>,
+                                  post_private_::FeedBuildComparator>();
+  }
+  return stale;
 }
 
 SSBFeed::~SSBFeed() {}
@@ -963,12 +1013,22 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     }
     this->savedSequence = sequence;
     memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
+    if (this->flushQueue()) {
+      this->lastSequence = this->savedSequence;
+      memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
+    }
     this->cacheLatest();
     this->notifyChanges();
   } else if (msg->what == 'CHCK') {
     int64 sequence;
-    if (msg->FindInt64("sequence", &sequence) != B_OK)
+    if (msg->FindInt64("sequence", &sequence) != B_OK) {
+      AttrCheck::resume(msg);
       return;
+    }
+    if (sequence > this->savedSequence || sequence < 1) {
+      AttrCheck::resume(msg);
+      return;
+    }
     BQuery query;
     query.SetVolume(&this->volume);
     query.PushAttr("HABITAT:author");
@@ -978,11 +1038,14 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     query.PushInt64(sequence);
     query.PushOp(B_EQ);
     query.PushOp(B_AND);
-    if (query.Fetch() != B_OK)
+    if (query.Fetch() != B_OK) {
+      AttrCheck::resume(msg);
       return;
+    }
     entry_ref ref;
     if (query.GetNextRef(&ref) != B_OK)
       this->load(false);
+    AttrCheck::resume(msg);
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
