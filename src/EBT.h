@@ -37,6 +37,7 @@ private:
   SSBDatabase *db();
   void tick(const BString &author);
   void stopWaiting();
+  BMessenger *outbound();
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
   std::map<BString, Note> ourState;
@@ -55,6 +56,7 @@ public:
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *msg) override;
   void Quit() override;
+  void initiate(muxrpc::Connection *connection);
 
 private:
   void checkForMessage(const BString &author, uint64 sequence);
@@ -66,12 +68,14 @@ private:
   friend class Link;
 };
 
-class Begin : public muxrpc::Method {
+class Begin : public muxrpc::Method, public muxrpc::ConnectionHook {
 public:
   Begin(Dispatcher *dispatcher);
   ~Begin();
   status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
-                BMessage *args, BMessenger replyTo, BMessenger *inbound);
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
+  void call(muxrpc::Connection *connection) override;
 
 private:
   Dispatcher *dispatcher;

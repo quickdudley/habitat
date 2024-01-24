@@ -82,6 +82,7 @@ public:
   status_t send(BString &content, bool stream, bool error, bool inOrder = true);
   status_t send(unsigned char *content, uint32 length, bool stream, bool error,
                 bool inOrder = true);
+  BMessenger *outbound();
 
 private:
   BMessenger inner;
@@ -122,8 +123,8 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *message) override;
-  status_t request(std::vector<BString> &name, RequestType type, BMessage *args,
-                   BMessenger replyTo, BMessenger *outbound);
+  status_t request(const std::vector<BString> &name, RequestType type,
+                   BMessage *args, BMessenger replyTo, BMessenger *outbound);
   BString cypherkey();
 
 private:
@@ -157,6 +158,7 @@ public:
   MethodSuite &operator=(const MethodSuite &original);
   void registerMethod(std::shared_ptr<Method> method);
   void registerConnectionHook(std::shared_ptr<ConnectionHook> call);
+  void copyHooks(const MethodSuite &other);
 
 private:
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> methods;

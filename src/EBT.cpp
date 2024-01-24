@@ -199,8 +199,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     bool anyRemaining = false;
     for (int i = this->CountHandlers() - 1; i >= 0; i--) {
       if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-      	if (link->waiting)
-      	  continue;
+        if (link->waiting)
+          continue;
         BMessage content;
         int counter = 50;
         bool nonempty;
@@ -273,6 +273,25 @@ void Dispatcher::Quit() {
   return BLooper::Quit();
 }
 
+void Dispatcher::initiate(muxrpc::Connection *connection) {
+  BMessage argsObject('JSOB');
+  argsObject.AddDouble("version", 3);
+  argsObject.AddString("format", "classic");
+  BMessage args('JSAR');
+  args.AddMessage("0", &argsObject);
+  Link *link = new Link(BMessenger(), true);
+  if (this->Lock()) {
+    this->AddHandler(link);
+    if (connection->request({"ebt", "replicate"}, muxrpc::RequestType::DUPLEX,
+                            &args, BMessenger(link),
+                            link->outbound()) != B_OK) {
+      delete link;
+    }
+    link->loadState();
+    this->Unlock();
+  }
+}
+
 void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
   BMessage message(B_GET_PROPERTY);
   message.AddSpecifier("Post", (int32)sequence);
@@ -301,7 +320,8 @@ Begin::~Begin() {}
 
 Link::Link(muxrpc::Sender sender, bool waiting)
     :
-    sender(sender), waiting(waiting) {}
+    sender(sender),
+    waiting(waiting) {}
 
 void Link::MessageReceived(BMessage *message) {
   BMessage content;
@@ -325,7 +345,7 @@ void Link::MessageReceived(BMessage *message) {
         if (err == B_OK) {
           double note;
           if (content.FindDouble(attrname, &note) == B_OK) {
-          	this->stopWaiting();
+            this->stopWaiting();
             const auto &inserted = this->remoteState.insert_or_assign(
                 BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
@@ -395,10 +415,11 @@ void Link::tick(const BString &author) {
 
 void Link::stopWaiting() {
   if (this->waiting) {
-  	if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper()); dispatcher != NULL) {
-	  this->waiting = false;
-	  dispatcher->startNotesTimer(1000);
-  	}
+    if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
+        dispatcher != NULL) {
+      this->waiting = false;
+      dispatcher->startNotesTimer(1000);
+    }
   }
 }
 
@@ -410,6 +431,8 @@ void Link::loadState() {
     BMessenger(db).SendMessage(&request, BMessenger(this));
   }
 }
+
+BMessenger *Link::outbound() { return this->sender.outbound(); }
 
 void Dispatcher::startNotesTimer(bigtime_t delay) {
   if (this->buildingNotes == false) {
@@ -446,5 +469,9 @@ status_t Begin::call(muxrpc::Connection *connection, muxrpc::RequestType type,
   link->loadState();
   this->dispatcher->Unlock();
   return B_OK;
+}
+
+void Begin::call(muxrpc::Connection *connection) {
+  this->dispatcher->initiate(connection);
 }
 } // namespace ebt

@@ -1,4 +1,5 @@
 #include "Main.h"
+#include "Base64.h"
 #include "Connection.h"
 #include "ContactGraph.h"
 #include "Indices.h"
@@ -39,7 +40,15 @@ int main(int argc, const char **args) {
   return exit_status;
 }
 
-enum { kTimeZone, kCypherkey, kCreateBlob, kCreatePost, kLogCategory, kServer };
+enum {
+  kTimeZone,
+  kCypherkey,
+  kCreateBlob,
+  kCreatePost,
+  kLogCategory,
+  kServer,
+  kConnection
+};
 
 static property_info habitatProperties[] = {
     {"Timezone",
@@ -68,7 +77,7 @@ static property_info habitatProperties[] = {
      {}},
     {"LogCategory",
      {B_CREATE_PROPERTY, B_DELETE_PROPERTY, 0},
-     {B_DIRECT_SPECIFIER, 0},
+     {B_DIRECT_SPECIFIER, B_NAME_SPECIFIER, 0},
      "An enabled category of log entries",
      kLogCategory,
      {}},
@@ -83,6 +92,12 @@ static property_info habitatProperties[] = {
      {B_NAME_SPECIFIER, 0},
      "A pub server or room server",
      kServer,
+     {}},
+    {"Connection",
+     {B_CREATE_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A one-time connection to another peer",
+     kConnection,
      {}},
     {0}};
 
@@ -314,7 +329,8 @@ void Habitat::MessageReceived(BMessage *msg) {
     break;
   case kLogCategory: {
     int32 category;
-    if (BString cascii; msg->FindString("category", &cascii) == B_OK) {
+    if (BString cascii; msg->FindString("category", &cascii) == B_OK ||
+        specifier.FindString("name", &cascii) == B_OK) {
       if (cascii.Length() != 4) {
         error = B_BAD_VALUE;
         break;
@@ -371,6 +387,37 @@ void Habitat::MessageReceived(BMessage *msg) {
     } break;
     }
   } break;
+  case kConnection: {
+    BString host;
+    if ((error = msg->FindString("host", &host)) != B_OK)
+      break;
+    unsigned short port;
+    if ((error = msg->FindUInt16("port", &port)) != B_OK &&
+        (error = msg->FindInt16("port", (int16 *)&port)) != B_OK) {
+      break;
+    }
+    BString key;
+    if ((error = msg->FindString("key", &key)) != B_OK)
+      break;
+    auto rawKey = base64::decode(key);
+    if (rawKey.size() != 32) {
+      error = B_BAD_VALUE;
+      break;
+    }
+    try {
+      auto conn = new muxrpc::Connection(
+          std::make_unique<BoxStream>(
+              std::make_unique<BSocket>(BNetworkAddress(host, port)),
+              SSB_NETWORK_ID, myId.get(), rawKey.data()),
+          this->clientMethods);
+      this->RegisterLooper(conn);
+      conn->Run();
+    } catch (...) {
+      error = B_IO_ERROR;
+      break;
+    }
+    error = B_OK;
+  } break;
   default:
     return BApplication::MessageReceived(msg);
   }
@@ -397,7 +444,14 @@ void Habitat::ReadyToRun() {
   this->ebt = new ebt::Dispatcher(this->databaseLooper);
   this->ebt->Run();
   this->RegisterLooper(this->ebt);
-  this->serverMethods.registerMethod(std::make_shared<ebt::Begin>(this->ebt));
+  {
+    auto beginEBT = std::make_shared<ebt::Begin>(this->ebt);
+    this->serverMethods.registerMethod(beginEBT);
+    this->clientMethods = muxrpc::MethodSuite(this->serverMethods, false);
+    this->clientMethods.copyHooks(this->serverMethods);
+    this->clientMethods.registerConnectionHook(
+        std::static_pointer_cast<muxrpc::ConnectionHook>(beginEBT));
+  }
   auto worker = new BLooper("Worker thread");
   worker->Run();
   worker->Lock();

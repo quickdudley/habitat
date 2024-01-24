@@ -84,6 +84,8 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
   return this->inner.SendMessage(&wrapper);
 }
 
+BMessenger *Sender::outbound() { return &this->inner; }
+
 void SenderHandler::MessageReceived(BMessage *msg) {
   bool finished = false;
   switch (msg->what) {
@@ -476,7 +478,7 @@ status_t Connection::populateHeader(Header *out) {
   return out->readFromBuffer(buffer);
 }
 
-status_t Connection::request(std::vector<BString> &name, RequestType type,
+status_t Connection::request(const std::vector<BString> &name, RequestType type,
                              BMessage *args, BMessenger replyTo,
                              BMessenger *outbound) {
   SenderHandler *handler;
@@ -967,5 +969,10 @@ void MethodSuite::registerMethod(std::shared_ptr<Method> method) {
 
 void MethodSuite::registerConnectionHook(std::shared_ptr<ConnectionHook> call) {
   this->connectionHooks->push_back(call);
+}
+
+void MethodSuite::copyHooks(const MethodSuite &other) {
+  for (auto &hook : *(other.connectionHooks))
+    this->registerConnectionHook(hook);
 }
 }; // namespace muxrpc
