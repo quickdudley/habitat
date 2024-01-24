@@ -202,7 +202,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
         if (link->waiting)
           continue;
         BMessage content;
-        int counter = 50;
+        int counter = 618;
         bool nonempty;
         while (counter > 0 && !link->sendSequence.empty()) {
           auto &feedID = link->sendSequence.front();
