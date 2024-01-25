@@ -61,6 +61,7 @@ public:
 private:
   void checkForMessage(const BString &author, uint64 sequence);
   void startNotesTimer(bigtime_t delay);
+  void sendNotes();
   bool polyLink();
   SSBDatabase *db;
   bool buildingNotes = false;

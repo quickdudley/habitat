@@ -276,7 +276,7 @@ private:
 
 Writer::Writer(BDirectory *store, SSBDatabase *db)
     :
-    AntiClog("Database write queue", 2048, 1536),
+    AntiClog("Database write queue", 5000, 1536),
     store(store),
     db(db) {
   BHandler *check = new AttrCheck(*store);
@@ -304,7 +304,7 @@ AntiClog::AntiClog(const char *name, int32 capacity, int32 lax)
 void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
   {
     auto count = this->MessageQueue()->CountMessages();
-    {
+    if (count > 0) {
       BString logText("Message count: ");
       logText << count;
       writeLog('CLOG', logText);

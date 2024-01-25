@@ -196,46 +196,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       this->startNotesTimer(1000);
   }
   if (msg->what == 'SDNT') {
-    bool anyRemaining = false;
-    for (int i = this->CountHandlers() - 1; i >= 0; i--) {
-      if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-        if (link->waiting)
-          continue;
-        BMessage content;
-        int counter = 618;
-        bool nonempty;
-        while (counter > 0 && !link->sendSequence.empty()) {
-          auto &feedID = link->sendSequence.front();
-          int64 noteValue;
-          if (auto state = link->ourState.find(feedID);
-              state != link->ourState.end()) {
-            auto noteStruct = state->second;
-            if (this->clogged)
-              noteStruct.receive = false;
-            noteValue = encodeNote(noteStruct);
-          } else {
-            noteValue = -1;
-          }
-          auto [sentValue, insertedSent] =
-              link->lastSent.insert({feedID, noteValue});
-          if (insertedSent || sentValue->second != noteValue) {
-            nonempty = true;
-            counter--;
-            sentValue->second = noteValue;
-            content.AddInt64(feedID, noteValue);
-          }
-          link->sendSequence.pop();
-        }
-        if (nonempty)
-          link->sender.send(&content, true, false, false);
-        if (!link->sendSequence.empty())
-          anyRemaining = true;
-      }
-    }
-    if (anyRemaining)
-      BMessenger(this).SendMessage(msg);
-    else
-      this->buildingNotes = false;
+    this->sendNotes();
     return;
   }
   {
@@ -308,6 +269,45 @@ bool Dispatcher::polyLink() {
   return false;
 }
 
+void Dispatcher::sendNotes() {
+  for (int i = this->CountHandlers() - 1; i >= 0; i--) {
+    if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
+      if (link->waiting)
+        continue;
+      while (!link->sendSequence.empty()) {
+        BMessage content;
+        int counter = 618;
+        bool nonempty = false;
+        while (counter > 0 && !link->sendSequence.empty()) {
+          auto &feedID = link->sendSequence.front();
+          int64 noteValue;
+          if (auto state = link->ourState.find(feedID);
+              state != link->ourState.end()) {
+            auto noteStruct = state->second;
+            if (this->clogged)
+              noteStruct.receive = false;
+            noteValue = encodeNote(noteStruct);
+          } else {
+            noteValue = -1;
+          }
+          auto [sentValue, insertedSent] =
+              link->lastSent.insert({feedID, noteValue});
+          if (insertedSent || sentValue->second != noteValue) {
+            nonempty = true;
+            counter--;
+            sentValue->second = noteValue;
+            content.AddInt64(feedID, noteValue);
+          }
+          link->sendSequence.pop();
+        }
+        if (nonempty)
+          link->sender.send(&content, true, false, false);
+      }
+    }
+  }
+  this->buildingNotes = false;
+}
+
 Begin::Begin(Dispatcher *dispatcher)
     :
     dispatcher(dispatcher) {
@@ -332,8 +332,12 @@ void Link::MessageReceived(BMessage *message) {
       this->tick(author);
       if (auto dsp = dynamic_cast<Dispatcher *>(this->Looper());
           dsp != NULL && dsp->clogged) {
-        writeLog('CLOG', "Receiving messages while clogged!");
-      }
+        writeLog('RMCD', "Receiving messages while clogged!");
+        if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
+            dispatcher != NULL) {
+          dispatcher->sendNotes();
+        }
+      } else
       BMessenger(this->db()).SendMessage(&content);
     } else {
       status_t err;
