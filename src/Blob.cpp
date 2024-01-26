@@ -685,7 +685,8 @@ void LocalHandler::MessageReceived(BMessage *message) {
 reply:
   toSend.AddInt32("error", err);
   toSend.AddString("message", strerror(err));
-  this->original->SendReply(&toSend);
+  if (this->original->ReturnAddress().IsValid())
+    this->original->SendReply(&toSend);
   BLooper *looper = this->Looper();
   looper->Lock();
   looper->RemoveHandler(this);
