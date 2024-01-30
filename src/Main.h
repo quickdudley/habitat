@@ -60,6 +60,7 @@ public:
 private:
   void loadSettings();
   void saveSettings();
+  static int initiateConnection(void *message);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;

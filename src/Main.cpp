@@ -245,6 +245,7 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
 }
 
 void Habitat::MessageReceived(BMessage *msg) {
+  bool detached = false;
   if (!msg->HasSpecifiers()) {
     if (msg->what == 'LOG_') {
       for (int32 i = be_app->CountHandlers() - 1; i >= 0; i--) {
@@ -388,36 +389,17 @@ void Habitat::MessageReceived(BMessage *msg) {
     }
   } break;
   case kConnection: {
-    BString host;
-    if ((error = msg->FindString("host", &host)) != B_OK)
-      break;
-    unsigned short port;
-    if ((error = msg->FindUInt16("port", &port)) != B_OK &&
-        (error = msg->FindInt16("port", (int16 *)&port)) != B_OK) {
-      break;
-    }
-    BString key;
-    if ((error = msg->FindString("key", &key)) != B_OK)
-      break;
-    auto rawKey = base64::decode(key);
-    if (rawKey.size() != 32) {
-      error = B_BAD_VALUE;
+    thread_id t = spawn_thread(Habitat::initiateConnection, "New connection", 0,
+                               this->DetachCurrentMessage());
+    detached = true;
+    if (t < B_OK) {
+      error = t;
       break;
     }
-    try {
-      auto conn = new muxrpc::Connection(
-          std::make_unique<BoxStream>(
-              std::make_unique<BSocket>(BNetworkAddress(host, port)),
-              SSB_NETWORK_ID, myId.get(), rawKey.data()),
-          this->clientMethods);
-      this->RegisterLooper(conn);
-      conn->Run();
-    } catch (...) {
-      error = B_IO_ERROR;
+    if ((error = resume_thread(t)) < B_OK)
       break;
-    }
-    error = B_OK;
-  } break;
+    return;
+  }
   default:
     return BApplication::MessageReceived(msg);
   }
@@ -426,6 +408,8 @@ void Habitat::MessageReceived(BMessage *msg) {
     reply.AddString("message", strerror(error));
   if (msg->IsSourceWaiting())
     msg->SendReply(&reply);
+  if (detached)
+    delete msg;
 }
 
 thread_id Habitat::Run() {
@@ -433,6 +417,53 @@ thread_id Habitat::Run() {
   this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId->pubkey);
   BApplication::Run();
   return r;
+}
+
+int Habitat::initiateConnection(void *message) {
+  status_t error;
+  BMessage *msg = (BMessage *)message;
+  BMessage reply(B_REPLY);
+  {
+    BString host;
+    if ((error = msg->FindString("host", &host)) != B_OK)
+      goto sendReply;
+    unsigned short port;
+    if ((error = msg->FindUInt16("port", &port)) != B_OK &&
+        (error = msg->FindInt16("port", (int16 *)&port)) != B_OK) {
+      goto sendReply;
+    }
+    BString key;
+    if ((error = msg->FindString("key", &key)) != B_OK)
+      goto sendReply;
+    auto rawKey = base64::decode(key);
+    if (rawKey.size() != 32) {
+      error = B_BAD_VALUE;
+      goto sendReply;
+    }
+    try {
+      auto conn = new muxrpc::Connection(
+          std::make_unique<BoxStream>(
+              std::make_unique<BSocket>(BNetworkAddress(host, port)),
+              SSB_NETWORK_ID, static_cast<Habitat *>(be_app)->myId.get(),
+              rawKey.data()),
+          static_cast<Habitat *>(be_app)->clientMethods);
+      be_app->RegisterLooper(conn);
+      conn->Run();
+    } catch (...) {
+      error = B_IO_ERROR;
+      goto sendReply;
+    }
+    error = B_OK;
+  }
+sendReply:
+  reply.AddInt32("error", error);
+  if (error != B_OK)
+    reply.AddString("message", strerror(error));
+  if (msg->IsSourceWaiting())
+    msg->SendReply(&reply);
+  delete msg;
+  // TODO: Reap thread ID
+  return 0;
 }
 
 void Habitat::ReadyToRun() {
