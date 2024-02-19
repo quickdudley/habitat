@@ -8,6 +8,7 @@ A Secure Scuttlebutt client for Haiku.
 
 - Libsodium: `pkgman install devel:libsodium`
 - ICU: `pkgman install icu66_devel`
+- Sqlite: `pkgman install sqlite_devel`
 
 ## Building
 

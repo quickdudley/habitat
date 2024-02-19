@@ -5,10 +5,10 @@
 #include <Directory.h>
 #include <Looper.h>
 #include <PropertyInfo.h>
-#include <Query.h>
 #include <Volume.h>
 #include <map>
 #include <queue>
+#include <sqlite3.h>
 #include <vector>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
@@ -26,8 +26,10 @@ struct FeedBuildComparator {
 
 class QueryBacked : public BHandler {
 public:
-  virtual bool fillQuery(BQuery *query, time_t reset) = 0;
-  virtual bool queryMatch(entry_ref *entry) = 0;
+  QueryBacked(sqlite3_stmt *query);
+  ~QueryBacked();
+protected:
+  sqlite3_stmt *query;
 };
 
 class AntiClog : public BLooper {
@@ -47,7 +49,7 @@ extern property_info databaseProperties[];
 
 class SSBDatabase : public AntiClog {
 public:
-  SSBDatabase(BDirectory store, BDirectory contacts);
+  SSBDatabase(sqlite3 *database);
   ~SSBDatabase() override;
   thread_id Run() override;
   void Quit() override;
@@ -63,18 +65,14 @@ public:
 private:
   friend class SSBFeed;
   bool runCheck(BMessage *msg);
-  BDirectory store;
-  BDirectory contacts;
-  BQuery commonQuery;
-  BMessenger writes;
+  sqlite3 *database;
   std::map<BString, SSBFeed *> feeds;
-  bool pendingQueryMods = false;
   bool collectingGarbage = false;
 };
 
 class SSBFeed : public QueryBacked {
 public:
-  SSBFeed(BDirectory *store, BDirectory *contactsDir,
+  SSBFeed(sqlite3 *database,
           unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
   BString cypherkey();
@@ -84,8 +82,7 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   status_t load(bool useCache = true);
-  bool fillQuery(BQuery *query, time_t reset) override;
-  bool queryMatch(entry_ref *entry) override;
+
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
   status_t findPost(BMessage *post, uint64 sequence);
@@ -101,19 +98,14 @@ protected:
                       std::vector<post_private_::FeedShuntEntry>,
                       post_private_::FeedBuildComparator>
       pending;
-  BDirectory *store;
-  BVolume volume;
-  entry_ref metastore;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = 0;
-  int64 savedSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
-  unsigned char savedHash[crypto_hash_sha256_BYTES];
 };
 
 class OwnFeed : public SSBFeed {
 public:
-  OwnFeed(BDirectory *store, BDirectory *contactsDir, Ed25519Secret *secret);
+  OwnFeed(sqlite3 *database, Ed25519Secret *secret);
   status_t GetSupportedSuites(BMessage *data);
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,

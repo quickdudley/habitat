@@ -69,7 +69,6 @@ private:
   muxrpc::MethodSuite serverMethods;
   muxrpc::MethodSuite clientMethods;
   std::unique_ptr<BDirectory> settings;
-  std::unique_ptr<BDirectory> postDir;
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
   std::unique_ptr<SSBListener> ipListener;
   std::unique_ptr<BHandler> lanBroadcaster;

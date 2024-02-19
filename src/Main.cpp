@@ -4,6 +4,7 @@
 #include "ContactGraph.h"
 #include "Indices.h"
 #include "Logging.h"
+#include "MigrateDB.h"
 #include "SelectContacts.h"
 #include "SettingsWindow.h"
 #include <ByteOrder.h>
@@ -115,6 +116,7 @@ Habitat::Habitat(void)
             defaultTimeZone.ID().String()));
   }
   BDirectory contactsDir;
+  sqlite3 *database;
   {
     // Create settings directory
     BPath settings_path;
@@ -133,18 +135,8 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
-    // Create posts directory
-    this->postDir = std::make_unique<BDirectory>();
-    status = this->settings->CreateDirectory("posts", this->postDir.get());
-    if (status == B_FILE_EXISTS) {
-      BEntry entry;
-      status = this->settings->FindEntry("posts", &entry, true);
-      if (status != B_OK)
-        throw status;
-      this->postDir = std::make_unique<BDirectory>(&entry);
-    } else if (status != B_OK) {
-      throw status;
-    }
+    database = migrateToSqlite(*this->settings);
+    throw B_OK; // TODO: finish switching the rest over to sqlite3
     // Create contacts directory
     status = this->settings->CreateDirectory("contacts", &contactsDir);
     if (status == B_FILE_EXISTS) {
@@ -185,9 +177,9 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new SSBDatabase(*this->postDir, contactsDir);
+  this->databaseLooper = new SSBDatabase(database);
   this->ownFeed =
-      new OwnFeed(this->postDir.get(), &contactsDir, this->myId.get());
+      new OwnFeed(database, this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->RegisterLooper(databaseLooper);

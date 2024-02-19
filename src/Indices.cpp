@@ -12,6 +12,7 @@ struct RequiredIndex {
   type_code type;
 };
 
+// TODO: Remove most of these
 static RequiredIndex requiredIndices[] = {
     {"HABITAT:cypherkey", B_STRING_TYPE}, {"HABITAT:sequence", B_INT64_TYPE},
     {"HABITAT:author", B_STRING_TYPE},    {"HABITAT:timestamp", B_INT64_TYPE},

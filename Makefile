@@ -41,6 +41,7 @@ APP_SRCS = \
 	 src/Lan.cpp \
 	 src/Listener.cpp \
 	 src/Main.cpp \
+	 src/MigrateDB.cpp \
 	 src/MUXRPC.cpp \
 	 src/Plugin.cpp \
 	 src/Post.cpp \
@@ -101,7 +102,7 @@ RSRCS = \
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 LIBS = be network bnetapi localestub sodium $(STDCPPLIBS) \
-	icui18n icuuc icudata
+	icui18n icuuc icudata sqlite3
 
 #	Specify additional paths to directories following the standard libXXX.so
 #	or libXXX.a naming scheme. You can specify full paths or paths relative

@@ -14,78 +14,37 @@
 #include <ctime>
 #include <iostream>
 #include <unicode/utf8.h>
+#include <variant>
 #include <vector>
 
+/*
+TODO:
+Everything that sends/accepts/returns an `entry_ref` for an SSB message should
+  use a cypherkey instead.
+Remove the `Writer` class and put its functionality back in the `SSBDatabase`
+  class.
+Everything that uses a `BQuery` should instead use a `sqlite3_stmt`
+Identify parts of the code which exist purely to work around limitations of
+  `BQuery`s
+Store contact graph in sqlite too
+*/
+
 namespace {
+template<class... Ts>
+struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 SSBDatabase *runningDB = NULL;
-
-status_t postAttrs(BNode *sink, BMessage *message,
-                   const unsigned char *prehashed = NULL);
-
-class AttrCheck : public BHandler {
-public:
-  AttrCheck(BDirectory dir);
-  void MessageReceived(BMessage *msg);
-  static void resume(BMessage *msg);
-
-private:
-  BDirectory dir;
-};
-
-AttrCheck::AttrCheck(BDirectory dir)
-    :
-    dir(dir) {
-  this->dir.Rewind();
-}
-
-void AttrCheck::MessageReceived(BMessage *msg) {
-  if (msg->what == B_PULSE) {
-    bool requeue = true;
-    BMessage tick(B_PULSE);
-    if (BEntry entry; this->dir.GetNextEntry(&entry, true) == B_OK) {
-      BFile file(&entry, B_READ_ONLY);
-      if (BMessage contents;
-          file.IsReadable() && contents.Unflatten(&file) == B_OK) {
-        postAttrs(&file, &contents);
-        if (entry_ref ref; entry.GetRef(&ref) == B_OK) {
-          BMessage gc('CHCK');
-          gc.AddRef("entry", &ref);
-          gc.AddMessenger("resume", BMessenger(this));
-          BMessenger(runningDB).SendMessage(&gc);
-          requeue = false;
-        }
-      }
-      if (requeue)
-        BMessageRunner::StartSending(this, &tick, 5000, 1); // 5 milliseconds
-    } else {
-      this->dir.Rewind();
-      BMessageRunner::StartSending(this, &tick, 30000000, 1); // 30 seconds
-    }
-  } else {
-    BHandler::MessageReceived(msg);
-  }
-}
-
-void AttrCheck::resume(BMessage *msg) {
-  BMessenger self;
-  BMessage tick(B_PULSE);
-  if (msg->FindMessenger("resume", &self) == B_OK) {
-    BMessageRunner::StartSending(self, &tick, 5000, 1); // 5 milliseconds
-    msg->RemoveName("resume");
-  }
-}
 
 class QueryHandler : public QueryBacked {
 public:
-  QueryHandler(BMessenger target, const BMessage &specifier);
+  QueryHandler(sqlite3 *db, BMessenger target, const BMessage &specifier);
   void MessageReceived(BMessage *message) override;
-  bool fillQuery(BQuery *query, time_t reset) override;
-  bool queryMatch(entry_ref *entry) override;
   int32 limit = -1;
 
 private:
   BMessenger target;
-  BMessage specifier;
   bool started = false;
   bool ongoing = false;
   bool drips = false;
@@ -94,10 +53,111 @@ public:
   bool dregs;
 };
 
-QueryHandler::QueryHandler(BMessenger target, const BMessage &specifier)
+static int string_term(BString &clause, std::vector<std::variant<BString, int64>> &terms, const BString &attrName, const BString &columnName, const BMessage &specifier) {
+  std::vector<BString> values;
+  int32 i = 0;
+  status_t error;
+  do {
+  	values.push_back(BString());
+  	error = specifier.FindString(attrName, i++, &values.back());
+  	if (error != B_OK)
+  	  values.pop_back();
+  } while (error != B_BAD_INDEX);
+  if (values.size() == 1) {
+  	clause = columnName;
+  	clause.Append(" = ?");
+  } else if (values.size() >= 1) {
+  	clause = columnName;
+  	clause.Append(" IN(");
+  	for (unsigned int j = 0; j < values.size(); j++) {
+  	  if (j > 0)
+  	    clause.Append(", ");
+  	  clause.Append("?");
+  	}
+  	clause.Append(")");
+  }
+  for (auto &value : values) {
+  	terms.push_back(value);
+  }
+  return values.size();
+}
+
+static int integer_term(BString &clause, std::vector<std::variant<BString, int64>> &terms, const BString &attrName, const BString &columnName, const BMessage &specifier) {
+  std::vector<int64> values;
+  int32 i = 0;
+  status_t error;
+  do {
+  	values.push_back(0);
+  	error = specifier.FindInt64(attrName, i, &values.back());
+  	if (error != B_OK)
+  	  values.pop_back();
+  } while (error != B_BAD_INDEX);
+  if (values.size() == 1) {
+  	clause = columnName;
+  	clause.Append(" = ?");
+  } else if (values.size() >= 1) {
+  	clause = columnName;
+  	clause.Append(" IN(");
+  	for (unsigned int j = 0; j < values.size(); j++) {
+  	  if (j > 0)
+  	    clause.Append(", ");
+  	  clause.Append("?");
+  	}
+  	clause.Append(")");
+  }
+  for (auto &value : values) {
+  	terms.push_back(value);
+  }
+  return values.size();
+}
+
+static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
+  std::vector<std::variant<BString, int64>> terms;
+  BString query = "SELECT cypherkey, blob FROM messages";
+  const char *separator = " WHERE ";
+#define QRY_STR(attr, column) { \
+    BString clause; \
+    if (string_term(clause, terms, attr, column, specifier) > 0) { \
+      query.Append(separator); \
+      separator = " AND "; \
+      query.Append(clause); \
+    } \
+  }
+#define QRY_INT(attr, column) { \
+    BString clause; \
+    if (integer_term(clause, terms, attr, column, specifier) > 0) { \
+      query.Append(separator); \
+      separator = " AND "; \
+      query.Append(clause); \
+    } \
+  }
+  QRY_STR(specifier.what == 'CPLX' ? "cypherkey" : "name", "cypherkey")
+  QRY_STR("author", "author")
+  QRY_STR("context", "context")
+  QRY_STR("type", "type")
+  // TODO: "before" and "after" clauses
+#undef QRY_INT
+#undef QRY_STR
+  sqlite3_stmt *result;
+  sqlite3_prepare_v2(db, query.String(), query.Length(), &result, NULL);
+  int i = 1;
+  for (auto &term : terms) {
+  	std::visit(overloaded{
+  	  [&](const BString &arg) {
+  	  	sqlite3_bind_text(result, i++, arg.String(), arg.Length(), SQLITE_TRANSIENT);
+  	  },
+  	  [&](int64 arg) {
+  	  	sqlite3_bind_int64(result, i++, arg);
+  	  }
+  	}, term);
+  }
+  return result;
+}
+
+QueryHandler::QueryHandler(sqlite3 *db, BMessenger target, const BMessage &specifier)
     :
+    QueryBacked(spec2query(db, specifier)),
     target(target),
-    specifier(specifier),
     dregs(specifier.GetBool("dregs", false)) {}
 
 status_t populateQuery(BQuery &query, BMessage *specifier) {
@@ -320,16 +380,16 @@ void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
   BLooper::DispatchMessage(message, handler);
 }
 
-SSBDatabase::SSBDatabase(BDirectory store, BDirectory contacts)
+SSBDatabase::SSBDatabase(sqlite3 *database)
     :
     AntiClog("SSB message database", 512, 32),
-    store(store),
-    contacts(contacts) {
+    database(database) {
   if (runningDB == NULL)
     runningDB = this;
 }
 
 SSBDatabase::~SSBDatabase() {
+  sqlite3_close_v2(this->database);
   if (runningDB == this)
     runningDB = NULL;
 }
@@ -876,7 +936,6 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
-  notif.AddInt64("saved", this->savedSequence);
   target.SendMessage(&notif);
 }
 
@@ -884,7 +943,6 @@ void SSBFeed::notifyChanges() {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
-  notif.AddInt64("saved", this->savedSequence);
   this->Looper()->SendNotices('NMSG', &notif);
 }
 
@@ -933,7 +991,6 @@ status_t SSBFeed::GetSupportedSuites(BMessage *data) {
 
 void SSBFeed::MessageReceived(BMessage *msg) {
   if (msg->HasSpecifiers()) {
-
     BMessage reply(B_REPLY);
     status_t error = B_ERROR;
     int32 index;

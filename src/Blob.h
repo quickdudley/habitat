@@ -60,7 +60,7 @@ private:
   Wanted *wanted;
 };
 
-class Wanted : public QueryBacked {
+class Wanted : public BHandler {
 public:
   Wanted(BDirectory dir);
   ~Wanted();
@@ -73,8 +73,9 @@ public:
   void registerMethods(muxrpc::MethodSuite &methods);
   status_t hashFile(entry_ref *ref);
   void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
-  bool fillQuery(BQuery *query, time_t reset) override;
-  bool queryMatch(entry_ref *entry) override;
+  // TODO: Call these methods directly
+  bool fillQuery(BQuery *query, time_t reset);
+  bool queryMatch(entry_ref *entry);
 
 private:
   void _addWant_(BString &cypherkey, int8 distance,
