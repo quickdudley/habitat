@@ -28,6 +28,7 @@ class QueryBacked : public BHandler {
 public:
   QueryBacked(sqlite3_stmt *query);
   ~QueryBacked();
+
 protected:
   sqlite3_stmt *query;
 };
@@ -72,8 +73,7 @@ private:
 
 class SSBFeed : public QueryBacked {
 public:
-  SSBFeed(sqlite3 *database,
-          unsigned char key[crypto_sign_PUBLICKEYBYTES]);
+  SSBFeed(sqlite3 *database, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
   BString cypherkey();
   BString previousLink();

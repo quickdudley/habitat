@@ -337,8 +337,9 @@ void Link::MessageReceived(BMessage *message) {
             dispatcher != NULL) {
           dispatcher->sendNotes();
         }
-      } else
-      BMessenger(this->db()).SendMessage(&content);
+      } else {
+        BMessenger(this->db()).SendMessage(&content);
+      }
     } else {
       status_t err;
       char *attrname;

@@ -21,7 +21,7 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
     {
       JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&examples));
       for (int i = 0; parseStatus == B_OK &&
-                      i < generated_test_ssb_validation_dataset_json_len;
+           i < generated_test_ssb_validation_dataset_json_len;
         i++) {
         parseStatus =
             parser.nextChar(generated_test_ssb_validation_dataset_json[i]);
@@ -66,9 +66,9 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
           computedID.Append(".sha256");
           foundValid = foundValid && computedID == expectedID;
         }
-        foundValid =
-            foundValid && post::validate(&message, lastSequence, lastID,
-                                         useHMac, hmacKey) == B_OK;
+        foundValid = foundValid &&
+            post::validate(&message, lastSequence, lastID, useHMac, hmacKey) ==
+                B_OK;
       } else {
         foundValid = false;
       }

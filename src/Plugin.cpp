@@ -52,12 +52,13 @@ Plugins::Plugins() {
   }
 }
 
-std::vector<std::pair<const BString &, void *>> Plugins::lookup(const char *symbol) {
+std::vector<std::pair<const BString &, void *>>
+Plugins::lookup(const char *symbol) {
   std::vector<std::pair<const BString &, void *>> result;
   for (auto &plugin : this->plugins) {
-  	void *pointer = dlsym(plugin.second, symbol);
-  	if (pointer != NULL)
-  	  result.push_back({plugin.first, pointer});
+    void *pointer = dlsym(plugin.second, symbol);
+    if (pointer != NULL)
+      result.push_back({plugin.first, pointer});
   }
   return result;
 }
