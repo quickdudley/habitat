@@ -41,10 +41,13 @@ class QueryHandler : public QueryBacked {
 public:
   QueryHandler(sqlite3 *db, BMessenger target, const BMessage &specifier);
   void MessageReceived(BMessage *message) override;
+  bool queryMatch(const BString &cypherkey, const BString &context,
+                  const BMessage msg) override;
   int32 limit = -1;
 
 private:
   BMessenger target;
+  BMessage specifier;
   bool started = false;
   bool ongoing = false;
   bool drips = false;
@@ -115,12 +118,10 @@ static int integer_term(BString &clause,
   return values.size();
 }
 
-static status_t timestamp_term(
-  BString &clause,
-  std::vector<std::variant<BString, int64>> &terms,
-  const BString &attrName,
-  const char *op,
-  const BMessage &specifier) {
+static status_t timestamp_term(BString &clause,
+                               std::vector<std::variant<BString, int64>> &terms,
+                               const BString &attrName, const char *op,
+                               const BMessage &specifier) {
   int64 value;
   if (status_t err; (err = specifier.FindInt64(attrName, &value)) != B_OK)
     return err;
@@ -153,14 +154,14 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
       query.Append(clause);                                                    \
     }                                                                          \
   }
-#define QRY_TSP(attr, op) \
-  { \
-    BString clause; \
-    if (timestamp_term(clause, terms, attr, op, specifier) == B_OK) { \
-      query.Append(separator); \
-      separator = " AND "; \
-      query.Append(clause); \
-    } \
+#define QRY_TSP(attr, op)                                                      \
+  {                                                                            \
+    BString clause;                                                            \
+    if (timestamp_term(clause, terms, attr, op, specifier) == B_OK) {          \
+      query.Append(separator);                                                 \
+      separator = " AND ";                                                     \
+      query.Append(clause);                                                    \
+    }                                                                          \
   }
   QRY_STR(specifier.what == 'CPLX' ? "cypherkey" : "name", "cypherkey")
   QRY_STR("author", "author")
@@ -191,63 +192,8 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
     :
     QueryBacked(spec2query(db, specifier)),
     target(target),
+    specifier(specifier),
     dregs(specifier.GetBool("dregs", false)) {}
-
-status_t populateQuery(BQuery &query, BMessage *specifier) {
-  bool already = false;
-  bool disj = false;
-#define CONJ()                                                                 \
-  if (already)                                                                 \
-    query.PushOp(B_AND);                                                       \
-  else                                                                         \
-    already = true;                                                            \
-  disj = false
-#define DISJ()                                                                 \
-  if (disj)                                                                    \
-    query.PushOp(B_OR);                                                        \
-  else                                                                         \
-    disj = true
-  if (BString cypherkey;
-      specifier->FindString(specifier->what == 'CPLX' ? "cypherkey" : "name",
-                            &cypherkey) == B_OK) {
-    query.PushAttr("HABITAT:cypherkey");
-    query.PushString(cypherkey.String());
-    query.PushOp(B_EQ);
-    CONJ();
-  }
-#define STRC(mname, attr)                                                      \
-  if (BStringList mname##s;                                                    \
-      specifier->FindStrings(#mname, &mname##s) == B_OK) {                     \
-    for (int32 i = mname##s.CountStrings() - 1; i >= 0; i--) {                 \
-      query.PushAttr(attr);                                                    \
-      query.PushString(mname##s.StringAt(i));                                  \
-      query.PushOp(B_EQ);                                                      \
-      DISJ();                                                                  \
-    }                                                                          \
-    if (disj) {                                                                \
-      CONJ();                                                                  \
-    }                                                                          \
-  }
-  STRC(author, "HABITAT:author")
-  STRC(context, "HABITAT:context")
-  STRC(type, "HABITAT:type")
-  if (uint64 earliest; specifier->FindUInt64("earliest", &earliest) == B_OK) {
-    query.PushAttr("HABITAT:timestamp");
-    query.PushUInt64(earliest);
-    query.PushOp(B_GE);
-    CONJ();
-  }
-  if (uint64 latest; specifier->FindUInt64("latest", &latest) == B_OK) {
-    query.PushAttr("HABITAT:timestamp");
-    query.PushUInt64(latest);
-    query.PushOp(B_LE);
-    CONJ();
-  }
-  return already ? B_OK : B_BAD_VALUE;
-#undef STRC
-#undef DISJ
-#undef CONJ
-}
 
 void QueryHandler::MessageReceived(BMessage *message) {
   this->ongoing = true;
@@ -292,68 +238,14 @@ void QueryHandler::MessageReceived(BMessage *message) {
   }
 }
 
-bool QueryHandler::fillQuery(BQuery *query, time_t reset) {
-  if (populateQuery(*query, &this->specifier) != B_OK)
-    return false;
-  if (this->ongoing || this->dregs) {
-    query->PushAttr("last_modified");
-    query->PushInt64((int64)reset);
-    query->PushOp(B_GE);
-    query->PushOp(B_AND);
-  }
-  this->ongoing = true;
-  return true;
-}
-
-bool QueryHandler::queryMatch(entry_ref *entry) {
-  BNode node(entry);
-  bool specifierHas;
-  bool found;
-  BString value;
-  BString foundValue;
-#define CKS(specKey, attrKey)                                                  \
-  found = false;                                                               \
-  foundValue = false;                                                          \
-  for (int32 i = 0; this->specifier.FindString(specKey, i, &value) == B_OK;    \
-    i++) {                                                                     \
-    specifierHas = true;                                                       \
-    if (i == 0) {                                                              \
-      if (node.ReadAttrString(attrKey, &foundValue) != B_OK)                   \
-        return false;                                                          \
-    }                                                                          \
-    if (value == foundValue) {                                                 \
-      found = true;                                                            \
-      break;                                                                   \
-    }                                                                          \
-  }                                                                            \
-  if (specifierHas && !found)                                                  \
-    return false;                                                              \
-  specifierHas = false
-  CKS(this->specifier.what == 'CPLX' ? "cypherkey" : "name",
-      "HABITAT:cypherkey");
-  CKS("author", "HABITAT:author");
-  CKS("context", "HABITAT:context");
-  CKS("type", "HABITAT:type");
-#undef CKS
-  if (uint64 earliest; this->specifier.FindUInt64("earliest", &earliest) == 0) {
-    int64 timestamp;
-    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
-                      sizeof(int64)) != B_OK) {
-      return false;
-    }
-    if ((uint64)timestamp < earliest)
-      return false;
-  }
-  if (uint64 latest; this->specifier.FindUInt64("earliest", &latest) == 0) {
-    int64 timestamp;
-    if (node.ReadAttr("HABITAT:timestamp", B_INT64_TYPE, 0, &timestamp,
-                      sizeof(int64)) != B_OK) {
-      return false;
-    }
-    if ((uint64)timestamp < latest)
-      return false;
-  }
-  return true;
+bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
+                              const BMessage msg) {
+  // cypherkey
+  // author
+  // context
+  // type
+  // earliest
+  // latest
 }
 
 class Writer : public AntiClog {
