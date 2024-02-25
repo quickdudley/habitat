@@ -134,7 +134,7 @@ static status_t timestamp_term(BString &clause,
 
 static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   std::vector<std::variant<BString, int64>> terms;
-  BString query = "SELECT cypherkey, blob FROM messages";
+  BString query = "SELECT cypherkey, context, blob FROM messages";
   const char *separator = " WHERE ";
 #define QRY_STR(attr, column)                                                  \
   {                                                                            \
@@ -240,12 +240,53 @@ void QueryHandler::MessageReceived(BMessage *message) {
 
 bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
                               const BMessage msg) {
-  // cypherkey
-  // author
-  // context
-  // type
-  // earliest
-  // latest
+  if (BString specKey;
+      this->specifier.FindString(this->specifier.what == 'CPLX' ? "cypherkey"
+                                                                : "name",
+                                 &specKey) == B_OK &&
+      specKey != cypherkey) {
+    return false;
+  }
+  if (BString specAuthor;
+      this->specifier.FindString("author", &specAuthor) == B_OK) {
+    if (BString msgAuthor; msg.FindString("author", &msgAuthor) != B_OK ||
+        msgAuthor != specAuthor) {
+      return false;
+    }
+  }
+  if (BString specContext;
+      this->specifier.FindString("context", &specContext) == B_OK &&
+      specContext != context) {
+    return false; // TODO: handle recursive version
+  }
+  if (BString specType; this->specifier.FindString("type", &specType) == B_OK) {
+    // TODO: Handle encrypted messages (when we have the key)
+    if (BMessage content; msg.FindMessage("content", &content) == B_OK) {
+      if (BString msgType;
+          content.FindString("type", &msgType) != B_OK || msgType != specType) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  int64 timestamp = INT64_MIN;
+  if (int64 earliest;
+      this->specifier.FindInt64("earliest", &earliest) == B_OK) {
+    if (msg.FindInt64("timestamp", &timestamp) != B_OK)
+      return false;
+    if (timestamp < earliest)
+      return false;
+  }
+  if (int64 latest; this->specifier.FindInt64("latest", &latest) == B_OK) {
+    if (timestamp == INT64_MIN &&
+        msg.FindInt64("timestamp", &timestamp) != B_OK) {
+      return false;
+    }
+    if (timestamp > latest)
+      return false;
+  }
+  return true;
 }
 
 class Writer : public AntiClog {
