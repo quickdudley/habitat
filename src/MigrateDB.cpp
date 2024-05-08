@@ -5,6 +5,8 @@
 #include <Query.h>
 #include <String.h>
 #include <Volume.h>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 status_t prepareDatabase(sqlite3 *database) {
@@ -17,7 +19,7 @@ status_t prepareDatabase(sqlite3 *database) {
                    "timestamp INTEGER NOT NULL, "
                    "type TEXT, "
                    "context TEXT, "
-                   "blob BLOB"
+                   "body BLOB"
                    ")",
                    NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
@@ -46,7 +48,7 @@ status_t prepareDatabase(sqlite3 *database) {
   return B_OK;
 }
 
-static void freeBuffer(void *arg) { delete (char *)arg; }
+static void freeBuffer(void *arg) { delete[] (char *)arg; }
 
 static inline status_t migrateMessages(sqlite3 *database,
                                        const BDirectory &settings) {
@@ -69,9 +71,15 @@ static inline status_t migrateMessages(sqlite3 *database,
   sqlite3_prepare_v2(
       database,
       "INSERT INTO messages"
-      "(cypherkey, author, sequence, timestamp, type, context, blob) "
+      "(cypherkey, author, sequence, timestamp, type, context, body) "
       "VALUES(?, ?, ?, ?, ?, ?, ?)",
       200, &insert, NULL);
+  sqlite3_stmt *verify;
+  sqlite3_prepare_v2(
+      database,
+      "SELECT cypherkey, author, sequence, timestamp, type, context, body "
+      "FROM messages WHERE cypherkey = ?",
+      -1, &verify, NULL);
   while (query.GetNextEntry(&entry) == B_OK) {
     BMessage blob;
     BString cypherkey;
@@ -116,11 +124,50 @@ static inline status_t migrateMessages(sqlite3 *database,
     sqlite3_bind_blob64(insert, 7, buffer, flatSize, freeBuffer);
     sqlite3_step(insert);
     sqlite3_reset(insert);
+    // Verify that the new row equals what we expect it to.
+    sqlite3_bind_text(verify, 1, cypherkey.String(), cypherkey.Length(),
+                      SQLITE_STATIC);
+    if (sqlite3_step(verify) != SQLITE_ROW) {
+      std::cerr << "Could not find the row just inserted." << std::endl;
+      exit(-1);
+    }
+    if (cypherkey != (const char *)sqlite3_column_text(verify, 1)) {
+      std::cerr << "Inserted cypherkey mismatch!" << std::endl;
+      exit(-1);
+    }
+    if (author != (const char *)sqlite3_column_text(verify, 2)) {
+      std::cerr << "Inserted author mismatch!" << std::endl;
+      exit(-1);
+    }
+    if (sequence != sqlite3_column_int64(verify, 3)) {
+      std::cerr << "Inserted sequence mismatch!" << std::endl;
+      exit(-1);
+    }
+    if (timestamp != sqlite3_column_int64(verify, 4)) {
+      std::cerr << "Inserted timestamp mismatch!" << std::endl;
+      exit(-1);
+    }
+    if (type != (const char *)sqlite3_column_text(verify, 5)) {
+      std::cerr << "Inserted type mismatch!" << std::endl;
+      exit(-1);
+    }
+    if (context != "" &&
+        context != (const char *)sqlite3_column_text(verify, 6)) {
+      std::cerr << "Inserted context mismatch" << std::endl;
+      exit(-1);
+    }
+    if (sqlite3_column_bytes(verify, 7) != flatSize ||
+        std::memcmp(sqlite3_column_blob(verify, 7), buffer, flatSize) != 0) {
+      std::cerr << "Inserted blob mismatch" << std::endl;
+      exit(-1);
+    }
+    sqlite3_reset(verify);
     if (BDirectory parent;
         entry.GetParent(&parent) == B_OK && parent == postsDir) {
       entry.Remove();
     }
   }
+  sqlite3_finalize(verify);
   sqlite3_finalize(insert);
   return B_OK;
 }

@@ -27,6 +27,7 @@ Everything that uses a `BQuery` should instead use a `sqlite3_stmt`
 Identify parts of the code which exist purely to work around limitations of
   `BQuery`s
 Store contact graph in sqlite too
+Recompute `context` column
 */
 
 namespace {
@@ -198,6 +199,7 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
 void QueryHandler::MessageReceived(BMessage *message) {
   this->ongoing = true;
   switch (message->what) {
+  // TODO: Use the sqlite query and B_PULSE instead.
   case B_QUERY_UPDATE:
     if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
       entry_ref ref;
@@ -287,27 +289,6 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
       return false;
   }
   return true;
-}
-
-class Writer : public AntiClog {
-public:
-  Writer(BDirectory *store, SSBDatabase *db);
-  void MessageReceived(BMessage *message) override;
-
-private:
-  status_t save(BMessage *message);
-  BDirectory *store;
-  SSBDatabase *db;
-};
-
-Writer::Writer(BDirectory *store, SSBDatabase *db)
-    :
-    AntiClog("Database write queue", 5000, 1536),
-    store(store),
-    db(db) {
-  BHandler *check = new AttrCheck(*store);
-  this->AddHandler(check);
-  BMessenger(check).SendMessage(B_PULSE);
 }
 } // namespace
 
@@ -1084,23 +1065,18 @@ void SSBFeed::MessageReceived(BMessage *msg) {
 
 status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
   status_t error;
-  BQuery query;
-  query.SetVolume(&this->volume);
-  query.PushAttr("HABITAT:author");
-  query.PushString(this->cypherkey().String());
-  query.PushOp(B_EQ);
-  query.PushAttr("HABITAT:sequence");
-  query.PushUInt64(sequence);
-  query.PushOp(B_EQ);
-  query.PushOp(B_AND);
-  if ((error = query.Fetch()) != B_OK)
-    return error;
-  entry_ref ref;
-  if (query.GetNextRef(&ref) != B_OK)
-    return B_ENTRY_NOT_FOUND;
-  BFile result(&ref, B_READ_ONLY);
-  post->Unflatten(&result);
-  return B_OK;
+  sqlite3_stmt *fetch;
+  sqlite3_prepare_v2(
+      this->database,
+      "SELECT body FROM messages WHERE author = ? AND sequence = ?", -1, &fetch,
+      NULL);
+  BString cypherkey = this->cypherkey();
+  sqlite3_bind_text(fetch, 1, cypherkey.String(), cypherkey.Length(),
+                    SQLITE_STATIC);
+  sqlite3_bind_int64(fetch, 2, (int64)sequence);
+  if (sqlite3_step(fetch) != SQLITE_ROW)
+    return B_ERROR;
+  return post->Unflatten((const char *)sqlite3_column_blob(fetch, 1));
 }
 
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
@@ -1145,12 +1121,8 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
   return B_ERROR;
 }
 
-bool SSBFeed::fillQuery(BQuery *query, time_t reset) {
-  // TODO
-  return false;
-}
-
-bool SSBFeed::queryMatch(entry_ref *entry) {
+bool SSBFeed::queryMatch(const BString &cypherkey, const BString &context,
+                         const BMessage msg) {
   // TODO
   return false;
 }
@@ -1245,72 +1217,120 @@ status_t postAttrs(BNode *sink, BMessage *message,
 #undef CHECK_STRING
 }
 
-void Writer::MessageReceived(BMessage *message) {
-  if (message->HasString("author")) {
-    BMessage reply(B_REPLY);
-    status_t status = B_OK;
-    unsigned char msgHash[crypto_hash_sha256_BYTES];
-    {
-      {
-        JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
-        JSON::fromBMessage(&rootSink, message);
-      }
-      BFile sink;
-      BString filename =
-          base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
-      if ((status = this->store->CreateFile(filename.String(), &sink, false)) !=
-          B_OK) {
-        goto sendReply;
-      }
-      if ((status = message->Flatten(&sink)) != B_OK)
-        goto sendReply;
-      BMessage result;
-      entry_ref ref;
-      BEntry entry(this->store, filename.String());
-      entry.GetRef(&ref);
-      result.AddRef("ref", &ref);
-      result.AddString("cypherkey", messageCypherkey(msgHash));
-      if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
-        goto sendReply;
-      {
-        BString author;
-        if ((status = message->FindString("author", &author)) != B_OK)
-          goto sendReply;
-        int64 sequence;
-        if ((status = eitherNumber(&sequence, message, "sequence")) != B_OK)
-          goto sendReply;
-        this->db->notifySaved(author, sequence, msgHash);
-      }
-      reply.AddMessage("result", &result);
-      BMessage mimic(B_QUERY_UPDATE);
-      mimic.AddInt32("opcode", B_ENTRY_CREATED);
-      mimic.AddInt32("device", ref.device);
-      mimic.AddInt64("directory", ref.directory);
-      mimic.AddString("name", ref.name);
-      BMessenger(this->db).SendMessage(&mimic);
-    }
-  sendReply:
-    reply.AddInt32("error", status);
-    reply.AddString("message", strerror(status));
-    message->SendReply(&reply);
-  } else {
-    BLooper::MessageReceived(message);
-  }
-}
+// void Writer::MessageReceived(BMessage *message) {
+//   if (message->HasString("author")) {
+//     BMessage reply(B_REPLY);
+//     status_t status = B_OK;
+//     unsigned char msgHash[crypto_hash_sha256_BYTES];
+//     {
+//       {
+//         JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+//         JSON::fromBMessage(&rootSink, message);
+//       }
+//       BFile sink;
+//       BString filename =
+//           base64::encode(msgHash, crypto_hash_sha256_BYTES, base64::URL);
+//       if ((status = this->store->CreateFile(filename.String(), &sink, false))
+//       !=
+//           B_OK) {
+//         goto sendReply;
+//       }
+//       if ((status = message->Flatten(&sink)) != B_OK)
+//         goto sendReply;
+//       BMessage result;
+//       entry_ref ref;
+//       BEntry entry(this->store, filename.String());
+//       entry.GetRef(&ref);
+//       result.AddRef("ref", &ref);
+//       result.AddString("cypherkey", messageCypherkey(msgHash));
+//       if ((status = postAttrs(&sink, message, msgHash)) != B_OK)
+//         goto sendReply;
+//       {
+//         BString author;
+//         if ((status = message->FindString("author", &author)) != B_OK)
+//           goto sendReply;
+//         int64 sequence;
+//         if ((status = eitherNumber(&sequence, message, "sequence")) != B_OK)
+//           goto sendReply;
+//         this->db->notifySaved(author, sequence, msgHash);
+//       }
+//       reply.AddMessage("result", &result);
+//       BMessage mimic(B_QUERY_UPDATE);
+//       mimic.AddInt32("opcode", B_ENTRY_CREATED);
+//       mimic.AddInt32("device", ref.device);
+//       mimic.AddInt64("directory", ref.directory);
+//       mimic.AddString("name", ref.name);
+//       BMessenger(this->db).SendMessage(&mimic);
+//     }
+//   sendReply:
+//     reply.AddInt32("error", status);
+//     reply.AddString("message", strerror(status));
+//     message->SendReply(&reply);
+//   } else {
+//     BLooper::MessageReceived(message);
+//   }
+// }
 } // namespace
 
+static void freeBuffer(void *arg) { delete[] (char *)arg; }
+
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
+  status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
   {
     JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
     JSON::fromBMessage(&rootSink, message);
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
-  int64 attrNum;
-  if (eitherNumber(&attrNum, message, "sequence") == B_OK)
-    this->lastSequence = attrNum;
+  int64 sequence;
+  sqlite3_stmt *insert;
+  sqlite3_prepare_v2(
+      this->database,
+      "INSERT INTO messages"
+      "(cypherkey, author, sequence, timestamp, type, context, body) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?)",
+      -1, &insert, NULL);
+  if (eitherNumber(&sequence, message, "sequence") == B_OK) {
+    this->lastSequence = sequence;
+    sqlite3_bind_int64(insert, 3, sequence);
+  }
+  BString cypherkey = messageCypherkey(msgHash);
+  sqlite3_bind_text(insert, 1, cypherkey.String(), cypherkey.Length(),
+                    SQLITE_STATIC);
+  BString author = this->cypherkey();
+  sqlite3_bind_text(insert, 2, author.String(), author.Length(), SQLITE_STATIC);
+  int64 timestamp;
+  if ((status = eitherNumber(&timestamp, message, "timestamp")) != B_OK) {
+    sqlite3_finalize(insert);
+    return status;
+  }
+  sqlite3_bind_int64(insert, 4, timestamp);
+  if (BMessage content;
+      (status = message->FindMessage("content", &content)) == B_OK) {
+    BString type;
+    if ((status = content.FindString("type", &type)) != B_OK) {
+      sqlite3_finalize(insert);
+      return status;
+    }
+    sqlite3_bind_text(insert, 5, type.String(), type.Length(), SQLITE_STATIC);
+    if (BString context; contextLink(&context, type, &content) == B_OK) {
+      sqlite3_bind_text(insert, 6, context.String(), context.Length(),
+                        SQLITE_STATIC);
+    } else {
+      sqlite3_bind_null(insert, 6);
+    }
+  } else {
+    sqlite3_bind_null(insert, 5);
+    sqlite3_bind_null(insert, 6);
+  }
+  ssize_t flatSize = message->FlattenedSize();
+  char *buffer = new char[flatSize];
+  message->Flatten(buffer, flatSize);
+  sqlite3_bind_blob64(insert, 7, buffer, flatSize, freeBuffer);
+  sqlite3_step(insert);
+  sqlite3_finalize(insert);
+  // TODO: check why the writer was sending a B_QUERY_UPDATE to the database
   this->notifyChanges();
-  dynamic_cast<SSBDatabase *>(this->Looper())->writes.SendMessage(message);
   if (reply != NULL) {
     BMessage result;
     result.AddString("cypherkey", messageCypherkey(msgHash));
@@ -1320,29 +1340,31 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
 }
 
 void SSBFeed::cacheLatest() {
-  BMessage existing;
-  BFile store(&this->metastore, B_READ_WRITE | B_CREATE_FILE);
-  if (store.IsReadable()) {
-    if (existing.Unflatten(&store) != B_OK)
-      existing.MakeEmpty();
-  }
-  existing.RemoveName("lastID");
-  existing.RemoveName("lastSequence");
-  existing.AddInt64("lastSequence", this->savedSequence);
-  existing.AddString("lastID",
-                     base64::encode(this->savedHash, crypto_hash_sha256_BYTES,
-                                    base64::STANDARD)
-                         .String());
-  store.Seek(0, SEEK_SET);
-  store.SetSize(0);
-  existing.Flatten(&store);
-  BString attrString = this->cypherkey();
-  store.WriteAttrString("HABITAT:cypherkey", &attrString);
+  // TODO: Reimplement this in SQLite
+  //  BMessage existing;
+  //  BFile store(&this->metastore, B_READ_WRITE | B_CREATE_FILE);
+  //  if (store.IsReadable()) {
+  //    if (existing.Unflatten(&store) != B_OK)
+  //      existing.MakeEmpty();
+  //  }
+  //  existing.RemoveName("lastID");
+  //  existing.RemoveName("lastSequence");
+  //  existing.AddInt64("lastSequence", this->savedSequence);
+  //  existing.AddString("lastID",
+  //                     base64::encode(this->savedHash,
+  //                     crypto_hash_sha256_BYTES,
+  //                                    base64::STANDARD)
+  //                         .String());
+  //  store.Seek(0, SEEK_SET);
+  //  store.SetSize(0);
+  //  existing.Flatten(&store);
+  //  BString attrString = this->cypherkey();
+  //  store.WriteAttrString("HABITAT:cypherkey", &attrString);
 }
 
-OwnFeed::OwnFeed(BDirectory *store, BDirectory *contacts, Ed25519Secret *secret)
+OwnFeed::OwnFeed(sqlite3 *database, Ed25519Secret *secret)
     :
-    SSBFeed(store, contacts, secret->pubkey) {
+    SSBFeed(database, secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 
