@@ -30,6 +30,10 @@ Store contact graph in sqlite too
 Recompute `context` column
 */
 
+QueryBacked::QueryBacked(sqlite3_stmt *query)
+    :
+    query(query) {}
+
 namespace {
 template <class... Ts> struct overloaded : Ts... {
   using Ts::operator()...;
@@ -341,18 +345,6 @@ SSBDatabase::~SSBDatabase() {
     runningDB = NULL;
 }
 
-thread_id SSBDatabase::Run() {
-  Writer *writer = new Writer(&this->store, this);
-  writer->Run();
-  this->writes = BMessenger(writer);
-  return BLooper::Run();
-}
-
-void SSBDatabase::Quit() {
-  this->writes.SendMessage(B_QUIT_REQUESTED);
-  BLooper::Quit();
-}
-
 enum { kReplicatedFeed, kAReplicatedFeed, kOwnID, kPostByID };
 
 property_info databaseProperties[] = {
@@ -481,7 +473,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
           if (this->findFeed(feed, formatted) != B_OK) {
-            feed = new SSBFeed(&this->store, &this->contacts, key);
+            feed = new SSBFeed(this->database, key);
             this->AddHandler(feed);
             feed->load();
           }
@@ -533,48 +525,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       }
       break;
     case kPostByID: {
-      QueryHandler *qh;
-      bool live;
-      if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-        qh = new QueryHandler(target, specifier);
-        live = true;
-      } else {
-        qh = new QueryHandler(BMessenger(), specifier);
-        live = false;
-      }
-      qh->limit = msg->GetInt32("limit", -1);
-      if (live) {
-        this->Lock();
-        this->AddHandler(qh);
-        this->Unlock();
-        if (!this->pendingQueryMods) {
-          this->pendingQueryMods = true;
-          BMessenger(this).SendMessage(B_PULSE);
-        }
-        error = B_OK;
-      } else {
-        error = B_ENTRY_NOT_FOUND;
-        entry_ref ref;
-        BQuery query;
-        {
-          BVolume volume;
-          this->store.GetVolume(&volume);
-          query.SetVolume(&volume);
-        }
-        qh->fillQuery(&query, 0);
-        query.Fetch();
-        while (qh->limit != 0 && query.GetNextRef(&ref) == B_OK) {
-          error = B_OK;
-          BMessage post;
-          BFile file(&ref, B_READ_ONLY);
-          if (post.Unflatten(&file) == B_OK) {
-            reply.AddMessage("result", &post);
-            if (qh->limit > 0)
-              qh->limit--;
-          }
-        }
-        delete qh;
-      }
+      // TODO: implement this using sqlite
     } break;
     default:
       return BLooper::MessageReceived(msg);
@@ -590,109 +541,15 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       BMessenger(feed).SendMessage(msg);
     return;
   } else if (msg->what == B_PULSE) {
-    if (entry_ref entry; this->commonQuery.GetNextRef(&entry) == B_OK) {
-      BMessage mimic(B_QUERY_UPDATE);
-      mimic.AddInt32("opcode", B_ENTRY_CREATED);
-      mimic.AddInt32("device", entry.device);
-      mimic.AddInt64("directory", entry.directory);
-      mimic.AddString("name", entry.name);
-      BMessenger(this).SendMessage(&mimic);
-      BMessenger(this).SendMessage(B_PULSE);
-    } else if (this->pendingQueryMods) {
-      time_t reset = time(NULL);
-      this->commonQuery.Clear();
-      {
-        BVolume volume;
-        this->store.GetVolume(&volume);
-        this->commonQuery.SetVolume(&volume);
-      }
-      bool nonEmpty = false;
-      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
-        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
-          BMessenger(handler).SendMessage('DONE');
-          bool flag = handler->fillQuery(&this->commonQuery, reset);
-          if (flag && nonEmpty)
-            this->commonQuery.PushOp(B_OR);
-          nonEmpty = nonEmpty || flag;
-        }
-      }
-      this->pendingQueryMods = false;
-      this->commonQuery.Fetch();
-      if (nonEmpty)
-        BMessenger(this).SendMessage(B_PULSE);
-    } else {
-      for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
-        if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i)))
-          BMessenger(handler).SendMessage('DONE');
-      }
-    }
-  } else if (msg->what == 'UQRY') {
-    if (!this->pendingQueryMods) {
-      this->pendingQueryMods = true;
-      BMessenger(this).SendMessage(B_PULSE);
-    }
-  } else if (msg->what == B_QUERY_UPDATE &&
-             msg->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
-    entry_ref ref;
-    ref.device = msg->GetInt32("device", B_ERROR);
-    ref.directory = msg->GetInt64("directory", B_ERROR);
-    if (BString name; msg->FindString("name", &name) == B_OK)
-      ref.set_name(name.String());
-    for (int32 i = this->CountHandlers() - 1; i > 0; i--) {
-      if (auto handler = dynamic_cast<QueryBacked *>(this->HandlerAt(i))) {
-        if (handler->queryMatch(&ref))
-          BMessenger(handler).SendMessage(msg);
-      }
-    }
-  } else if (msg->what == 'CHCK') {
-    if (!this->runCheck(msg))
-      AttrCheck::resume(msg);
-  } else if (msg->what == 'GCOK') {
-    this->collectingGarbage = true;
+    // TODO: Iterate over handlers which are QueryBacked and forward the pulse
+    // to each one.
   } else {
     return BLooper::MessageReceived(msg);
   }
 }
 
 bool SSBDatabase::runCheck(BMessage *msg) {
-  if (this->collectingGarbage) {
-    if (entry_ref ref; msg->FindRef("entry", &ref) == B_OK) {
-      BEntry entry(&ref);
-      BNode node(&entry);
-      BString author;
-      if (node.ReadAttrString("HABITAT:author", &author) != B_OK)
-        return false;
-      SSBFeed *feed;
-      if (this->findFeed(feed, author) != B_OK || feed == NULL) {
-        entry.Remove();
-        return false;
-      } else {
-        BMessage mimic(B_QUERY_UPDATE);
-        mimic.AddInt32("opcode", B_ENTRY_CREATED);
-        mimic.AddInt32("device", ref.device);
-        mimic.AddInt64("directory", ref.directory);
-        mimic.AddString("name", ref.name);
-        for (int i = 0; i < this->CountHandlers(); i++) {
-          if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
-              qh != NULL && qh->dregs && qh->queryMatch(&ref)) {
-            BMessenger(qh).SendMessage(&mimic);
-          }
-        }
-        int64 sequence;
-        if (node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
-                          sizeof(int64)) == B_OK &&
-            sequence > 1) {
-          BMessage check('CHCK');
-          check.AddInt64("sequence", sequence - 1);
-          BMessenger resume;
-          if (msg->FindMessenger("resume", &resume) == B_OK)
-            check.AddMessenger("resume", resume);
-          BMessenger(feed).SendMessage(&check);
-          return true;
-        }
-      }
-    }
-  }
+  // TODO: Check that we're replicating this feed, etc
   return false;
 }
 
@@ -706,22 +563,8 @@ status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
 }
 
 status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
-  status_t error;
-  BQuery query;
-  BVolume volume;
-  this->store.GetVolume(&volume);
-  query.SetVolume(&volume);
-  query.PushAttr("HABITAT:cypherkey");
-  query.PushString(cypherkey.String());
-  query.PushOp(B_EQ);
-  if ((error = query.Fetch()) != B_OK)
-    return error;
-  entry_ref ref;
-  if (query.GetNextRef(&ref) != B_OK)
-    return B_ENTRY_NOT_FOUND;
-  BFile result(&ref, B_READ_ONLY);
-  post->Unflatten(&result);
-  return B_OK;
+  // TODO: Lookup database
+  return B_ERROR;
 }
 
 void SSBDatabase::notifySaved(const BString &author, int64 sequence,
@@ -753,128 +596,65 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
   return l.sequence > r.sequence;
 }
 
-SSBFeed::SSBFeed(BDirectory *store, BDirectory *contactsDir,
-                 unsigned char key[crypto_sign_PUBLICKEYBYTES])
-    :
-    QueryBacked(),
-    store(store) {
-  memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
-  this->store->GetVolume(&this->volume);
-  {
-    BQuery query;
-    query.SetVolume(&this->volume);
-    query.PushAttr("HABITAT:cypherkey");
-    query.PushString(this->cypherkey().String());
-    query.PushOp(B_EQ);
-    if (query.Fetch() != B_OK)
-      goto notfound;
-    if (query.GetNextRef(&this->metastore) != B_OK)
-      goto notfound;
-    return;
-  }
-notfound: {
-  BEntry entry;
-  entry.SetTo(
-      contactsDir,
-      base64::encode(this->pubkey, crypto_sign_PUBLICKEYBYTES, base64::URL)
-          .String());
-  entry.GetRef(&this->metastore);
-}
+static sqlite3_stmt *feedQuery(sqlite3 *database,
+                               unsigned char key[crypto_sign_PUBLICKEYBYTES]) {
+  sqlite3_stmt *result;
+  sqlite3_prepare_v2(
+      database,
+      "SELECT cypherkey, context, body FROM messages WHERE author = ?", -1,
+      &result, NULL);
+  BString cypherkey("@");
+  cypherkey.Append(
+      base64::encode(key, crypto_sign_PUBLICKEYBYTES, base64::STANDARD));
+  cypherkey.Append(".ed25519");
+  sqlite3_bind_text(result, 1, cypherkey.String(), cypherkey.Length(),
+                    SQLITE_TRANSIENT);
+  return result;
 }
 
-status_t SSBFeed::load(bool useCache) {
+SSBFeed::SSBFeed(sqlite3 *database,
+                 unsigned char key[crypto_sign_PUBLICKEYBYTES])
+    :
+    QueryBacked(feedQuery(database, key)),
+    database(database) {
+  memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
+}
+
+status_t SSBFeed::load() {
   status_t error;
-  BQuery query;
-  bool stale = false;
-  query.SetVolume(&this->volume);
-  query.PushAttr("HABITAT:author");
-  BString attrValue = this->cypherkey();
-  query.PushString(attrValue.String());
-  query.PushOp(B_EQ);
-  if (useCache) {
-    BMessage metadata;
-    {
-      BFile chkMeta(&this->metastore, B_READ_ONLY);
-      if (chkMeta.IsReadable())
-        metadata.Unflatten(&chkMeta);
-    }
-    {
-      BString cachedID;
-      int64 cachedSequence;
-      if (metadata.FindString("lastID", &cachedID) == B_OK &&
-          metadata.FindInt64("lastSequence", &cachedSequence) == B_OK) {
-        auto rawid = base64::decode(cachedID);
-        if (rawid.size() == crypto_hash_sha256_BYTES) {
-          this->savedSequence = cachedSequence;
-          memcpy(this->savedHash, rawid.data(), crypto_hash_sha256_BYTES);
-        }
-      }
-    }
-  } else {
-    stale = true;
-    this->savedSequence = 0;
+  sqlite3_stmt *query;
+  sqlite3_prepare_v2(
+      this->database,
+      "SELECT sequence, cypherkey FROM messages WHERE author = ?"
+      " AND sequence = (SELECT max(m.sequence) FROM messages AS m"
+      " WHERE m.author = messages.author)",
+      -1, &query, NULL);
+  {
+    BString key = this->cypherkey();
+    sqlite3_bind_text(query, 1, key.String(), key.Length(), SQLITE_STATIC);
   }
-  if (this->savedSequence > 0) {
-    query.PushAttr("HABITAT:sequence");
-    query.PushInt64(this->savedSequence);
-    query.PushOp(B_GT);
-    query.PushOp(B_AND);
-  }
-  if ((error = query.Fetch()) == B_OK) {
-    entry_ref ref;
-    while (query.GetNextRef(&ref) == B_OK) {
-      BNode node(&ref);
-      int64 sequence;
-      stale = true;
-      node.ReadAttr("HABITAT:sequence", B_INT64_TYPE, 0, &sequence,
-                    sizeof(int64));
-      if (sequence > this->lastSequence)
-        this->pending.push({sequence, ref});
-      this->flushQueue();
+  if (sqlite3_step(query) == SQLITE_ROW) {
+    int64 sequence = sqlite3_column_int64(query, 1);
+    BString id((const char *)sqlite3_column_text(query, 2));
+    BString b64;
+    for (int i = 1; i < id.Length() && id[i] != '.'; i++)
+      b64.Append(id[i], 1);
+    std::vector<unsigned char> hash =
+        base64::decode(b64.String(), b64.Length());
+    if (hash.size() == crypto_hash_sha256_BYTES) {
+      memcpy(this->lastHash, &hash[0], crypto_hash_sha256_BYTES);
+      this->lastSequence = sequence;
+    } else {
+      error = B_ERROR;
     }
   }
-  this->lastSequence = this->savedSequence;
-  memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
-  if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
-    db->feeds.insert({this->cypherkey(), this});
-  if (stale)
-    this->cacheLatest();
-  this->notifyChanges();
-  if (useCache) {
-    BMessage check('CHCK');
-    check.AddInt64("sequence", this->lastSequence);
-    BMessenger(this).SendMessage(&check);
-  }
+  sqlite3_finalize(query);
   return error;
 }
 
 bool SSBFeed::flushQueue() {
-  bool stale = false;
-  while (!this->pending.empty() &&
-         this->pending.top().sequence == this->savedSequence + 1) {
-    int64 sequence = this->pending.top().sequence;
-    BEntry processingEntry(&this->pending.top().ref);
-    BNode processingNode(&processingEntry);
-    BString cypherkey;
-    processingNode.ReadAttrString("HABITAT:cypherkey", &cypherkey);
-    this->pending.pop();
-    BString b64;
-    // TODO: Make sure the cypherkey starts with '%' and ends with '.sha256'
-    for (int i = 1; i < cypherkey.Length() && cypherkey[i] != '.'; i++)
-      b64.Append(cypherkey[i], 1);
-    std::vector<unsigned char> hash =
-        base64::decode(b64.String(), b64.Length());
-    this->savedSequence = sequence;
-    memcpy(this->savedHash, &hash[0],
-           std::min((size_t)crypto_sign_SECRETKEYBYTES, hash.size()));
-    stale = true;
-  }
-  if (this->pending.empty()) {
-    pending = std::priority_queue<post_private_::FeedShuntEntry,
-                                  std::vector<post_private_::FeedShuntEntry>,
-                                  post_private_::FeedBuildComparator>();
-  }
-  return stale;
+  // TODO: Check whether or not this is actually necessary.
+  return false;
 }
 
 SSBFeed::~SSBFeed() {}
@@ -948,13 +728,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if (msg->GetCurrentSpecifier(&index, &specifier, &what, &property) !=
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
-        BEntry(&this->metastore).Remove();
-        if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()); db != NULL)
-          db->feeds.erase(this->cypherkey());
-        this->Looper()->RemoveHandler(this);
-        delete this;
-        error = B_OK;
-        goto reply;
+        // TODO: delete from database
       } else {
         return BHandler::MessageReceived(msg);
       }
@@ -1015,42 +789,16 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         idSize != crypto_hash_sha256_BYTES) {
       return;
     }
-    this->savedSequence = sequence;
-    memcpy(this->savedHash, id, crypto_hash_sha256_BYTES);
     if (this->flushQueue() &&
-        (this->savedSequence > this->lastSequence || !this->pending.empty())) {
-      this->lastSequence = this->savedSequence;
-      memcpy(this->lastHash, this->savedHash, crypto_hash_sha256_BYTES);
+        (sequence > this->lastSequence || !this->pending.empty())) {
+      this->lastSequence = sequence;
+      memcpy(this->lastHash, id, crypto_hash_sha256_BYTES);
     }
     this->cacheLatest();
     this->notifyChanges();
   } else if (msg->what == 'CHCK') {
-    int64 sequence;
-    if (msg->FindInt64("sequence", &sequence) != B_OK) {
-      AttrCheck::resume(msg);
-      return;
-    }
-    if (sequence > this->savedSequence || sequence < 1) {
-      AttrCheck::resume(msg);
-      return;
-    }
-    BQuery query;
-    query.SetVolume(&this->volume);
-    query.PushAttr("HABITAT:author");
-    query.PushString(this->cypherkey());
-    query.PushOp(B_EQ);
-    query.PushAttr("HABITAT:sequence");
-    query.PushInt64(sequence);
-    query.PushOp(B_EQ);
-    query.PushOp(B_AND);
-    if (query.Fetch() != B_OK) {
-      AttrCheck::resume(msg);
-      return;
-    }
-    entry_ref ref;
-    if (query.GetNextRef(&ref) != B_OK)
-      this->load(false);
-    AttrCheck::resume(msg);
+    // TODO: Figure out whether or not we need this message
+    // It previously triggered garbage collection.
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();

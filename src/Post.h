@@ -27,7 +27,7 @@ struct FeedBuildComparator {
 class QueryBacked : public BHandler {
 public:
   QueryBacked(sqlite3_stmt *query);
-  ~QueryBacked();
+  virtual ~QueryBacked(){};
   virtual bool queryMatch(const BString &cypherkey, const BString &context,
                           const BMessage msg) = 0;
 
@@ -54,8 +54,6 @@ class SSBDatabase : public AntiClog {
 public:
   SSBDatabase(sqlite3 *database);
   ~SSBDatabase() override;
-  thread_id Run() override;
-  void Quit() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
@@ -70,7 +68,7 @@ private:
   bool runCheck(BMessage *msg);
   sqlite3 *database;
   std::map<BString, SSBFeed *> feeds;
-  bool collectingGarbage = false;
+  bool runningQueries = false;
 };
 
 class SSBFeed : public QueryBacked {
@@ -83,7 +81,7 @@ public:
   void MessageReceived(BMessage *msg) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
-  status_t load(bool useCache = true);
+  status_t load();
 
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               BString &in);
