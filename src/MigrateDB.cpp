@@ -131,33 +131,34 @@ static inline status_t migrateMessages(sqlite3 *database,
       std::cerr << "Could not find the row just inserted." << std::endl;
       exit(-1);
     }
-    if (cypherkey != (const char *)sqlite3_column_text(verify, 1)) {
+    if (cypherkey != (const char *)sqlite3_column_text(verify, 0)) {
       std::cerr << "Inserted cypherkey mismatch!" << std::endl;
+      std::cerr << cypherkey.String() << " != " << sqlite3_column_text(verify, 1) << std::endl;
       exit(-1);
     }
-    if (author != (const char *)sqlite3_column_text(verify, 2)) {
+    if (author != (const char *)sqlite3_column_text(verify, 1)) {
       std::cerr << "Inserted author mismatch!" << std::endl;
       exit(-1);
     }
-    if (sequence != sqlite3_column_int64(verify, 3)) {
+    if (sequence != sqlite3_column_int64(verify, 2)) {
       std::cerr << "Inserted sequence mismatch!" << std::endl;
       exit(-1);
     }
-    if (timestamp != sqlite3_column_int64(verify, 4)) {
+    if (timestamp != sqlite3_column_int64(verify, 3)) {
       std::cerr << "Inserted timestamp mismatch!" << std::endl;
       exit(-1);
     }
-    if (type != (const char *)sqlite3_column_text(verify, 5)) {
+    if (type != (const char *)sqlite3_column_text(verify, 4)) {
       std::cerr << "Inserted type mismatch!" << std::endl;
       exit(-1);
     }
     if (context != "" &&
-        context != (const char *)sqlite3_column_text(verify, 6)) {
+        context != (const char *)sqlite3_column_text(verify, 5)) {
       std::cerr << "Inserted context mismatch" << std::endl;
       exit(-1);
     }
-    if (sqlite3_column_bytes(verify, 7) != flatSize ||
-        std::memcmp(sqlite3_column_blob(verify, 7), buffer, flatSize) != 0) {
+    if (sqlite3_column_bytes(verify, 6) != flatSize ||
+        std::memcmp(sqlite3_column_blob(verify, 6), buffer, flatSize) != 0) {
       std::cerr << "Inserted blob mismatch" << std::endl;
       exit(-1);
     }

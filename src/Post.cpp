@@ -634,8 +634,8 @@ status_t SSBFeed::load() {
     sqlite3_bind_text(query, 1, key.String(), key.Length(), SQLITE_STATIC);
   }
   if (sqlite3_step(query) == SQLITE_ROW) {
-    int64 sequence = sqlite3_column_int64(query, 1);
-    BString id((const char *)sqlite3_column_text(query, 2));
+    int64 sequence = sqlite3_column_int64(query, 0);
+    BString id((const char *)sqlite3_column_text(query, 1));
     BString b64;
     for (int i = 1; i < id.Length() && id[i] != '.'; i++)
       b64.Append(id[i], 1);
@@ -824,7 +824,7 @@ status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
   sqlite3_bind_int64(fetch, 2, (int64)sequence);
   if (sqlite3_step(fetch) != SQLITE_ROW)
     return B_ERROR;
-  return post->Unflatten((const char *)sqlite3_column_blob(fetch, 1));
+  return post->Unflatten((const char *)sqlite3_column_blob(fetch, 0));
 }
 
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
