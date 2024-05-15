@@ -27,9 +27,9 @@ struct FeedBuildComparator {
 class QueryBacked : public BHandler {
 public:
   QueryBacked(sqlite3_stmt *query);
-  virtual ~QueryBacked(){};
+  virtual ~QueryBacked();
   virtual bool queryMatch(const BString &cypherkey, const BString &context,
-                          const BMessage msg) = 0;
+                          const BMessage &msg) = 0;
 
 protected:
   sqlite3_stmt *query;
@@ -90,7 +90,7 @@ public:
   void notifyChanges();
   void notifyChanges(BMessenger target);
   bool queryMatch(const BString &cypherkey, const BString &context,
-                  const BMessage msg) override;
+                  const BMessage &msg) override;
 
 protected:
   status_t save(BMessage *message, BMessage *result = NULL);
