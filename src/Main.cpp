@@ -136,7 +136,6 @@ Habitat::Habitat(void)
       throw status;
     }
     database = migrateToSqlite(*this->settings);
-    throw B_OK; // TODO: finish switching the rest over to sqlite3
     // Create contacts directory
     status = this->settings->CreateDirectory("contacts", &contactsDir);
     if (status == B_FILE_EXISTS) {

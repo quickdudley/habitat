@@ -94,7 +94,6 @@ public:
 
 protected:
   status_t save(BMessage *message, BMessage *result = NULL);
-  void cacheLatest();
   bool flushQueue();
   sqlite3 *database;
   std::priority_queue<post_private_::FeedShuntEntry,

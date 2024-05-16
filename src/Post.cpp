@@ -19,15 +19,10 @@
 
 /*
 TODO:
-Everything that sends/accepts/returns an `entry_ref` for an SSB message should
-  use a cypherkey instead.
-Remove the `Writer` class and put its functionality back in the `SSBDatabase`
-  class.
-Everything that uses a `BQuery` should instead use a `sqlite3_stmt`
 Identify parts of the code which exist purely to work around limitations of
   `BQuery`s
 Store contact graph in sqlite too
-Recompute `context` column
+Add something to periodically recompute `context` column
 */
 
 QueryBacked::QueryBacked(sqlite3_stmt *query)
@@ -50,6 +45,7 @@ public:
   void MessageReceived(BMessage *message) override;
   bool queryMatch(const BString &cypherkey, const BString &context,
                   const BMessage &msg) override;
+  status_t runBulk(BMessage *reply);
   int32 limit = -1;
 
 private:
@@ -215,6 +211,15 @@ void QueryHandler::MessageReceived(BMessage *message) {
         if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
+    } else {
+      BMessenger(this).SendMessage('DONE');
+    }
+    break;
+  case 'CHCK':
+    if (BMessage post; message->FindMessage("post", &post) == B_OK) {
+      this->target.SendMessage(&post);
+      if (this->limit > 0 && --this->limit == 0)
+        goto canceled;
     }
     break;
   case 'DONE':
@@ -235,6 +240,23 @@ void QueryHandler::MessageReceived(BMessage *message) {
     delete this;
   } break;
   }
+}
+
+status_t QueryHandler::runBulk(BMessage *reply) {
+  status_t err = B_ENTRY_NOT_FOUND;
+  while (this->limit != 0 && sqlite3_step(this->query) == SQLITE_ROW) {
+    BMessage post;
+    status_t ierr;
+    if ((ierr = post.Unflatten(
+             (const char *)sqlite3_column_blob(this->query, 2))) == B_OK) {
+      reply->AddMessage("result", &post);
+      if (err == B_ENTRY_NOT_FOUND || err == B_OK)
+        err = ierr;
+      if (this->limit > 0)
+        this->limit--;
+    }
+  }
+  return err;
 }
 
 bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
@@ -519,7 +541,29 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       }
       break;
     case kPostByID: {
-      // TODO: implement this using sqlite
+      QueryHandler *qh;
+      bool live;
+      if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
+        qh = new QueryHandler(this->database, target, specifier);
+        live = true;
+      } else {
+        qh = new QueryHandler(this->database, BMessenger(), specifier);
+        live = false;
+      }
+      qh->limit = msg->GetInt32("limit", -1);
+      if (live) {
+        this->Lock();
+        this->AddHandler(qh);
+        this->Unlock();
+        if (!this->runningQueries) {
+          this->runningQueries = true;
+          BMessenger(this).SendMessage(B_PULSE);
+        }
+        error = B_OK;
+      } else {
+        error = qh->runBulk(&reply);
+        delete qh;
+      }
     } break;
     default:
       return BLooper::MessageReceived(msg);
@@ -534,9 +578,28 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     if (this->findFeed(feed, author) == B_OK)
       BMessenger(feed).SendMessage(msg);
     return;
+  } else if (msg->what == 'CHCK') {
+    // This used to trigger garbage collection, but now I'm using it to forward
+    // newly created messages to listening `QueryBacked`s
+    BMessage post;
+    BString msgID;
+    BString context;
+    if (msg->FindMessage("post", &post) == B_OK &&
+        post.FindString("key", &msgID)) {
+      if (msg->FindString("context", &context) != B_OK)
+        context = "";
+      for (int i = 0; i < this->CountHandlers(); i++) {
+        if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i));
+            qh && qh->queryMatch(msgID, context, post)) {
+          BMessenger(qh).SendMessage(msg);
+        }
+      }
+    }
   } else if (msg->what == B_PULSE) {
-    // TODO: Iterate over handlers which are QueryBacked and forward the pulse
-    // to each one.
+    for (int i = 0; i < this->CountHandlers(); i++) {
+      if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
+        BMessenger(qh).SendMessage(msg);
+    }
   } else {
     return BLooper::MessageReceived(msg);
   }
@@ -811,11 +874,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->lastSequence = sequence;
       memcpy(this->lastHash, id, crypto_hash_sha256_BYTES);
     }
-    this->cacheLatest();
     this->notifyChanges();
-  } else if (msg->what == 'CHCK') {
-    // TODO: Figure out whether or not we need this message
-    // It previously triggered garbage collection.
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
@@ -970,6 +1029,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     return status;
   }
   sqlite3_bind_int64(insert, 4, timestamp);
+  BString context;
   if (BMessage content;
       (status = message->FindMessage("content", &content)) == B_OK) {
     BString type;
@@ -978,7 +1038,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
       return status;
     }
     sqlite3_bind_text(insert, 5, type.String(), type.Length(), SQLITE_STATIC);
-    if (BString context; contextLink(&context, type, &content) == B_OK) {
+    if (contextLink(&context, type, &content) == B_OK) {
       sqlite3_bind_text(insert, 6, context.String(), context.Length(),
                         SQLITE_STATIC);
     } else {
@@ -994,7 +1054,12 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   sqlite3_bind_blob64(insert, 7, buffer, flatSize, freeBuffer);
   sqlite3_step(insert);
   sqlite3_finalize(insert);
-  // TODO: check why the writer was sending a B_QUERY_UPDATE to the database
+  {
+    BMessage notif('CHCK');
+    notif.AddMessage("post", message);
+    notif.AddString("context", context);
+    BMessenger(this->Looper()).SendMessage(&notif);
+  }
   this->notifyChanges();
   if (reply != NULL) {
     BMessage result;
@@ -1002,29 +1067,6 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
     reply->AddMessage("result", &result);
   }
   return B_OK;
-}
-
-void SSBFeed::cacheLatest() {
-  // TODO: Reimplement this in SQLite
-  //  BMessage existing;
-  //  BFile store(&this->metastore, B_READ_WRITE | B_CREATE_FILE);
-  //  if (store.IsReadable()) {
-  //    if (existing.Unflatten(&store) != B_OK)
-  //      existing.MakeEmpty();
-  //  }
-  //  existing.RemoveName("lastID");
-  //  existing.RemoveName("lastSequence");
-  //  existing.AddInt64("lastSequence", this->savedSequence);
-  //  existing.AddString("lastID",
-  //                     base64::encode(this->savedHash,
-  //                     crypto_hash_sha256_BYTES,
-  //                                    base64::STANDARD)
-  //                         .String());
-  //  store.Seek(0, SEEK_SET);
-  //  store.SetSize(0);
-  //  existing.Flatten(&store);
-  //  BString attrString = this->cypherkey();
-  //  store.WriteAttrString("HABITAT:cypherkey", &attrString);
 }
 
 OwnFeed::OwnFeed(sqlite3 *database, Ed25519Secret *secret)
