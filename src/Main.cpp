@@ -478,7 +478,7 @@ void Habitat::ReadyToRun() {
   worker->Lock();
   BVolume volume;
   this->settings->GetVolume(&volume);
-  auto graph = new ContactGraph(volume);
+  auto graph = new ContactGraph();
   worker->AddHandler(graph);
   {
     BMessage rq(B_GET_PROPERTY);

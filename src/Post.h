@@ -62,13 +62,13 @@ public:
   status_t findFeed(SSBFeed *&result, const BString &cypherkey);
   void notifySaved(const BString &author, int64 sequence,
                    unsigned char id[crypto_hash_sha256_BYTES]);
+  bool runningQueries = false;
 
 private:
   friend class SSBFeed;
+  friend class QueryHandler;
   bool runCheck(BMessage *msg);
   sqlite3 *database;
-  std::map<BString, SSBFeed *> feeds;
-  bool runningQueries = false;
 };
 
 class SSBFeed : public QueryBacked {
@@ -84,9 +84,10 @@ public:
   status_t load();
 
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
-                              BString &in);
+                              const BString &in);
   status_t findPost(BMessage *post, uint64 sequence);
   uint64 sequence();
+  bool matchKey(unsigned char other[crypto_sign_PUBLICKEYBYTES]);
   void notifyChanges();
   void notifyChanges(BMessenger target);
   bool queryMatch(const BString &cypherkey, const BString &context,

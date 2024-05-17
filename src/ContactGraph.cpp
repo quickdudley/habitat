@@ -38,75 +38,7 @@ ContactLinkState::ContactLinkState()
     blocking(false),
     pub(false) {}
 
-void ContactLinkState::archive(BMessage *message) const {
-#define ARCHIVE_FIELD(field)                                                   \
-  {                                                                            \
-    BMessage pack;                                                             \
-    pack.AddBool("value", this->field.peek());                                 \
-    pack.AddInt64("sequence", this->field.threshold());                        \
-    message->AddMessage(#field, &pack);                                        \
-  }
-  ARCHIVE_FIELD(following)
-  ARCHIVE_FIELD(blocking)
-  ARCHIVE_FIELD(pub)
-#undef ARCHIVE_FIELD
-}
-
-void ContactLinkState::unarchive(BMessage *message) {
-  BMessage pack;
-#define UNARCHIVE_FIELD(field)                                                 \
-  if (message->FindMessage(#field, &pack) == B_OK) {                           \
-    int64 sequence;                                                            \
-    bool value;                                                                \
-    if (pack.FindInt64("sequence", &sequence) == B_OK &&                       \
-        pack.FindBool("value", &value) == B_OK)                                \
-      this->field.put(value, sequence);                                        \
-  }
-  UNARCHIVE_FIELD(following)
-  UNARCHIVE_FIELD(blocking)
-  UNARCHIVE_FIELD(pub)
-#undef UNARCHIVE_FIELD
-}
-
-ContactGraph::ContactGraph(const BVolume &volume)
-    :
-    volume(volume) {
-  BQuery query;
-  query.SetVolume(&volume);
-  query.PushAttr("HABITAT:cypherkey");
-  query.PushString("@");
-  query.PushOp(B_BEGINS_WITH);
-  query.Fetch();
-  entry_ref ref;
-  while (query.GetNextRef(&ref) == B_OK) {
-    BMessage metadata;
-    BMessage contacts;
-    BFile file(&ref, B_READ_ONLY);
-    BString who;
-    if (file.ReadAttrString("HABITAT:cypherkey", &who) != B_OK)
-      continue;
-    auto &node =
-        this->graph.insert({who, std::map<BString, ContactLinkState>()})
-            .first->second;
-    if (metadata.Unflatten(&file) == B_OK &&
-        metadata.FindMessage("contacts", &contacts) == B_OK) {
-      status_t err;
-      char *attrname;
-      type_code attrtype;
-      int32 index = 0;
-      while ((err = contacts.GetInfo(B_MESSAGE_TYPE, index, &attrname,
-                                     &attrtype)) != B_BAD_INDEX) {
-        BMessage edge;
-        if (contacts.FindMessage(attrname, &edge) == B_OK) {
-          auto &sedge =
-              node.insert({attrname, ContactLinkState()}).first->second;
-          sedge.unarchive(&edge);
-          index++;
-        }
-      }
-    }
-  }
-}
+ContactGraph::ContactGraph() {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {
@@ -115,6 +47,10 @@ void ContactGraph::MessageReceived(BMessage *message) {
     break;
   case 'JSOB':
     return logContact(message);
+  case 'DONE':
+    this->loaded = true;
+    this->SendNotices('CTAC');
+    break;
   default:
     return BHandler::MessageReceived(message);
   }
@@ -181,39 +117,8 @@ void ContactGraph::logContact(BMessage *message) {
         }
       },
       sequence);
-  if (changed) {
-    BMessage metadata;
-    BMessage contacts;
-    BQuery query;
-    entry_ref entry;
-    BFile metafile;
-    query.SetVolume(&this->volume);
-    query.PushAttr("HABITAT:cypherkey");
-    query.PushString(author);
-    query.PushOp(B_EQ);
-    if (query.Fetch() != B_OK)
-      goto notices;
-    if (query.GetNextRef(&entry) != B_OK)
-      goto notices;
-    if (metafile.SetTo(&entry, B_READ_WRITE) != B_OK)
-      goto notices;
-    if (metadata.Unflatten(&metafile) != B_OK)
-      goto notices;
-    if (metafile.Seek(0, SEEK_SET) != B_OK)
-      goto notices;
-    if (metafile.SetSize(0) != B_OK)
-      goto notices;
-    metadata.RemoveName("contacts");
-    for (const auto &[peer, status] : node) {
-      BMessage subrecord;
-      status.archive(&subrecord);
-      contacts.AddMessage(peer, &subrecord);
-    }
-    metadata.AddMessage("contacts", &contacts);
-    metadata.Flatten(&metafile);
-  notices:
+  if (changed && this->loaded)
     this->SendNotices('CTAC');
-  }
 }
 
 void ContactGraph::sendState(BMessage *request) {

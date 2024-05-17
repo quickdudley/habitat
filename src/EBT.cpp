@@ -58,13 +58,13 @@ BHandler *Dispatcher::ResolveSpecifier(BMessage *msg, int32 index,
 }
 
 void Dispatcher::MessageReceived(BMessage *msg) {
+  // TODO: Send and handle B_OBSERVER_NOTICE_CHANGE for changes to list of
+  //   feeds that we're supposed to be syncing.
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
     BString cypherkey;
     int64 sequence;
-    int64 saved;
     if (msg->FindString("feed", &cypherkey) == B_OK &&
-        msg->FindInt64("sequence", &sequence) == B_OK &&
-        msg->FindInt64("saved", &saved) == B_OK) {
+        msg->FindInt64("sequence", &sequence) == B_OK) {
       {
         BString logText("Observer notice for ");
         logText << cypherkey;
@@ -77,14 +77,20 @@ void Dispatcher::MessageReceived(BMessage *msg) {
         if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
           if (auto foundNote = link->ourState.find(cypherkey);
               foundNote != link->ourState.end()) {
-            if (foundNote->second.sequence != sequence) {
+            if (foundNote->second.savedSequence != sequence) {
+              foundNote->second.savedSequence = sequence;
+              changed = true;
+              link->sendSequence.push(cypherkey);
+            }
+            if (foundNote->second.sequence < sequence) {
               foundNote->second.sequence = sequence;
               changed = true;
               link->sendSequence.push(cypherkey);
             }
           } else {
             link->ourState.insert(
-                {cypherkey, {true, justOne, (uint64)sequence, (uint64)saved}});
+                {cypherkey,
+                 {true, justOne, (uint64)sequence, (uint64)sequence}});
             changed = true;
             link->sendSequence.push(cypherkey);
           }
@@ -92,6 +98,15 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       }
       if (changed)
         this->startNotesTimer(1000);
+    } else if (BString cypherkey; msg->GetBool("deleted", false) &&
+               msg->FindString("feed", &cypherkey) == B_OK) {
+      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+        if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
+          link->ourState.erase(cypherkey);
+          link->sendSequence.push(cypherkey);
+        }
+      }
+      this->startNotesTimer(1000);
     }
     return;
   } else if (msg->what == 'CLOG') {
@@ -329,16 +344,25 @@ void Link::MessageReceived(BMessage *message) {
     BString author;
     if (content.FindString("author", &author) == B_OK) {
       this->stopWaiting();
-      this->tick(author);
       if (auto dsp = dynamic_cast<Dispatcher *>(this->Looper());
           dsp != NULL && dsp->clogged) {
         writeLog('RMCD', "Receiving messages while clogged!");
-        if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
-            dispatcher != NULL) {
-          dispatcher->sendNotes();
-        }
+        dsp->sendNotes();
       } else {
+        this->tick(author);
+        int64 sequence = (int64)message->GetDouble("sequence", 0.0);
         BMessenger(this->db()).SendMessage(&content);
+        auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
+        for (int i = 0; i < dispatcher->CountHandlers(); i++) {
+          if (auto link = dynamic_cast<Link *>(dispatcher->HandlerAt(i));
+              link) {
+            if (auto note = link->ourState.find(author);
+                note != link->ourState.end() &&
+                sequence > note->second.sequence) {
+              note->second.sequence = sequence;
+            }
+          }
+        }
       }
     } else {
       status_t err;

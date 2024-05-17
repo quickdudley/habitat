@@ -20,6 +20,7 @@ void SelectContacts::MessageReceived(BMessage *message) {
     break;
   case 'INIT':
     this->StartWatching(this->graph, 'CTAC');
+    break;
   case B_OBSERVER_NOTICE_CHANGE:
     if (!this->fetching) {
       this->fetching = true;

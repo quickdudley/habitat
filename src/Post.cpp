@@ -71,7 +71,7 @@ static int string_term(BString &clause,
     error = specifier.FindString(attrName, i++, &values.back());
     if (error != B_OK)
       values.pop_back();
-  } while (error != B_BAD_INDEX);
+  } while (error != B_BAD_INDEX && error != B_NAME_NOT_FOUND);
   if (values.size() == 1) {
     clause = columnName;
     clause.Append(" = ?");
@@ -102,7 +102,7 @@ static int integer_term(BString &clause,
     error = specifier.FindInt64(attrName, i, &values.back());
     if (error != B_OK)
       values.pop_back();
-  } while (error != B_BAD_INDEX);
+  } while (error != B_BAD_INDEX && error != B_NAME_NOT_FOUND);
   if (values.size() == 1) {
     clause = columnName;
     clause.Append(" = ?");
@@ -137,7 +137,7 @@ static status_t timestamp_term(BString &clause,
 
 static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   std::vector<std::variant<BString, int64>> terms;
-  BString query = "SELECT cypherkey, context, blob FROM messages";
+  BString query = "SELECT cypherkey, context, body FROM messages";
   const char *separator = " WHERE ";
 #define QRY_STR(attr, column)                                                  \
   {                                                                            \
@@ -205,19 +205,32 @@ void QueryHandler::MessageReceived(BMessage *message) {
     if (sqlite3_step(this->query) == SQLITE_ROW) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
-              B_OK &&
-          this->target.IsValid()) {
-        this->target.SendMessage(&post);
+          B_OK) {
+        if (this->target.IsValid())
+          this->target.SendMessage(&post);
+        else
+          goto canceled;
         if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
+      if (auto db = dynamic_cast<SSBDatabase *>(this->Looper());
+          !db->runningQueries) {
+        db->runningQueries = true;
+        BMessenger(db).SendMessage(B_PULSE);
+      }
     } else {
-      BMessenger(this).SendMessage('DONE');
+      if (this->target.IsValid())
+        this->target.SendMessage('DONE');
+      else
+        goto canceled;
     }
     break;
   case 'CHCK':
     if (BMessage post; message->FindMessage("post", &post) == B_OK) {
-      this->target.SendMessage(&post);
+      if (this->target.IsValid())
+        this->target.SendMessage(&post);
+      else
+        goto canceled;
       if (this->limit > 0 && --this->limit == 0)
         goto canceled;
     }
@@ -349,7 +362,7 @@ void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
 
 SSBDatabase::SSBDatabase(sqlite3 *database)
     :
-    AntiClog("SSB message database", 512, 32),
+    AntiClog("SSB message database", 8192, 512),
     database(database) {
   if (runningDB == NULL)
     runningDB = this;
@@ -400,7 +413,7 @@ status_t SSBDatabase::GetSupportedSuites(BMessage *data) {
 BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
                                         BMessage *specifier, int32 what,
                                         const char *property) {
-  status_t error = B_OK;
+  status_t error = B_MESSAGE_NOT_UNDERSTOOD;
   BPropertyInfo propertyInfo(databaseProperties);
   uint32 match;
   if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
@@ -452,7 +465,7 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
   if (error == B_OK) {
     return BLooper::ResolveSpecifier(msg, index, specifier, what, property);
   } else {
-    BMessage reply(B_MESSAGE_NOT_UNDERSTOOD);
+    BMessage reply(error);
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     if (msg->ReturnAddress().IsValid())
@@ -595,7 +608,8 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       }
     }
-  } else if (msg->what == B_PULSE) {
+  } else if (msg->what == B_PULSE && this->runningQueries) {
+    this->runningQueries = false;
     for (int i = 0; i < this->CountHandlers(); i++) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
@@ -611,12 +625,16 @@ bool SSBDatabase::runCheck(BMessage *msg) {
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
-  if (auto entry = this->feeds.find(cypherkey); entry != this->feeds.end()) {
-    result = entry->second;
-    return B_OK;
-  } else {
-    return B_NAME_NOT_FOUND;
+  unsigned char key[crypto_sign_PUBLICKEYBYTES];
+  SSBFeed::parseAuthor(key, cypherkey);
+  for (int i = 0; i < this->CountHandlers(); i++) {
+    if (auto feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
+        feed && feed->matchKey(key)) {
+      result = feed;
+      return B_OK;
+    }
   }
+  return B_NAME_NOT_FOUND;
 }
 
 status_t SSBDatabase::findPost(BMessage *post, BString &cypherkey) {
@@ -689,7 +707,7 @@ SSBFeed::SSBFeed(sqlite3 *database,
 }
 
 status_t SSBFeed::load() {
-  status_t error;
+  status_t error = B_OK;
   sqlite3_stmt *query;
   sqlite3_prepare_v2(
       this->database,
@@ -717,6 +735,7 @@ status_t SSBFeed::load() {
     }
   }
   sqlite3_finalize(query);
+  this->notifyChanges();
   return error;
 }
 
@@ -726,6 +745,10 @@ bool SSBFeed::flushQueue() {
 }
 
 SSBFeed::~SSBFeed() {}
+
+bool SSBFeed::matchKey(unsigned char other[crypto_sign_PUBLICKEYBYTES]) {
+  return std::memcmp(this->pubkey, other, crypto_sign_PUBLICKEYBYTES) == 0;
+}
 
 void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
@@ -806,10 +829,12 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         sqlite3_step(deleter);
         sqlite3_finalize(deleter);
         reply = B_OK;
-        this->Looper()->Lock();
-        this->Looper()->RemoveHandler(this);
-        this->Looper()->Unlock();
+        auto looper = this->Looper();
+        looper->Lock();
+        looper->RemoveHandler(this);
+        looper->Unlock();
         delete this;
+        goto sendreply;
       } else {
         return BHandler::MessageReceived(msg);
       }
@@ -855,6 +880,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         return BHandler::MessageReceived(msg);
       }
     }
+  sendreply:
     reply.AddInt32("error", error);
     reply.AddString("message", strerror(error));
     if (msg->ReturnAddress().IsValid())
@@ -930,7 +956,7 @@ BString SSBFeed::previousLink() {
 }
 
 status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
-                              BString &in) {
+                              const BString &in) {
   // TODO: Also parse URL format
   if (in.StartsWith("@") && in.EndsWith(".ed25519")) {
     BString substring;
