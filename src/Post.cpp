@@ -715,10 +715,8 @@ status_t SSBFeed::load() {
       " AND sequence = (SELECT max(m.sequence) FROM messages AS m"
       " WHERE m.author = messages.author)",
       -1, &query, NULL);
-  {
-    BString key = this->cypherkey();
-    sqlite3_bind_text(query, 1, key.String(), key.Length(), SQLITE_STATIC);
-  }
+  BString key = this->cypherkey();
+  sqlite3_bind_text(query, 1, key.String(), key.Length(), SQLITE_STATIC);
   if (sqlite3_step(query) == SQLITE_ROW) {
     int64 sequence = sqlite3_column_int64(query, 0);
     BString id((const char *)sqlite3_column_text(query, 1));
@@ -830,6 +828,10 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         sqlite3_finalize(deleter);
         reply = B_OK;
         auto looper = this->Looper();
+        BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+        notif.AddString("feed", this->cypherkey());
+        notif.AddBool("deleted", true);
+        looper->SendNotices('NMSG', &notif);
         looper->Lock();
         looper->RemoveHandler(this);
         looper->Unlock();
@@ -1063,10 +1065,11 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
       sqlite3_finalize(insert);
       return status;
     }
-    sqlite3_bind_text(insert, 5, type.String(), type.Length(), SQLITE_STATIC);
+    sqlite3_bind_text(insert, 5, type.String(), type.Length(),
+                      SQLITE_TRANSIENT);
     if (contextLink(&context, type, &content) == B_OK) {
       sqlite3_bind_text(insert, 6, context.String(), context.Length(),
-                        SQLITE_STATIC);
+                        SQLITE_TRANSIENT);
     } else {
       sqlite3_bind_null(insert, 6);
     }
