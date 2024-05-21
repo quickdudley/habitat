@@ -364,14 +364,14 @@ void Connection::Quit() {
     for (int32 i = 0; i < locks; i++)
       this->Lock();
   }
-  this->Lock();
-  for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
-    if (BHandler *handler = this->HandlerAt(i); handler != this)
-      delete handler;
+  if (this->Lock()) {
+    for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
+      if (BHandler *handler = this->HandlerAt(i); handler != this)
+        delete handler;
+    }
+    this->Unlock();
   }
-  this->Unlock();
   if (acquire_sem(this->ongoingLock) == B_OK)
-
     release_sem(this->ongoingLock);
   BLooper::Quit();
 }
