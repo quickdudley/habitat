@@ -73,9 +73,6 @@ public:
   void registerMethods(muxrpc::MethodSuite &methods);
   status_t hashFile(entry_ref *ref);
   void sawSource(const BString &cypherkey, muxrpc::Connection *connection);
-  // TODO: Call these methods directly
-  bool fillQuery(BQuery *query, time_t reset);
-  bool queryMatch(entry_ref *entry);
 
 private:
   void _addWant_(BString &cypherkey, int8 distance,

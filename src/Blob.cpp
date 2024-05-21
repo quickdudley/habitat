@@ -4,6 +4,7 @@
 #include "Logging.h"
 #include <NodeMonitor.h>
 #include <algorithm>
+#include <ctime>
 #include <iostream>
 #include <sodium.h>
 
@@ -380,7 +381,12 @@ void FetchSink::MessageReceived(BMessage *message) {
       mimic.AddInt32("device", ref.device);
       mimic.AddInt64("directory", ref.directory);
       mimic.AddString("name", ref.name);
-      BMessenger(this->Looper()).SendMessage(&mimic);
+      this->Looper()->Lock();
+      for (int i = 0; i < this->Looper()->CountHandlers(); i++) {
+        if (auto w = dynamic_cast<Wanted *>(this->Looper()->HandlerAt(i)))
+          BMessenger(w).SendMessage(&mimic);
+      }
+      this->Looper()->Unlock();
     } else {
       this->entry.Remove();
       BMessage msg('TNXT');
@@ -493,39 +499,6 @@ status_t Wanted::fetch(const BString &cypherkey,
   connection->request(methodName, muxrpc::RequestType::SOURCE, &args,
                       BMessenger(sink), NULL);
   return B_OK;
-}
-
-bool Wanted::fillQuery(BQuery *query, time_t reset) {
-  if (this->wanted.empty()) {
-    return false;
-  } else {
-    query->PushAttr("HABITAT:cypherkey");
-    query->PushString("&");
-    query->PushOp(B_BEGINS_WITH);
-    query->PushAttr("HABITAT:cypherkey");
-    query->PushString(".sha256");
-    query->PushOp(B_ENDS_WITH);
-    query->PushOp(B_AND);
-    query->PushAttr("last_modified");
-    query->PushInt64((int64)reset);
-    query->PushOp(B_GE);
-    query->PushOp(B_AND);
-    return true;
-  }
-}
-
-bool Wanted::queryMatch(entry_ref *entry) {
-  BString cypherkey;
-  {
-    BNode node(entry);
-    if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
-      return false;
-  }
-  for (auto &item : this->wanted) {
-    if (std::get<0>(item) == cypherkey)
-      return true;
-  }
-  return false;
 }
 
 status_t CreateWants::call(muxrpc::Connection *connection,

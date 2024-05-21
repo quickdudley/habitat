@@ -588,8 +588,14 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     SSBFeed *feed;
-    if (this->findFeed(feed, author) == B_OK)
+    if (this->findFeed(feed, author) == B_OK) {
       BMessenger(feed).SendMessage(msg);
+    } else {
+      BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+      notif.AddString("feed", author);
+      notif.AddBool("deleted", true);
+      this->SendNotices('NMSG', &notif);
+    }
     return;
   } else if (msg->what == 'CHCK') {
     // This used to trigger garbage collection, but now I'm using it to forward
@@ -752,6 +758,7 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddBool("broken", this->broken);
   target.SendMessage(&notif);
 }
 
@@ -759,6 +766,8 @@ void SSBFeed::notifyChanges() {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddBool("broken", this->broken);
+  this->broken = false;
   this->Looper()->SendNotices('NMSG', &notif);
 }
 
@@ -907,9 +916,12 @@ void SSBFeed::MessageReceived(BMessage *msg) {
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
-    // TODO: Enqueue any that we get out of order.
-    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK)
+    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
       this->save(msg);
+    } else {
+      this->broken = true;
+      this->notifyChanges();
+    }
   } else {
     return BHandler::MessageReceived(msg);
   }

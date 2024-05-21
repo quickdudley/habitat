@@ -73,6 +73,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       }
       bool changed = false;
       bool justOne = !this->polyLink();
+      bool fixup = msg->GetBool("broken", false);
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
         if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
           if (auto foundNote = link->ourState.find(cypherkey);
@@ -82,7 +83,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
               changed = true;
               link->sendSequence.push(cypherkey);
             }
-            if (foundNote->second.sequence < sequence) {
+            if (fixup || foundNote->second.sequence < sequence) {
               foundNote->second.sequence = sequence;
               changed = true;
               link->sendSequence.push(cypherkey);
@@ -353,15 +354,10 @@ void Link::MessageReceived(BMessage *message) {
         int64 sequence = (int64)message->GetDouble("sequence", 0.0);
         BMessenger(this->db()).SendMessage(&content);
         auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
-        for (int i = 0; i < dispatcher->CountHandlers(); i++) {
-          if (auto link = dynamic_cast<Link *>(dispatcher->HandlerAt(i));
-              link) {
-            if (auto note = link->ourState.find(author);
-                note != link->ourState.end() &&
-                sequence > note->second.sequence) {
-              note->second.sequence = sequence;
-            }
-          }
+        if (auto note = this->ourState.find(author);
+            note != this->ourState.end() &&
+            sequence == note->second.sequence + 1) {
+          note->second.sequence = sequence;
         }
       }
     } else {
