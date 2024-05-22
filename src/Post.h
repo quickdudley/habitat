@@ -85,7 +85,7 @@ public:
 
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               const BString &in);
-  status_t findPost(BMessage *post, uint64 sequence);
+  status_t findPost(BString *id, BMessage *post, uint64 sequence);
   uint64 sequence();
   bool matchKey(unsigned char other[crypto_sign_PUBLICKEYBYTES]);
   void notifyChanges();
@@ -105,6 +105,7 @@ protected:
   int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
   bool broken = false;
+  bool reorder = true;
 };
 
 class OwnFeed : public SSBFeed {

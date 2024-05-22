@@ -268,6 +268,8 @@ status_t QueryHandler::runBulk(BMessage *reply) {
       if (this->limit > 0)
         this->limit--;
     }
+    if (auto *cypherkey = (const char *)sqlite3_column_text(this->query, 0))
+      reply->AddString("cypherkey", cypherkey);
   }
   return err;
 }
@@ -758,17 +760,18 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
-  notif.AddBool("broken", this->broken);
   target.SendMessage(&notif);
 }
 
 void SSBFeed::notifyChanges() {
-  BMessage notif(B_OBSERVER_NOTICE_CHANGE);
-  notif.AddString("feed", this->cypherkey());
-  notif.AddInt64("sequence", this->sequence());
-  notif.AddBool("broken", this->broken);
-  this->broken = false;
-  this->Looper()->SendNotices('NMSG', &notif);
+  if (!this->broken) {
+    BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+    notif.AddString("feed", this->cypherkey());
+    notif.AddInt64("sequence", this->sequence());
+    notif.AddBool("broken", this->reorder);
+    this->reorder = false;
+    this->Looper()->SendNotices('NMSG', &notif);
+  }
 }
 
 enum {
@@ -882,9 +885,11 @@ void SSBFeed::MessageReceived(BMessage *msg) {
           if ((error = specifier.FindInt32("index", &index)) != B_OK)
             break;
           BMessage post;
-          if ((error = this->findPost(&post, index)) != B_OK)
+          BString id;
+          if ((error = this->findPost(&id, &post, index)) != B_OK)
             break;
           reply.AddMessage("result", &post);
+          reply.AddString("cypherkey", id);
         }
       } break;
       default:
@@ -916,30 +921,39 @@ void SSBFeed::MessageReceived(BMessage *msg) {
              author == this->cypherkey()) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
-    if (post::validate(msg, this->lastSequence, lastID, false, blank) == B_OK) {
+    status_t saveStatus;
+    if (saveStatus = post::validate(msg, this->lastSequence, lastID, false,
+                                    blank) == B_OK) {
+      this->broken = false;
       this->save(msg);
+    } else if (saveStatus == B_MISMATCHED_VALUES) {
+      this->reorder = true;
+      this->notifyChanges();
     } else {
       this->broken = true;
-      this->notifyChanges();
     }
   } else {
     return BHandler::MessageReceived(msg);
   }
 }
 
-status_t SSBFeed::findPost(BMessage *post, uint64 sequence) {
+status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
   sqlite3_stmt *fetch;
   sqlite3_prepare_v2(
       this->database,
-      "SELECT body FROM messages WHERE author = ? AND sequence = ?", -1, &fetch,
-      NULL);
+      "SELECT cypherkey, body FROM messages WHERE author = ? AND sequence = ?",
+      -1, &fetch, NULL);
   BString cypherkey = this->cypherkey();
   sqlite3_bind_text(fetch, 1, cypherkey.String(), cypherkey.Length(),
                     SQLITE_STATIC);
   sqlite3_bind_int64(fetch, 2, (int64)sequence);
   if (sqlite3_step(fetch) != SQLITE_ROW)
     return B_ERROR;
-  return post->Unflatten((const char *)sqlite3_column_blob(fetch, 0));
+  if (auto *text = (const char *)sqlite3_column_text(fetch, 0))
+    *id = text;
+  status_t err = post->Unflatten((const char *)sqlite3_column_blob(fetch, 1));
+  sqlite3_finalize(fetch);
+  return err;
 }
 
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
@@ -1236,10 +1250,10 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
 static inline status_t validateSequence(BMessage *message, int lastSequence) {
   double sequence;
   if (message->FindDouble("sequence", &sequence) != B_OK)
-    return B_NOT_ALLOWED;
+    return B_BAD_VALUE;
   if (!((lastSequence <= 0 && sequence == 1) ||
         (int(sequence) - 1 == lastSequence))) {
-    return B_NOT_ALLOWED;
+    return B_MISMATCHED_VALUES;
   }
   return B_OK;
 }
@@ -1248,39 +1262,39 @@ static inline status_t validatePrevious(BMessage *message, BString &lastID) {
   if (lastID != "") {
     BString previous;
     if (message->FindString("previous", &previous) != B_OK)
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
     if (previous != lastID)
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
     return B_OK;
   } else {
     const void *data;
     ssize_t numBytes;
     if (message->FindData("previous", 'NULL', &data, &numBytes) != B_OK)
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
     return B_OK;
   }
-  return B_NOT_ALLOWED;
+  return B_BAD_VALUE;
 }
 
 static inline status_t validateHash(BMessage *message) {
   BString hash;
   if (message->FindString("hash", &hash) != B_OK || hash != "sha256")
-    return B_NOT_ALLOWED;
+    return B_BAD_VALUE;
   return B_OK;
 }
 
 static inline status_t validateContent(BMessage *content) {
   BString type;
   if (content->FindString("type", &type) != B_OK)
-    return B_NOT_ALLOWED;
+    return B_BAD_VALUE;
   if (type.Length() < 3 || type.Length() > 52)
-    return B_NOT_ALLOWED;
+    return B_BAD_VALUE;
   return B_OK;
 }
 
 static inline status_t validateContent(BString &content) {
   if (!(content.EndsWith(".box2") || content.EndsWith(".box")))
-    return B_NOT_ALLOWED;
+    return B_BAD_VALUE;
   return B_OK;
 }
 
@@ -1293,7 +1307,7 @@ static inline status_t validateEitherContent(BMessage *message) {
     if (message->FindString("content", &encrypted) == B_OK)
       return validateContent(encrypted);
     else
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
   }
 }
 
@@ -1307,46 +1321,46 @@ static inline status_t validateOrder(BMessage *message) {
       if (BString("previous") == attrname)
         state = 1;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 1) {
       if (BString("author") == attrname)
         state = 2;
       else if (BString("sequence") == attrname)
         state = 3;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 2) {
       if (BString("sequence") == attrname)
         state = 4;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 3) {
       if (BString("author") == attrname)
         state = 4;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 4) {
       if (BString("timestamp") == attrname)
         state = 5;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 5) {
       if (BString("hash") == attrname)
         state = 6;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 6) {
       if (BString("content") == attrname)
         state = 7;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else if (state == 7) {
       if (BString("signature") == attrname)
         state = 8;
       else
-        return B_NOT_ALLOWED;
+        return B_BAD_VALUE;
     } else {
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
     }
     index++;
   }
@@ -1370,7 +1384,7 @@ static inline status_t validateSize(BMessage *message) {
     else
       tally++;
     if (tally > 8192)
-      return B_NOT_ALLOWED;
+      return B_BAD_VALUE;
   }
   return B_OK;
 }
