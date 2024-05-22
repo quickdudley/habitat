@@ -283,30 +283,43 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
       specKey != cypherkey) {
     return false;
   }
-  // TODO: Handle multiple values
-  if (BString specAuthor;
-      this->specifier.FindString("author", &specAuthor) == B_OK) {
-    if (BString msgAuthor; msg.FindString("author", &msgAuthor) != B_OK ||
-        msgAuthor != specAuthor) {
-      return false;
+  const char *msgValue;
+  const char *specValue;
+  bool match = true;
+  msg.FindString("author", &msgValue);
+  for (int i = 0; this->specifier.FindString("author", i, &specValue) == B_OK;
+    i++) {
+    match = false;
+    if (strcmp(msgValue, specValue) == 0) {
+      match = true;
+      break;
     }
   }
-  if (BString specContext;
-      this->specifier.FindString("context", &specContext) == B_OK &&
-      specContext != context) {
-    return false; // TODO: handle recursive version
-  }
-  if (BString specType; this->specifier.FindString("type", &specType) == B_OK) {
-    // TODO: Handle encrypted messages (when we have the key)
-    if (BMessage content; msg.FindMessage("content", &content) == B_OK) {
-      if (BString msgType;
-          content.FindString("type", &msgType) != B_OK || msgType != specType) {
-        return false;
-      }
-    } else {
-      return false;
+  if (!match)
+    return false;
+  for (int i = 0; this->specifier.FindString("context", &specValue) == B_OK;
+    i++) {
+    match = false;
+    if (context == specValue) {
+      match = true;
+      break;
     }
   }
+  if (!match)
+    return false;
+  BMessage content;
+  // TODO: Extend this to encrypted messages that we have the key for.
+  bool hasContent = msg.FindMessage("content", &content) == B_OK;
+  if (hasContent)
+    content.FindString("type", &msgValue);
+  for (int i = 0; this->specifier.FindString("type", &specValue) == B_OK; i++) {
+    match = false;
+    if (strcmp(msgValue, specValue) == 0) {
+      match = true;
+      break;
+    }
+  }
+  // TODO: Handle multiple values for these too
   int64 timestamp = INT64_MIN;
   if (int64 earliest;
       this->specifier.FindInt64("earliest", &earliest) == B_OK) {
@@ -922,8 +935,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     BString lastID = this->lastSequence == 0 ? "" : this->previousLink();
     BString blank;
     status_t saveStatus;
-    if (saveStatus = post::validate(msg, this->lastSequence, lastID, false,
-                                    blank) == B_OK) {
+    if ((saveStatus = post::validate(msg, this->lastSequence, lastID, false,
+                                     blank)) == B_OK) {
       this->broken = false;
       this->save(msg);
     } else if (saveStatus == B_MISMATCHED_VALUES) {
