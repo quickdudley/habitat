@@ -297,7 +297,7 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
   }
   if (!match)
     return false;
-  for (int i = 0; this->specifier.FindString("context", &specValue) == B_OK;
+  for (int i = 0; this->specifier.FindString("context", i, &specValue) == B_OK;
     i++) {
     match = false;
     if (context == specValue) {
@@ -312,7 +312,8 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
   bool hasContent = msg.FindMessage("content", &content) == B_OK;
   if (hasContent)
     content.FindString("type", &msgValue);
-  for (int i = 0; this->specifier.FindString("type", &specValue) == B_OK; i++) {
+  for (int i = 0; this->specifier.FindString("type", i, &specValue) == B_OK;
+    i++) {
     match = false;
     if (strcmp(msgValue, specValue) == 0) {
       match = true;
