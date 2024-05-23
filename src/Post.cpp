@@ -942,10 +942,9 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->reorder = false;
       this->save(msg);
     } else if (saveStatus == B_MISMATCHED_VALUES) {
-      if (!this->reorder) {
-        this->reorder = true;
-        this->notifyChanges();
-      }
+      this->reorder = true;
+      this->notifyChanges();
+      this->broken = true;
     } else {
       this->broken = true;
     }
