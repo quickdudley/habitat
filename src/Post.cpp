@@ -939,10 +939,13 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     if ((saveStatus = post::validate(msg, this->lastSequence, lastID, false,
                                      blank)) == B_OK) {
       this->broken = false;
+      this->reorder = false;
       this->save(msg);
     } else if (saveStatus == B_MISMATCHED_VALUES) {
-      this->reorder = true;
-      this->notifyChanges();
+      if (!this->reorder) {
+        this->reorder = true;
+        this->notifyChanges();
+      }
     } else {
       this->broken = true;
     }
