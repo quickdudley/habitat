@@ -783,6 +783,7 @@ void SSBFeed::notifyChanges() {
     notif.AddString("feed", this->cypherkey());
     notif.AddInt64("sequence", this->sequence());
     notif.AddBool("broken", this->reorder);
+    notif.AddBool("forked", this->forked);
     this->reorder = false;
     this->Looper()->SendNotices('NMSG', &notif);
   }
@@ -940,6 +941,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
                                      blank)) == B_OK) {
       this->broken = false;
       this->reorder = false;
+      this->forked = false;
       this->save(msg);
     } else if (saveStatus == B_MISMATCHED_VALUES) {
       this->reorder = true;
@@ -947,6 +949,13 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->broken = true;
     } else {
       this->broken = true;
+      if (!this->forked) {
+        this->forked = true;
+        this->notifyChanges();
+      }
+      BString message("Validation failed: message on ");
+      message << this->cypherkey();
+      writeLog('FORK', message);
     }
   } else {
     return BHandler::MessageReceived(msg);

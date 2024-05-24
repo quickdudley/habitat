@@ -73,11 +73,16 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       }
       bool changed = false;
       bool justOne = !this->polyLink();
+      bool forked = msg->GetBool("forked", false);
       bool fixup = msg->GetBool("broken", false);
       for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
         if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-          if (auto foundNote = link->ourState.find(cypherkey);
-              foundNote != link->ourState.end()) {
+          if (forked) {
+            link->ourState.erase(cypherkey);
+            link->sendSequence.push(cypherkey);
+            changed = true;
+          } else if (auto foundNote = link->ourState.find(cypherkey);
+                     foundNote != link->ourState.end()) {
             if (foundNote->second.savedSequence != sequence) {
               foundNote->second.savedSequence = sequence;
               changed = true;

@@ -105,6 +105,7 @@ protected:
   int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
   bool broken = false;
+  bool forked = false;
   bool reorder = true;
 };
 
