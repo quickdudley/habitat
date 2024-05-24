@@ -943,12 +943,29 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->reorder = false;
       this->forked = false;
       this->save(msg);
+    } else if (saveStatus == B_LAST_BUFFER_ERROR) {
+      sqlite3_stmt *rollback;
+      sqlite3_prepare_v2(this->database,
+                         "DELETE FROM messages WHERE author = ?", -1,
+                         &rollback, NULL);
+      BString key = this->cypherkey();
+      sqlite3_bind_text(rollback, 1, key.String(), key.Length(),
+                        SQLITE_STATIC);
+      sqlite3_step(rollback);
+      sqlite3_finalize(rollback);
+      this->lastSequence = 0;
+      this->reorder = true;
+      this->broken = false;
+      this->notifyChanges();
+      this->broken = true;
     } else if (saveStatus == B_MISMATCHED_VALUES) {
       this->reorder = true;
       this->notifyChanges();
       this->broken = true;
     } else {
       this->broken = true;
+      // TODO: rename 'forked' because it no longer represents forking
+      // but any other type of validation failure
       if (!this->forked) {
         this->forked = true;
         this->notifyChanges();
@@ -1289,7 +1306,7 @@ static inline status_t validatePrevious(BMessage *message, BString &lastID) {
     if (message->FindString("previous", &previous) != B_OK)
       return B_BAD_VALUE;
     if (previous != lastID)
-      return B_BAD_VALUE;
+      return B_LAST_BUFFER_ERROR;
     return B_OK;
   } else {
     const void *data;
@@ -1422,11 +1439,11 @@ status_t validate(BMessage *message, int lastSequence, BString &lastID,
   return result
   CHECK(validateHash(message));
   CHECK(validateSequence(message, lastSequence));
-  CHECK(validatePrevious(message, lastID));
   CHECK(validateOrder(message));
   CHECK(validateEitherContent(message));
   CHECK(validateSize(message));
   CHECK(validateSignature(message, useHmac, hmacKey));
+  CHECK(validatePrevious(message, lastID));
 #undef CHECK
   return B_OK;
 }
