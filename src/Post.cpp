@@ -12,6 +12,7 @@
 #include <StringList.h>
 #include <cstring>
 #include <ctime>
+#include <iostream>
 #include <unicode/utf8.h>
 #include <variant>
 #include <vector>
@@ -1314,6 +1315,7 @@ static inline status_t validatePrevious(BMessage *message, BString &lastID) {
       return B_BAD_VALUE;
     return B_OK;
   }
+  return B_BAD_VALUE;
 }
 
 static inline status_t validateHash(BMessage *message) {
