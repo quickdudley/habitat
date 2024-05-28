@@ -33,6 +33,18 @@ BString escapeString(const BString &src) {
   return result;
 }
 
+template <typename T> static T raise(T base, unsigned int p) {
+  T r = 1;
+  while (true) {
+    if (p % 2 == 1)
+      r *= base;
+    p /= 2;
+    if (p == 0)
+      return r;
+    base *= base;
+  }
+}
+
 BString stringifyNumber(number value) {
   if (value == 0)
     return BString("0");
@@ -46,13 +58,17 @@ BString stringifyNumber(number value) {
     int32 k = 0;
     int32 n = ((int32)std::floor(std::log10(av))) + 1;
     long long s;
-    int32 wd = std::floor(std::log10(av));
+    long double f10;
     do {
       k++;
-      s = std::round(av / std::pow((number)10, (number)(n - k)));
-      if (k > 40)
-        *((int *)0) = 5;
-    } while ((number)s * std::pow((number)10, (number)(n - k)) != av);
+      if (n > k) {
+        f10 = raise((long long)10, n - k);
+        s = std::roundl(av / f10);
+      } else {
+        f10 = raise((long long)10, k - n);
+        s = std::roundl(av * f10);
+      }
+    } while ((number)(n > k ? s * f10 : s / f10) != av);
     if (k <= n && n <= 21) {
       raw << s;
       raw.Append('0', (int32)(n - k));
@@ -396,7 +412,7 @@ void RootSink::addBool(const BString &name, bool value) {
 
 void RootSink::addBool(const char *name, bool value) {
   BString strName(name);
-  this->addBool(name, value);
+  this->addBool(strName, value);
 }
 
 void RootSink::addNull(const BString &rawname, const BString &name) {
@@ -785,18 +801,6 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
   }
 }
 
-template <typename T> static T raise(T base, unsigned int p) {
-  T r = 1;
-  while (true) {
-    if (p % 2 == 1)
-      r *= base;
-    p /= 2;
-    if (p == 0)
-      return r;
-    base *= base;
-  }
-}
-
 status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   this->token.Append(c, 1);
   if (c == '0') {
@@ -845,10 +849,16 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     return B_OK;
   } else {
     this->state = estate;
-    number p10 = (this->state2 == 4 ? this->e : -this->e) - this->k;
+    int p10 = (this->state2 == 4 ? this->e : -this->e) - this->k;
     this->token.Truncate(this->token.Length() - 1);
-    this->target->addNumber(this->rawname, this->name, this->token,
-                            (neg ? -s : s) * std::pow(10, p10));
+    if (p10 >= 0) {
+      this->target->addNumber(this->rawname, this->name, this->token,
+                              (neg ? -s : s) * raise(10, p10));
+    } else {
+      this->target->addNumber(
+          this->rawname, this->name, this->token,
+          (double)((long double)s / raise((long double)10, -p10)));
+    }
     this->rawname = "";
     this->name = "";
     this->token = "";

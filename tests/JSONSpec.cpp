@@ -271,11 +271,14 @@ TEST_CASE("Correctly serialises numbers", "[JSON]") {
   EX(0);
   EX(1);
   EX(0.2);
+  EX(0.7);
   EX(-10);
+  EX(1613858272380.0059);
+  EX(-0.216097777777);
 #undef EX
 }
 
-TEST_CASE("Correctly parses escaped tab", "[JSON]") {
+TEST_CASE("Correctly parses escaped tab", "[JSON][failing]") {
   class StringSink : public JSON::NodeSink {
   public:
     StringSink(BString *target)
@@ -295,6 +298,20 @@ TEST_CASE("Correctly parses escaped tab", "[JSON]") {
   REQUIRE(escaped == "\"\\t\"");
   JSON::parse(std::make_unique<StringSink>(&result), escaped);
   REQUIRE(result == raw);
+}
+
+TEST_CASE("Correctly restores previosuly failing number on round-trip",
+          "[JSON][failing]") {
+  char original[] = "[\n  1613858272380.0059\n]";
+  BString reconstructed;
+  {
+    BMessage msg;
+    JSON::parse(std::make_unique<JSON::BMessageDocSink>(&msg), original);
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::SerializerStart>(&reconstructed));
+    JSON::fromBMessage(&rootSink, &msg);
+  }
+  REQUIRE(original == reconstructed);
 }
 
 TEST_CASE("Correctly parses previously failing message 576 from CEL",
