@@ -62,10 +62,10 @@ BString stringifyNumber(number value) {
     do {
       k++;
       if (n > k) {
-        f10 = raise((long long)10, n - k);
+        f10 = raise((long double)10, n - k);
         s = std::roundl(av / f10);
       } else {
-        f10 = raise((long long)10, k - n);
+        f10 = raise((long double)10, k - n);
         s = std::roundl(av * f10);
       }
     } while ((number)(n > k ? s * f10 : s / f10) != av);
@@ -853,7 +853,7 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     this->token.Truncate(this->token.Length() - 1);
     if (p10 >= 0) {
       this->target->addNumber(this->rawname, this->name, this->token,
-                              (neg ? -s : s) * raise(10, p10));
+                              (neg ? -s : s) * raise((long double)10, p10));
     } else {
       this->target->addNumber(
           this->rawname, this->name, this->token,
