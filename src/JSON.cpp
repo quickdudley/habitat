@@ -1,6 +1,8 @@
 #include "JSON.h"
 #include <cctype>
 #include <cmath>
+#include <iostream>
+#include <string>
 #include <utility>
 
 namespace JSON {
@@ -502,8 +504,11 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
     remaining -= count;
-    if (count <= 0)
+    // std::cout.write(buffer, count);
+    if (count <= 0) {
+      std::cout << std::endl;
       return B_PARTIAL_READ;
+    }
     for (int i = 0; i < count; i++) {
       if ((result = target->nextChar(buffer[i])) != B_OK) {
         while (remaining > 0 && count > 0) {
@@ -511,6 +516,7 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
               buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
           remaining -= count;
         }
+        std::cout << std::endl;
         return result;
       }
     }
@@ -693,15 +699,11 @@ status_t Parser::nextChar(char c) {
       this->state = 10;
       this->token = BString();
       this->token.Append(c, 1);
-      this->s = c - '0';
-      this->k = 0;
       this->state2 = 0;
       return B_OK;
     } else if (c == '-') {
       this->state = 11;
       this->token = BString("-");
-      this->s = 0;
-      this->k = 0;
       this->state2 = 0;
       return B_OK;
     }
@@ -804,25 +806,13 @@ status_t Parser::charInNull(char c, int cstate, int estate) {
 status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   this->token.Append(c, 1);
   if (c == '0') {
-    if (this->state2 == 0) {
-      this->s *= 10;
-    } else if (this->state2 == 1) {
-      this->z++;
-    } else {
-      this->e *= 10;
+    if (this->state2 != 0 && this->state2 != 1) {
       if (this->state2 == 2)
         this->state2 = 3;
     }
     return B_OK;
   } else if (c >= '1' && c <= '9') {
-    if (this->state2 <= 1) {
-      this->s *= raise(10, (this->z + 1));
-      this->s += c - '0';
-      if (this->state2 == 1)
-        this->k += this->z + 1;
-      this->z = 0;
-    } else {
-      this->e = this->e * 10 + (c - '0');
+    if (this->state2 > 1) {
       if (this->state2 == 2)
         this->state2 = 3;
     }
@@ -849,23 +839,11 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
     return B_OK;
   } else {
     this->state = estate;
-    int p10 = (this->state2 == 4 ? this->e : -this->e) - this->k;
     this->token.Truncate(this->token.Length() - 1);
-    if (p10 >= 0) {
-      this->target->addNumber(this->rawname, this->name, this->token,
-                              (neg ? -s : s) * raise((long double)10, p10));
-    } else {
-      this->target->addNumber(
-          this->rawname, this->name, this->token,
-          (double)((long double)s / raise((long double)10, -p10)));
-    }
+    this->target->addNumber(this->rawname, this->name, this->token, std::stod(this->token.String()));
     this->rawname = "";
     this->name = "";
     this->token = "";
-    this->k = 0;
-    this->s = 0;
-    this->e = 0;
-    this->z = 0;
     this->state2 = 0;
     this->state = estate;
     return this->nextChar(c);

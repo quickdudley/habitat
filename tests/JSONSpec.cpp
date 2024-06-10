@@ -82,6 +82,30 @@ TEST_CASE("Correctly parses negative number", "[JSON][parsing][number]") {
   REQUIRE(result == -10.00);
 }
 
+TEST_CASE("Correctly parses suspicious number", "[JSON][parsing][number]") {
+  class AExpect : public JSON::NodeSink {
+  public:
+    AExpect(double *target)
+        :
+        target(target) {}
+    void addNumber(const BString &rawname, const BString &name,
+                   const BString &raw, JSON::number value) override {
+      *(this->target) = value;
+    }
+    std::unique_ptr<NodeSink> addArray(const BString &rawname,
+                                       const BString &name) override {
+      return std::unique_ptr<NodeSink>(std::make_unique<AExpect>(this->target));
+    }
+
+  private:
+    double *target;
+  };
+  char example[] = "[297.09000000000003]";
+  double result;
+  REQUIRE(JSON::parse(std::make_unique<AExpect>(&result), example) == B_OK);
+  REQUIRE(result == 297.09000000000003);
+}
+
 TEST_CASE("Successfully parses object with empty array as properties",
           "[JSON][parsing]") {
   char example[] = "{\"a\": [], \"b\": []}";
@@ -275,6 +299,8 @@ TEST_CASE("Correctly serialises numbers", "[JSON]") {
   EX(-10);
   EX(1613858272380.0059);
   EX(-0.216097777777);
+  EX(297.09000000000003);
+  EX(1476052034270);
 #undef EX
 }
 

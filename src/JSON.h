@@ -141,7 +141,6 @@ private:
   BString rawname;
   BString name;
   std::vector<int> stack;
-  long long k = 0, s = 0, e = 0, z = 0;
   bool lax;
 };
 
