@@ -187,10 +187,8 @@ void Dispatcher::MessageReceived(BMessage *msg) {
           if (bestSoFar) {
             auto bestLine = bestSoFar->remoteState.find(cypherkey);
 #define TIME_FORMULA(item)                                                     \
-  (item->second.note.receive                                                   \
-       ? (staleThreshold + abs(staleThreshold - item->second.updated) -        \
-          1000000)                                                             \
-       : item->second.updated)
+  staleThreshold + abs(staleThreshold - item->second.updated) -                \
+      (item->second.note.receive ? 1000000 : 0)
             if (line->second.note.sequence > bestLine->second.note.sequence ||
                 (line->second.note.sequence == bestLine->second.note.sequence &&
                  TIME_FORMULA(line) < TIME_FORMULA(bestLine))) {
