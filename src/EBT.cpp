@@ -390,6 +390,7 @@ void Link::MessageReceived(BMessage *message) {
                     inserted.first->first,
                     inserted.first->second.note.sequence + 1);
               }
+              this->tick(attrname);
             } else {
               this->sendSequence.push(attrname);
               dynamic_cast<Dispatcher *>(this->Looper())->startNotesTimer(1000);
