@@ -147,7 +147,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       BString cypherkey;
       bool gotSequence = false;
       for (int32 i = 0;
-        request->FindMessage("specifiers", i, &specifier) == B_OK; i++) {
+           request->FindMessage("specifiers", i, &specifier) == B_OK; i++) {
         if (specifier.FindString("property", &property) == B_OK) {
           if (property == "ReplicatedFeed") {
             BString feedId;
@@ -179,7 +179,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       msg->what == 'CKSR' && msg->FindString("cypherkey", &cypherkey) == B_OK) {
     Link *bestSoFar = NULL;
     bool anyChanged = false;
-    bigtime_t now = system_time();
+    bigtime_t staleThreshold = system_time() - 5000000;
     for (int i = this->CountHandlers() - 1; i >= 0; i--) {
       if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
         if (auto line = link->remoteState.find(cypherkey);
@@ -187,7 +187,10 @@ void Dispatcher::MessageReceived(BMessage *msg) {
           if (bestSoFar) {
             auto bestLine = bestSoFar->remoteState.find(cypherkey);
 #define TIME_FORMULA(item)                                                     \
-  abs(item->second.updated + item->second.note.receive ? 5000000 : 6000000)
+  (item->second.note.receive                                                   \
+       ? (staleThreshold + abs(staleThreshold - item->second.updated) -        \
+          1000000)                                                             \
+       : item->second.updated)
             if (line->second.note.sequence > bestLine->second.note.sequence ||
                 (line->second.note.sequence == bestLine->second.note.sequence &&
                  TIME_FORMULA(line) < TIME_FORMULA(bestLine))) {
@@ -433,6 +436,9 @@ void Link::tick(const BString &author) {
   if (auto line = this->remoteState.find(author);
       line != this->remoteState.end()) {
     line->second.updated = system_time();
+    BMessage checkLatency('CKSR');
+    checkLatency.AddString("cypherkey", author);
+    BMessenger(this->Looper()).SendMessage(&checkLatency);
   } else {
     auto [entry, inserted] = this->lastSent.insert({author, INT64_MIN});
     if (inserted || entry->second != INT64_MIN) {
