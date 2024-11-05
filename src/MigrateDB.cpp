@@ -173,6 +173,11 @@ static inline status_t migrateMessages(sqlite3 *database,
   return B_OK;
 }
 
+static inline void setWal(sqlite3 *database) {
+	char *error = NULL;
+	sqlite3_exec(database, "PRAGMA journal_mode = WAL", NULL, NULL, &error);
+}
+
 sqlite3 *migrateToSqlite(const BDirectory &settings) {
   sqlite3 *database;
   {
@@ -185,6 +190,7 @@ sqlite3 *migrateToSqlite(const BDirectory &settings) {
     sqlite3_close(database);
     return NULL;
   }
+  setWal(database);
   migrateMessages(database, settings);
   return database;
 }
