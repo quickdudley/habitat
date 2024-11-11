@@ -33,6 +33,7 @@ public:
 
 protected:
   sqlite3_stmt *query;
+  bool mainDone = false;
 };
 
 class SSBFeed;

@@ -202,7 +202,7 @@ void QueryHandler::MessageReceived(BMessage *message) {
   this->ongoing = true;
   switch (message->what) {
   case B_PULSE:
-    if (sqlite3_step(this->query) == SQLITE_ROW) {
+    if (!this->mainDone && sqlite3_step(this->query) == SQLITE_ROW) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
           B_OK) {
@@ -218,11 +218,11 @@ void QueryHandler::MessageReceived(BMessage *message) {
         db->pulseRunning = true;
         BMessenger(db).SendMessage(B_PULSE);
       }
+    } else if (this->target.IsValid()) {
+      this->target.SendMessage('DONE');
+      this->mainDone = true;
     } else {
-      if (this->target.IsValid())
-        this->target.SendMessage('DONE');
-      else
-        goto canceled;
+      goto canceled;
     }
     break;
   case 'CHCK':
