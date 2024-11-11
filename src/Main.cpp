@@ -20,6 +20,7 @@
 #include <sodium.h>
 #include <string>
 
+#define HABITAT_AUTO_CONNECTIONS 10
 #define B_TRANSLATION_CONTEXT "MainWindow"
 
 Habitat *app;
@@ -105,6 +106,10 @@ static property_info habitatProperties[] = {
 Habitat::Habitat(void)
     :
     BApplication("application/x-vnd.habitat") {
+  {
+    std::random_device hwrng;
+    this->rng.seed(hwrng());
+  }
   this->AddHandler(new Logger());
   // Set timezone
   {
@@ -333,9 +338,6 @@ void Habitat::MessageReceived(BMessage *msg) {
     }
   } break;
   case kServer: {
-    // TODO: Persist changes
-    // TODO: Actually try to connect to servers
-    // TODO: Set timeout for attempted connections
     switch (msg->what) {
     case B_CREATE_PROPERTY: {
       // TODO: Figure out whether to avoid subclassing or use alternate
@@ -385,6 +387,7 @@ void Habitat::MessageReceived(BMessage *msg) {
       }
     }; break;
     }
+    this->checkServerStatus();
   } break;
   case kConnection: {
     thread_id t = spawn_thread(Habitat::initiateConnection, "New connection", 0,
@@ -407,6 +410,25 @@ void Habitat::MessageReceived(BMessage *msg) {
   msg->SendReply(&reply);
   if (detached)
     delete msg;
+}
+
+void Habitat::checkServerStatus() {
+  int alreadyConnected = 0;
+  std::vector<ServerRecord *> candidates;
+  for (auto &server : this->servers) {
+    if (server.connected) {
+      if (++alreadyConnected >= HABITAT_AUTO_CONNECTIONS)
+        return;
+    } else if (server.transport == "net") {
+      candidates.push_back(&server);
+    }
+  }
+  while (alreadyConnected++ < HABITAT_AUTO_CONNECTIONS && !candidates.empty()) {
+    std::uniform_int_distribution<> distrib(0, candidates.size() - 1);
+    size_t index = distrib(this->rng);
+    candidates[index]->connect();
+    candidates.erase(candidates.begin() + index);
+  }
 }
 
 int Habitat::initiateConnection(void *message) {
@@ -438,7 +460,8 @@ int Habitat::initiateConnection(void *message) {
           std::make_unique<BoxStream>(
               std::move(sock), SSB_NETWORK_ID,
               static_cast<Habitat *>(be_app)->myId.get(), rawKey.data()),
-          static_cast<Habitat *>(be_app)->clientMethods);
+          static_cast<Habitat *>(be_app)->clientMethods,
+          msg->GetString("name", ""));
       sockptr->SetTimeout(B_INFINITE_TIMEOUT);
       be_app->RegisterLooper(conn);
       conn->Run();
@@ -454,6 +477,12 @@ sendReply:
     reply.AddString("message", strerror(error));
   msg->SendReply(&reply);
   delete msg;
+  if (BString name; error != B_OK && msg->FindString("name", &name) == B_OK) {
+    BMessage update(B_SET_PROPERTY);
+    update.AddBool("connected", false);
+    update.AddSpecifier("Server", name);
+    BMessenger(be_app).SendMessage(&update);
+  }
   // TODO: Reap thread ID
   return 0;
 }
@@ -512,6 +541,7 @@ void Habitat::ReadyToRun() {
     rq.AddMessenger("target", BMessenger(graph));
     BMessenger(this->databaseLooper).SendMessage(&rq);
   }
+  this->checkServerStatus();
 }
 
 void Habitat::loadSettings() {
@@ -615,7 +645,8 @@ ServerRecord::ServerRecord(BMessage *record)
     :
     transport(record->GetString("transport", "net")),
     hostname(record->GetString("hostname", "")),
-    cypherkey(record->GetString("cypherkey", "")) {}
+    cypherkey(record->GetString("cypherkey", "")),
+    connected(record->GetBool("connected", false)) {}
 
 bool ServerRecord::isValid() {
   return this->transport == "net" &&
@@ -627,6 +658,8 @@ void ServerRecord::pack(BMessage *record, bool includeStatus) {
   record->AddString("transport", this->transport);
   record->AddString("hostname", this->hostname);
   record->AddString("cypherkey", this->cypherkey);
+  if (includeStatus)
+    record->AddBool("connected", this->connected);
 }
 
 status_t ServerRecord::update(const BMessage *record) {
@@ -652,6 +685,8 @@ status_t ServerRecord::update(const BMessage *record) {
     else
       return B_BAD_VALUE;
   }
+  if (bool value; record->FindBool("connected", &value) == B_OK)
+    this->connected = value;
   if (setTransport)
     this->transport = transport;
   if (setHostname)
@@ -670,6 +705,28 @@ BString ServerRecord::fullName() {
   this->cypherkey.CopyInto(chunk, 1, this->cypherkey.Length() - 9);
   result << chunk;
   return result;
+}
+
+void ServerRecord::connect() {
+  BMessage trigger(B_CREATE_PROPERTY);
+  {
+    BString justHost;
+    int16 port;
+    int32 separator = this->hostname.FindLast(':');
+    this->hostname.CopyInto(justHost, 0, separator);
+    port = std::stoi(&this->hostname.String()[separator + 1]);
+    trigger.AddString("host", justHost);
+    trigger.AddInt16("port", port);
+  }
+  {
+    BString key;
+    this->cypherkey.CopyInto(key, 1, 44);
+    trigger.AddString("key", key);
+  }
+  trigger.AddString("name", this->fullName());
+  trigger.AddSpecifier("Connection");
+  BMessenger(be_app).SendMessage(&trigger);
+  this->connected = true;
 }
 
 #undef B_TRANSLATION_CONTEXT

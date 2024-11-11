@@ -115,7 +115,8 @@ class MethodSuite;
 
 class Connection : public BLooper {
 public:
-  Connection(std::unique_ptr<BDataIO> inner, const MethodSuite &methods);
+  Connection(std::unique_ptr<BDataIO> inner, const MethodSuite &methods,
+             const BString &serverName = "");
   ~Connection();
   thread_id Run() override;
   void Quit() override;
@@ -140,6 +141,7 @@ private:
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
   int32 nextRequest = 1;
   std::map<BString, BMessenger> crossTalk;
+  BString serverName;
   bool stoppedRecv = false;
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);

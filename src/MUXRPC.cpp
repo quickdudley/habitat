@@ -4,6 +4,7 @@
 #include "Connection.h"
 #include "JSON.h"
 #include "Logging.h"
+#include <Application.h>
 #include <PropertyInfo.h>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -299,10 +300,11 @@ void Setup::MessageReceived(BMessage *message) {
 }; // namespace
 
 Connection::Connection(std::unique_ptr<BDataIO> inner,
-                       const MethodSuite &methods)
+                       const MethodSuite &methods, const BString &serverName)
     :
     BLooper("MUXRPC sender"),
-    handlers(methods.methods) {
+    handlers(methods.methods),
+    serverName(serverName) {
   this->inner = std::move(inner);
   this->ongoingLock = create_sem(1, "MUXRPC incoming streams lock");
   {
@@ -373,6 +375,12 @@ void Connection::Quit() {
   }
   if (acquire_sem(this->ongoingLock) == B_OK)
     release_sem(this->ongoingLock);
+  if (this->serverName != "") {
+    BMessage update(B_SET_PROPERTY);
+    update.AddBool("connected", false);
+    update.AddSpecifier("Server", this->serverName.String());
+    BMessenger(be_app).SendMessage(&update);
+  }
   BLooper::Quit();
 }
 

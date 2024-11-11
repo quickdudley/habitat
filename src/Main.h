@@ -13,6 +13,7 @@
 #include <Path.h>
 #include <Window.h>
 #include <memory>
+#include <random>
 #include <set>
 #include <unicode/timezone.h>
 
@@ -39,11 +40,13 @@ public:
   virtual void pack(BMessage *record, bool includeStatus = true);
   virtual status_t update(const BMessage *record);
   virtual BString fullName();
+  virtual void connect();
 
 private:
   BString transport;
   BString hostname;
   BString cypherkey;
+  bool connected = false;
   friend class Habitat;
 };
 
@@ -61,6 +64,7 @@ public:
 private:
   void loadSettings();
   void saveSettings();
+  void checkServerStatus();
   static int initiateConnection(void *message);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
@@ -76,6 +80,7 @@ private:
   std::shared_ptr<Ed25519Secret> myId;
   std::vector<ServerRecord> servers;
   std::set<void *> cloggedChannels;
+  std::default_random_engine rng;
 };
 
 extern Habitat *app;
