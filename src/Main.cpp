@@ -485,16 +485,6 @@ void Habitat::ReadyToRun() {
   this->settings->GetVolume(&volume);
   auto graph = new ContactGraph();
   worker->AddHandler(graph);
-  {
-    BMessage rq(B_GET_PROPERTY);
-    BMessage specifier('CPLX');
-    specifier.AddString("property", "Post");
-    specifier.AddString("type", "contact");
-    specifier.AddBool("dregs", true);
-    rq.AddSpecifier(&specifier);
-    rq.AddMessenger("target", BMessenger(graph));
-    BMessenger(this->databaseLooper).SendMessage(&rq);
-  }
   auto selector =
       new SelectContacts(BMessenger(this->databaseLooper), BMessenger(graph));
   worker->AddHandler(selector);
@@ -513,6 +503,16 @@ void Habitat::ReadyToRun() {
   this->wantedBlobs->registerMethods(this->serverMethods);
   worker->Unlock();
   this->RegisterLooper(worker);
+  {
+    BMessage rq(B_GET_PROPERTY);
+    BMessage specifier('CPLX');
+    specifier.AddString("property", "Post");
+    specifier.AddString("type", "contact");
+    specifier.AddBool("dregs", true);
+    rq.AddSpecifier(&specifier);
+    rq.AddMessenger("target", BMessenger(graph));
+    BMessenger(this->databaseLooper).SendMessage(&rq);
+  }
 }
 
 void Habitat::loadSettings() {
