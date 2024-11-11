@@ -35,22 +35,11 @@ protected:
   sqlite3_stmt *query;
 };
 
-class AntiClog : public BLooper {
-public:
-  AntiClog(const char *name, int32 capacity, int32 lax);
-  void DispatchMessage(BMessage *message, BHandler *handler) override;
-
-private:
-  int32 capacity;
-  int32 lax;
-  bool clogged;
-};
-
 class SSBFeed;
 
 extern property_info databaseProperties[];
 
-class SSBDatabase : public AntiClog {
+class SSBDatabase : public BLooper {
 public:
   SSBDatabase(sqlite3 *database);
   ~SSBDatabase() override;
@@ -58,17 +47,21 @@ public:
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property) override;
   void MessageReceived(BMessage *msg) override;
+  void DispatchMessage(BMessage *message, BHandler *handler) override;
   status_t findPost(BMessage *post, BString &cypherkey);
   status_t findFeed(SSBFeed *&result, const BString &cypherkey);
   void notifySaved(const BString &author, int64 sequence,
                    unsigned char id[crypto_hash_sha256_BYTES]);
-  bool runningQueries = false;
+  int transactionLevel = 0;
+  bool pulseRunning = false;
 
 private:
   friend class SSBFeed;
   friend class QueryHandler;
   bool runCheck(BMessage *msg);
   sqlite3 *database;
+  std::map<BString, SSBFeed *> feeds;
+  bool clogged = false;
 };
 
 class SSBFeed : public QueryBacked {

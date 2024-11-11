@@ -1,6 +1,7 @@
 #include "SettingsWindow.h"
 #include "Base64.h"
 #include "Connection.h"
+#include <Application.h>
 #include <Button.h>
 #include <Catalog.h>
 #include <ControlLook.h>
@@ -46,6 +47,7 @@ public:
   void Update(BView *owner, const BFont *font) override;
   const BString &getAddress();
   const BString &getCypherkey();
+  BString getName();
 
 private:
   BString netAddress;
@@ -115,34 +117,61 @@ void NetworkTab::AttachedToWindow() {
     }
     column2Layout->AddItem(BSpaceLayoutItem::CreateGlue());
   }
+  {
+    BMessage rq(B_GET_PROPERTY);
+    rq.AddSpecifier("Server");
+    BMessenger(be_app).SendMessage(&rq, BMessenger(this));
+  }
 }
 
 void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
     this->serverList->DeselectAll();
+    // TODO: check for invite code in clipboard
   } break;
   case 'DSRV': {
+    if (auto item = dynamic_cast<ServerEntry *>(
+            this->serverList->ItemAt(this->serverList->CurrentSelection()))) {
+      BMessage msg(B_DELETE_PROPERTY);
+      msg.AddSpecifier("Server", item->getName());
+      BMessenger(be_app).SendMessage(&msg);
+    }
     this->serverList->RemoveItem(this->serverList->CurrentSelection());
     this->serverList->DeselectAll();
   } break;
   case 'SSRV': {
     if (auto item = dynamic_cast<ServerEntry *>(
             this->serverList->ItemAt(this->serverList->CurrentSelection()))) {
+      BString name = item->getName();
       item->setAddress(this->addrControl->Text());
       item->setCypherkey(this->keyControl->Text());
+      BMessage update(B_SET_PROPERTY);
+      update.AddString("hostname", item->getAddress());
+      update.AddString("cypherkey", item->getCypherkey());
+      update.AddSpecifier("Server", name.String());
+      BMessenger(be_app).SendMessage(&update);
       this->serverList->Invalidate();
     } else {
       int32 ll = this->serverList->CountItems();
-      this->serverList->AddItem(
-          new ServerEntry(this->addrControl->Text(), this->keyControl->Text()));
+      auto newItem =
+          new ServerEntry(this->addrControl->Text(), this->keyControl->Text());
+      this->serverList->AddItem(newItem);
+      BMessage create(B_CREATE_PROPERTY);
+      create.AddString("hostname", newItem->getAddress());
+      create.AddString("cypherkey", newItem->getCypherkey());
+      create.AddSpecifier("Server");
       this->serverList->Select(ll);
+      BMessenger(be_app).SendMessage(&create);
     }
   } break;
   case 'MSRV': {
     this->saveButton->SetEnabled(
         validateHostname(this->addrControl->Text(), PORT_REQUIRED) &&
         validateCypherkey(this->keyControl->Text()));
+  } break;
+  case B_REPLY: {
+    // TODO: populate the list
   } break;
   default:
     BView::MessageReceived(message);
@@ -178,6 +207,16 @@ void ServerEntry::setCypherkey(const BString &cypherkey) {
 const BString &ServerEntry::getAddress() { return this->netAddress; }
 
 const BString &ServerEntry::getCypherkey() { return this->cypherkey; }
+
+BString ServerEntry::getName() {
+  BString result("net:");
+  result << this->getAddress();
+  result << "~shs:";
+  BString key;
+  this->getCypherkey().CopyInto(key, 1, 44);
+  result << key;
+  return result;
+}
 
 void ServerEntry::DrawItem(BView *owner, BRect frame, bool complete) {
   rgb_color lowColor = owner->LowColor();

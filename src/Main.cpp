@@ -89,7 +89,7 @@ static property_info habitatProperties[] = {
      kServer,
      {}},
     {"Server",
-     {B_DELETE_PROPERTY, B_GET_PROPERTY, 0},
+     {B_DELETE_PROPERTY, B_GET_PROPERTY, B_SET_PROPERTY, 0},
      {B_NAME_SPECIFIER, 0},
      "A pub server or room server",
      kServer,
@@ -334,8 +334,13 @@ void Habitat::MessageReceived(BMessage *msg) {
     }
   } break;
   case kServer: {
+    // TODO: Persist changes
+    // TODO: Actually try to connect to servers
+    // TODO: Set timeout for attempted connections
     switch (msg->what) {
     case B_CREATE_PROPERTY: {
+      // TODO: Figure out whether to avoid subclassing or use alternate
+      // approach to construction.
       this->servers.push_back(msg);
       if (!this->servers.back().isValid())
         this->servers.pop_back();
@@ -345,7 +350,7 @@ void Habitat::MessageReceived(BMessage *msg) {
     case B_DELETE_PROPERTY: {
       error = B_NAME_NOT_FOUND;
       for (auto i = this->servers.begin(); i != this->servers.end(); i++) {
-        if (i->hostname == specifier.GetString("name")) {
+        if (i->fullName() == specifier.GetString("name")) {
           error = B_OK;
           this->servers.erase(i);
           break;
@@ -356,14 +361,30 @@ void Habitat::MessageReceived(BMessage *msg) {
       error = B_NAME_NOT_FOUND;
       for (auto &server : this->servers) {
         if (what == B_DIRECT_SPECIFIER ||
-            server.hostname == specifier.GetString("name")) {
+            server.fullName() == specifier.GetString("name")) {
           BMessage result;
           server.pack(&result);
           reply.AddMessage("result", &result);
           error = B_OK;
+          if (what == B_NAME_SPECIFIER)
+            break;
         }
       }
     } break;
+    case B_SET_PROPERTY: {
+      error = B_NAME_NOT_FOUND;
+      BMessage data;
+      if (msg->FindMessage("data", &data) != B_OK) {
+        error = B_BAD_VALUE;
+        break;
+      }
+      for (auto &server : this->servers) {
+        if (server.hostname == specifier.GetString("name")) {
+          error = server.update(&data);
+          break;
+        }
+      }
+    }; break;
     }
   } break;
   case kConnection: {
@@ -390,13 +411,6 @@ void Habitat::MessageReceived(BMessage *msg) {
     delete msg;
 }
 
-thread_id Habitat::Run() {
-  thread_id r = this->databaseLooper->Run();
-  this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId->pubkey);
-  BApplication::Run();
-  return r;
-}
-
 int Habitat::initiateConnection(void *message) {
   status_t error;
   BMessage *msg = (BMessage *)message;
@@ -419,12 +433,15 @@ int Habitat::initiateConnection(void *message) {
       goto sendReply;
     }
     try {
+      auto sock = std::make_unique<BSocket>(BNetworkAddress(host, port));
+      sock->SetTimeout(15000000);
+      auto sockptr = sock.get();
       auto conn = new muxrpc::Connection(
           std::make_unique<BoxStream>(
-              std::make_unique<BSocket>(BNetworkAddress(host, port)),
-              SSB_NETWORK_ID, static_cast<Habitat *>(be_app)->myId.get(),
-              rawKey.data()),
+              std::move(sock), SSB_NETWORK_ID,
+              static_cast<Habitat *>(be_app)->myId.get(), rawKey.data()),
           static_cast<Habitat *>(be_app)->clientMethods);
+      sockptr->SetTimeout(B_INFINITE_TIMEOUT);
       be_app->RegisterLooper(conn);
       conn->Run();
     } catch (...) {
@@ -445,6 +462,8 @@ sendReply:
 }
 
 void Habitat::ReadyToRun() {
+  this->databaseLooper->Run();
+  this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId->pubkey);
   this->loadSettings();
   this->AddHandler(this->lanBroadcaster.get());
   this->ipListener = std::make_unique<SSBListener>(
@@ -509,7 +528,7 @@ void Habitat::loadSettings() {
     {
       int32 logCategory;
       for (int32 i = 0;
-        settings.FindInt32("LogCategory", i, &logCategory) == B_OK; i++) {
+           settings.FindInt32("LogCategory", i, &logCategory) == B_OK; i++) {
         BMessage start(B_CREATE_PROPERTY);
         start.AddSpecifier("LogCategory");
         start.AddInt32("category", logCategory);
@@ -587,7 +606,7 @@ ServerRecord::ServerRecord(const BString &hostname, const BString &cypherkey)
 
 ServerRecord::ServerRecord(BMessage *record)
     :
-    transport(record->GetString("transport", "")),
+    transport(record->GetString("transport", "net")),
     hostname(record->GetString("hostname", "")),
     cypherkey(record->GetString("cypherkey", "")) {}
 
@@ -601,6 +620,49 @@ void ServerRecord::pack(BMessage *record) {
   record->AddString("transport", this->transport);
   record->AddString("hostname", this->hostname);
   record->AddString("cypherkey", this->cypherkey);
+}
+
+status_t ServerRecord::update(const BMessage *record) {
+  BString transport, hostname, cypherkey;
+  bool setTransport = false, setHostname = false, setCypherkey = false;
+  if (record->FindString("transport", &transport) == B_OK) {
+    // TODO: Support other transports
+    if (transport == "net")
+      setTransport = true;
+    else
+      return B_BAD_VALUE;
+  }
+  if (record->FindString("hostname", &hostname) == B_OK) {
+    // TODO: Make validation rules dependent on transport
+    if (validateHostname(hostname, PORT_REQUIRED))
+      setHostname = true;
+    else
+      return B_BAD_VALUE;
+  }
+  if (record->FindString("cypherkey", &cypherkey) == B_OK) {
+    if (validateCypherkey(cypherkey))
+      setCypherkey = true;
+    else
+      return B_BAD_VALUE;
+  }
+  if (setTransport)
+    this->transport = transport;
+  if (setHostname)
+    this->hostname = hostname;
+  if (setCypherkey)
+    this->cypherkey = cypherkey;
+  return B_OK;
+}
+
+BString ServerRecord::fullName() {
+  BString result = this->transport;
+  result << ":";
+  result << this->hostname;
+  result << "~shs:";
+  BString chunk;
+  this->cypherkey.CopyInto(chunk, 1, this->cypherkey.Length() - 9);
+  result << chunk;
+  return result;
 }
 
 #undef B_TRANSLATION_CONTEXT

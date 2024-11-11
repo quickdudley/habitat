@@ -214,8 +214,8 @@ void QueryHandler::MessageReceived(BMessage *message) {
           goto canceled;
       }
       if (auto db = dynamic_cast<SSBDatabase *>(this->Looper());
-          !db->runningQueries) {
-        db->runningQueries = true;
+          !db->pulseRunning) {
+        db->pulseRunning = true;
         BMessenger(db).SendMessage(B_PULSE);
       }
     } else {
@@ -288,7 +288,7 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
   bool match = true;
   msg.FindString("author", &msgValue);
   for (int i = 0; this->specifier.FindString("author", i, &specValue) == B_OK;
-    i++) {
+       i++) {
     match = false;
     if (strcmp(msgValue, specValue) == 0) {
       match = true;
@@ -298,7 +298,7 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
   if (!match)
     return false;
   for (int i = 0; this->specifier.FindString("context", i, &specValue) == B_OK;
-    i++) {
+       i++) {
     match = false;
     if (context == specValue) {
       match = true;
@@ -313,7 +313,7 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
   if (hasContent)
     content.FindString("type", &msgValue);
   for (int i = 0; this->specifier.FindString("type", i, &specValue) == B_OK;
-    i++) {
+       i++) {
     match = false;
     if (strcmp(msgValue, specValue) == 0) {
       match = true;
@@ -350,14 +350,7 @@ BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]) {
   return result;
 }
 
-AntiClog::AntiClog(const char *name, int32 capacity, int32 lax)
-    :
-    BLooper(name),
-    capacity(capacity),
-    lax(lax),
-    clogged(false) {}
-
-void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
+void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
   {
     auto count = this->MessageQueue()->CountMessages();
     if (count > 0) {
@@ -365,7 +358,7 @@ void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
       logText << count;
       writeLog('CLOG', logText);
     }
-    if (this->clogged ? (count <= this->lax) : (count >= this->capacity)) {
+    if (this->clogged ? (count <= 512) : (count >= 8192)) {
       this->clogged = !this->clogged;
       BMessage notify('CLOG');
       notify.AddPointer("channel", this);
@@ -378,13 +371,18 @@ void AntiClog::DispatchMessage(BMessage *message, BHandler *handler) {
 
 SSBDatabase::SSBDatabase(sqlite3 *database)
     :
-    AntiClog("SSB message database", 8192, 512),
+    BLooper("SSB message database", 8192, 512),
     database(database) {
   if (runningDB == NULL)
     runningDB = this;
 }
 
 SSBDatabase::~SSBDatabase() {
+  if (this->transactionLevel != 0) {
+    char *error = NULL;
+    this->transactionLevel = 0;
+    sqlite3_exec(this->database, "END TRANSACTION", NULL, NULL, &error);
+  }
   sqlite3_close_v2(this->database);
   if (runningDB == this)
     runningDB = NULL;
@@ -446,8 +444,7 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
         error = this->findFeed(feed, name);
         if (error == B_OK && feed != NULL) {
           msg->PopSpecifier();
-          BMessenger(feed).SendMessage(msg);
-          return NULL;
+          return feed;
         }
         error = B_NAME_NOT_FOUND;
       } else if ((error = specifier->FindInt32("index", &sindex)) == B_OK) {
@@ -520,6 +517,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           if (this->findFeed(feed, formatted) != B_OK) {
             feed = new SSBFeed(this->database, key);
             this->AddHandler(feed);
+            this->feeds.insert({formatted, feed});
             feed->load();
           }
           reply.AddMessenger("result", BMessenger(feed));
@@ -584,8 +582,8 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         this->Lock();
         this->AddHandler(qh);
         this->Unlock();
-        if (!this->runningQueries) {
-          this->runningQueries = true;
+        if (!this->pulseRunning) {
+          this->pulseRunning = true;
           BMessenger(this).SendMessage(B_PULSE);
         }
         error = B_OK;
@@ -630,8 +628,21 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       }
     }
-  } else if (msg->what == B_PULSE && this->runningQueries) {
-    this->runningQueries = false;
+  } else if (msg->what == B_PULSE && this->pulseRunning) {
+    this->pulseRunning = false;
+    switch (this->transactionLevel) {
+    case 1: {
+      char *error = NULL;
+      this->transactionLevel = 0;
+      sqlite3_exec(this->database, "END TRANSACTION", NULL, NULL, &error);
+    } break;
+    case 2: {
+      BMessage pulse(B_PULSE);
+      BMessenger(this).SendMessage(&pulse);
+      this->pulseRunning = true;
+      this->transactionLevel = 1;
+    } break;
+    }
     for (int i = 0; i < this->CountHandlers(); i++) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
@@ -647,12 +658,17 @@ bool SSBDatabase::runCheck(BMessage *msg) {
 }
 
 status_t SSBDatabase::findFeed(SSBFeed *&result, const BString &cypherkey) {
+  if (auto lookup = this->feeds.find(cypherkey); lookup != this->feeds.end()) {
+    result = lookup->second;
+    return B_OK;
+  }
   unsigned char key[crypto_sign_PUBLICKEYBYTES];
   SSBFeed::parseAuthor(key, cypherkey);
   for (int i = 0; i < this->CountHandlers(); i++) {
     if (auto feed = dynamic_cast<SSBFeed *>(this->HandlerAt(i));
         feed && feed->matchKey(key)) {
       result = feed;
+      this->feeds.insert({cypherkey, feed});
       return B_OK;
     }
   }
@@ -861,6 +877,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         looper->SendNotices('NMSG', &notif);
         looper->Lock();
         looper->RemoveHandler(this);
+        if (auto db = dynamic_cast<SSBDatabase *>(looper))
+          db->feeds.erase(this->cypherkey());
         looper->Unlock();
         delete this;
         goto sendreply;
@@ -946,11 +964,10 @@ void SSBFeed::MessageReceived(BMessage *msg) {
     } else if (saveStatus == B_LAST_BUFFER_ERROR) {
       sqlite3_stmt *rollback;
       sqlite3_prepare_v2(this->database,
-                         "DELETE FROM messages WHERE author = ?", -1,
-                         &rollback, NULL);
+                         "DELETE FROM messages WHERE author = ?", -1, &rollback,
+                         NULL);
       BString key = this->cypherkey();
-      sqlite3_bind_text(rollback, 1, key.String(), key.Length(),
-                        SQLITE_STATIC);
+      sqlite3_bind_text(rollback, 1, key.String(), key.Length(), SQLITE_STATIC);
       sqlite3_step(rollback);
       sqlite3_finalize(rollback);
       this->lastSequence = 0;
@@ -1103,6 +1120,19 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   }
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   int64 sequence;
+  if (auto looper = dynamic_cast<SSBDatabase *>(this->Looper())) {
+    if (looper->transactionLevel == 0) {
+      char *error;
+      sqlite3_exec(this->database, "BEGIN IMMEDIATE TRANSACTION", NULL, NULL,
+                   &error);
+    }
+    looper->transactionLevel = 2;
+    if (!looper->pulseRunning) {
+      BMessage pulse(B_PULSE);
+      BMessenger(looper).SendMessage(&pulse);
+      looper->pulseRunning = true;
+    }
+  }
   sqlite3_stmt *insert;
   sqlite3_prepare_v2(
       this->database,

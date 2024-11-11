@@ -37,6 +37,8 @@ public:
   virtual ~ServerRecord() {}
   virtual bool isValid();
   virtual void pack(BMessage *record);
+  virtual status_t update(const BMessage *record);
+  virtual BString fullName();
 
 private:
   BString transport;
@@ -52,7 +54,6 @@ public:
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
                              int32 what, const char *property);
-  thread_id Run();
   void ReadyToRun();
   void Quit();
   BDirectory &settingsDir();
