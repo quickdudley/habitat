@@ -36,7 +36,7 @@ public:
   ServerRecord(BMessage *record);
   virtual ~ServerRecord() {}
   virtual bool isValid();
-  virtual void pack(BMessage *record);
+  virtual void pack(BMessage *record, bool includeStatus = true);
   virtual status_t update(const BMessage *record);
   virtual BString fullName();
 

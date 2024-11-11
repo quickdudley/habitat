@@ -37,7 +37,6 @@ int main(int argc, const char **args) {
   } catch (...) {
     exit_status = -1;
   }
-  delete app;
   return exit_status;
 }
 
@@ -533,6 +532,11 @@ void Habitat::loadSettings() {
         BMessenger(this).SendMessage(&start);
       }
     }
+    {
+      BMessage record;
+      for (int32 i = 0; settings.FindMessage("Server", i, &record) == B_OK; i++)
+        this->servers.push_back(ServerRecord(&record));
+    }
   }
 }
 
@@ -543,6 +547,11 @@ void Habitat::saveSettings() {
         logger != NULL) {
       logger->storeCategories(&settings);
     }
+  }
+  for (auto &server : this->servers) {
+    BMessage record;
+    server.pack(&record, false);
+    settings.AddMessage("Server", &record);
   }
   BFile output;
   if (this->settings->CreateFile("preferences~", &output, false) != B_OK)
@@ -614,7 +623,7 @@ bool ServerRecord::isValid() {
       validateCypherkey(this->cypherkey);
 }
 
-void ServerRecord::pack(BMessage *record) {
+void ServerRecord::pack(BMessage *record, bool includeStatus) {
   record->AddString("transport", this->transport);
   record->AddString("hostname", this->hostname);
   record->AddString("cypherkey", this->cypherkey);
