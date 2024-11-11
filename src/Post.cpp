@@ -603,7 +603,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     SSBFeed *feed;
     if (this->findFeed(feed, author) == B_OK) {
-      BMessenger(feed).SendMessage(msg);
+      feed->MessageReceived(msg);
     } else {
       BMessage notif(B_OBSERVER_NOTICE_CHANGE);
       notif.AddString("feed", author);

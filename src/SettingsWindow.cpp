@@ -171,6 +171,16 @@ void NetworkTab::MessageReceived(BMessage *message) {
         validateCypherkey(this->keyControl->Text()));
   } break;
   case B_REPLY: {
+    int32 i = 0;
+    BMessage result;
+    while (message->FindMessage("result", i, &result) == B_OK) {
+      if (BString(result.GetString("transport", "net")) == "net") {
+        this->serverList->AddItem(
+            new ServerEntry(result.GetString("hostname", ""),
+                            result.GetString("cypherkey", "")));
+        i++;
+      }
+    }
     // TODO: populate the list
   } break;
   default:

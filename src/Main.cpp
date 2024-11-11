@@ -405,8 +405,7 @@ void Habitat::MessageReceived(BMessage *msg) {
   reply.AddInt32("error", error);
   if (error != B_OK)
     reply.AddString("message", strerror(error));
-  if (msg->IsSourceWaiting())
-    msg->SendReply(&reply);
+  msg->SendReply(&reply);
   if (detached)
     delete msg;
 }
@@ -454,8 +453,7 @@ sendReply:
   reply.AddInt32("error", error);
   if (error != B_OK)
     reply.AddString("message", strerror(error));
-  if (msg->IsSourceWaiting())
-    msg->SendReply(&reply);
+  msg->SendReply(&reply);
   delete msg;
   // TODO: Reap thread ID
   return 0;
