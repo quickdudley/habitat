@@ -473,16 +473,18 @@ int Habitat::initiateConnection(void *message) {
   }
 sendReply:
   reply.AddInt32("error", error);
-  if (error != B_OK)
+  if (error != B_OK) {
     reply.AddString("message", strerror(error));
+    msg->PrintToStream();
+  }
   msg->SendReply(&reply);
-  delete msg;
   if (BString name; error != B_OK && msg->FindString("name", &name) == B_OK) {
     BMessage update(B_SET_PROPERTY);
     update.AddBool("connected", false);
     update.AddSpecifier("Server", name);
     BMessenger(be_app).SendMessage(&update);
   }
+  delete msg;
   // TODO: Reap thread ID
   return 0;
 }
