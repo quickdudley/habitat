@@ -133,7 +133,8 @@ static inline status_t migrateMessages(sqlite3 *database,
     }
     if (cypherkey != (const char *)sqlite3_column_text(verify, 0)) {
       std::cerr << "Inserted cypherkey mismatch!" << std::endl;
-      std::cerr << cypherkey.String() << " != " << sqlite3_column_text(verify, 1) << std::endl;
+      std::cerr << cypherkey.String()
+                << " != " << sqlite3_column_text(verify, 1) << std::endl;
       exit(-1);
     }
     if (author != (const char *)sqlite3_column_text(verify, 1)) {
@@ -174,8 +175,8 @@ static inline status_t migrateMessages(sqlite3 *database,
 }
 
 static inline void setWal(sqlite3 *database) {
-	char *error = NULL;
-	sqlite3_exec(database, "PRAGMA journal_mode = WAL", NULL, NULL, &error);
+  char *error = NULL;
+  sqlite3_exec(database, "PRAGMA journal_mode = WAL", NULL, NULL, &error);
 }
 
 sqlite3 *migrateToSqlite(const BDirectory &settings) {

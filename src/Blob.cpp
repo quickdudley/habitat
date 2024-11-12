@@ -153,7 +153,7 @@ void Wanted::MessageReceived(BMessage *message) {
         if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
           return;
         for (auto item = this->wanted.begin(); item != this->wanted.end();
-            item++) {
+             item++) {
           if (std::get<0>(*item) == cypherkey) {
             for (auto &target : std::get<2>(*item))
               target.SendMessage(message);

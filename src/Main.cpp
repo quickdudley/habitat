@@ -473,9 +473,8 @@ int Habitat::initiateConnection(void *message) {
   }
 sendReply:
   reply.AddInt32("error", error);
-  if (error != B_OK) {
+  if (error != B_OK)
     reply.AddString("message", strerror(error));
-  }
   msg->SendReply(&reply);
   if (BString name; error != B_OK && msg->FindString("name", &name) == B_OK) {
     BMessage data;

@@ -840,7 +840,8 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   } else {
     this->state = estate;
     this->token.Truncate(this->token.Length() - 1);
-    this->target->addNumber(this->rawname, this->name, this->token, std::stod(this->token.String()));
+    this->target->addNumber(this->rawname, this->name, this->token,
+                            std::stod(this->token.String()));
     this->rawname = "";
     this->name = "";
     this->token = "";

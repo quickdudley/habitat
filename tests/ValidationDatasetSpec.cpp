@@ -22,7 +22,7 @@ TEST_CASE("Validation matches examples", "[message][validation]") {
       JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&examples));
       for (int i = 0; parseStatus == B_OK &&
            i < generated_test_ssb_validation_dataset_json_len;
-        i++) {
+           i++) {
         parseStatus =
             parser.nextChar(generated_test_ssb_validation_dataset_json[i]);
       }
