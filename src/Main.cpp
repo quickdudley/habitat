@@ -308,7 +308,6 @@ void Habitat::MessageReceived(BMessage *msg) {
       return;
     }
     error = B_OK;
-    msg->PrintToStream();
     break;
   case kLogCategory: {
     int32 category;
@@ -375,12 +374,13 @@ void Habitat::MessageReceived(BMessage *msg) {
     case B_SET_PROPERTY: {
       error = B_NAME_NOT_FOUND;
       BMessage data;
+      BString name = specifier.GetString("name");
       if (msg->FindMessage("data", &data) != B_OK) {
         error = B_BAD_VALUE;
         break;
       }
       for (auto &server : this->servers) {
-        if (server.hostname == specifier.GetString("name")) {
+        if (server.fullName() == name) {
           error = server.update(&data);
           break;
         }
@@ -475,14 +475,15 @@ sendReply:
   reply.AddInt32("error", error);
   if (error != B_OK) {
     reply.AddString("message", strerror(error));
-    msg->PrintToStream();
   }
   msg->SendReply(&reply);
   if (BString name; error != B_OK && msg->FindString("name", &name) == B_OK) {
+    BMessage data;
+    data.AddBool("connected", false);
     BMessage update(B_SET_PROPERTY);
-    update.AddBool("connected", false);
+    update.AddMessage("data", &data);
     update.AddSpecifier("Server", name);
-    BMessenger(be_app).SendMessage(&update);
+    BMessageRunner::StartSending(BMessenger(be_app), (&update), 15000000, 1);
   }
   delete msg;
   // TODO: Reap thread ID

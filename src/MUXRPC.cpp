@@ -5,6 +5,7 @@
 #include "JSON.h"
 #include "Logging.h"
 #include <Application.h>
+#include <MessageRunner.h>
 #include <PropertyInfo.h>
 #include <support/ByteOrder.h>
 #include <utility>
@@ -376,10 +377,12 @@ void Connection::Quit() {
   if (acquire_sem(this->ongoingLock) == B_OK)
     release_sem(this->ongoingLock);
   if (this->serverName != "") {
+    BMessage data;
+    data.AddBool("connected", false);
     BMessage update(B_SET_PROPERTY);
-    update.AddBool("connected", false);
-    update.AddSpecifier("Server", this->serverName.String());
-    BMessenger(be_app).SendMessage(&update);
+    update.AddMessage("data", &data);
+    update.AddSpecifier("Server", this->serverName);
+    BMessageRunner::StartSending(BMessenger(be_app), (&update), 1000000, 1);
   }
   BLooper::Quit();
 }
