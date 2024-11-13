@@ -540,8 +540,10 @@ void Habitat::ReadyToRun() {
     specifier.AddString("type", "contact");
     specifier.AddBool("dregs", true);
     rq.AddSpecifier(&specifier);
+    while (!BMessenger(graph).IsValid())
+      snooze(500000);
     rq.AddMessenger("target", BMessenger(graph));
-    BMessenger(this->databaseLooper).SendMessage(&rq);
+    BMessageRunner::StartSending(this->databaseLooper, &rq, 500000, 1);
   }
   this->checkServerStatus();
 }

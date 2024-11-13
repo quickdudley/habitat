@@ -1,4 +1,5 @@
 #include "JSON.h"
+#include <File.h>
 #include <cctype>
 #include <cmath>
 #include <iostream>
@@ -21,9 +22,9 @@ BString escapeString(const BString &src) {
       result << "\\n";
     } else if (c == 0x0D) {
       result << "\\r";
-    } else if (c == 0x0B) {
+    } else if (c == 0x09) {
       result << "\\t";
-    } else if (c > 0 && c < 0x20) {
+    } else if (c >= 0 && c < 0x20) {
       BString addenum;
       addenum.SetToFormat("\\u%04x", (int)c);
       result << addenum;
@@ -504,7 +505,7 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
     remaining -= count;
-    // std::cout.write(buffer, count);
+    // dump.WriteExactly(buffer, count);
     if (count <= 0) {
       std::cout << std::endl;
       return B_PARTIAL_READ;
@@ -890,7 +891,7 @@ status_t Parser::charInString(char c, int cstate, int estate) {
       this->unescaped.Append((char)0x0D, 1);
       break;
     case 't':
-      this->unescaped.Append((char)0x0B, 1);
+      this->unescaped.Append((char)0x09, 1);
       break;
     case 'u':
       this->state2 = 2;
@@ -911,7 +912,7 @@ status_t Parser::charInString(char c, int cstate, int estate) {
       digit = c - 'A' + 10;
     else
       return B_ILLEGAL_DATA;
-    this->escape |= digit << ((this->state2 - 2) * 4);
+    this->escape |= digit << ((5 - this->state2) * 4);
     if (this->state2 == 5) {
       this->state2 = 0;
       int32 codepoint;
