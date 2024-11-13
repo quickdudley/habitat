@@ -1,5 +1,4 @@
 #include "JSON.h"
-#include <File.h>
 #include <cctype>
 #include <cmath>
 #include <iostream>
@@ -66,10 +65,16 @@ BString stringifyNumber(number value) {
       k++;
       if (n > k) {
         f10 = raise((long double)10, n - k);
-        s = std::roundl(av / f10);
+        long double lowered = av / f10;
+        s = std::floor(lowered);
+        if (lowered - s > 0.5)
+          s++;
       } else {
         f10 = raise((long double)10, k - n);
-        s = std::roundl(av * f10);
+        long double raised = av * f10;
+        s = std::floor(raised);
+        if (raised - s > 0.5)
+          s++;
       }
     } while ((number)(n > k ? s * f10 : s / f10) != av);
     if (k <= n && n <= 21) {
@@ -498,6 +503,7 @@ status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes) {
 }
 
 status_t parse(Parser *target, BDataIO *input, size_t bytes) {
+  //  static BFile dump("jsondump", B_WRITE_ONLY | B_CREATE_FILE);
   char buffer[1024];
   status_t result;
   ssize_t remaining = bytes;
@@ -505,7 +511,7 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
     remaining -= count;
-    // dump.WriteExactly(buffer, count);
+    //    dump.WriteExactly(buffer, count);
     if (count <= 0) {
       std::cout << std::endl;
       return B_PARTIAL_READ;
@@ -522,6 +528,8 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
       }
     }
   }
+  //  dump.WriteExactly("\n\n", 2);
+  //  dump.Flush();
   return B_OK;
 }
 
