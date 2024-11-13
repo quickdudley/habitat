@@ -26,6 +26,7 @@ private:
   sem_id queueLock;
   sem_id trackEmpty;
   std::queue<__priv__::Chunk> queue;
+  size_t progress;
 };
 } // namespace rooms2
 
