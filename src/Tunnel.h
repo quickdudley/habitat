@@ -11,7 +11,7 @@ struct Chunk {
   std::unique_ptr<char[]> bytes;
   size_t count;
 };
-}
+} // namespace __priv__
 
 class Tunnel : public BDataIO {
 public:

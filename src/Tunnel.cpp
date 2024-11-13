@@ -23,17 +23,24 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
   std::memcpy(buffer, chunk.bytes.get() + this->progress, size);
   this->progress += size;
   if (this->progress >= chunk.count) {
-  	this->progress = 0;
-  	this->queue.pop();
+    this->progress = 0;
+    this->queue.pop();
   } else {
-  	release_sem(this->trackEmpty);
+    release_sem(this->trackEmpty);
   }
   release_sem(this->queueLock);
   return size;
 }
 
 ssize_t Tunnel::Write(const void *buffer, size_t size) {
-  return 0;
+  size = std::max(size, (size_t)65536);
+  status_t err;
+  if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
+                               false)) == B_OK) {
+    return size;
+  } else {
+    return err;
+  }
 }
 
 status_t Tunnel::push(void *buffer, size_t size) {
