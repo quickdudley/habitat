@@ -7,30 +7,30 @@
 ## For more information, see:
 ## file:///system/develop/documentation/makefile-engine.html
 
-# The name of the binary.
+#The name of the binary.
 NAME = Habitat
 
-# The type of binary, must be one of:
-#	APP:	Application
-#	SHARED:	Shared library or add-on
-#	STATIC:	Static library archive
-#	DRIVER: Kernel driver
+#The type of binary, must be one of:
+#APP : Application
+#SHARED : Shared library or add - on
+#STATIC : Static library archive
+#DRIVER : Kernel driver
 TYPE = APP
 
-# If you plan to use localization, specify the application's MIME signature.
+#If you plan to use localization, specify the application's MIME signature.
 APP_MIME_SIG = application/x-vnd.habitat
 
-#	The following lines tell Pe and Eddie where the SRCS, RDEFS, and RSRCS are
-#	so that Pe and Eddie can fill them in for you.
-#%{
-# @src->@
+#The following lines tell Pe and Eddie where the SRCS, RDEFS, and RSRCS are
+#so that Pe and Eddie can fill them in for you.
+#% {
+#@src->@
 
-#	Specify the source files to use. Full paths or paths relative to the
-#	Makefile can be included. All files, regardless of directory, will have
-#	their object files created in the common object directory. Note that this
-#	means this Makefile will not work correctly if two source files with the
-#	same name (source.c or source.cpp) are included from different directories.
-#	Also note that spaces in folder names do not work well with this Makefile.
+#Specify the source files to use.Full paths or paths relative to the
+#Makefile can be included.All files, regardless of directory, will have
+#their object files created in the common object directory.Note that this
+#means this Makefile will not work correctly if two source files with the
+#same name(source.c or source.cpp) are included from different directories.
+#Also note that spaces in folder names do not work well with this Makefile.
 APP_SRCS = \
 	 src/Base64.cpp \
 	 src/BJSON.cpp \
@@ -49,6 +49,7 @@ APP_SRCS = \
 	 src/SelectContacts.cpp \
 	 src/SettingsWindow.cpp \
 	 src/SignJSON.cpp \
+	 src/Tunnel.cpp \
 
 LIB_SRCS = \
 	 src/ContactGraph.cpp \
@@ -464,3 +465,4 @@ $(TEST_DIR)/ssb_validation_dataset.json:
 $(TEST_DIR)/ssb_validation_dataset.h: $(TEST_DIR)/ssb_validation_dataset.json
 	xxd -i $(TEST_DIR)/ssb_validation_dataset.json "$@"
 generated/test/ValidationDatasetSpec.o : $(TEST_DIR)/ssb_validation_dataset.h
+
