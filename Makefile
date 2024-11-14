@@ -45,6 +45,7 @@ APP_SRCS = \
 	 src/MUXRPC.cpp \
 	 src/Plugin.cpp \
 	 src/Post.cpp \
+	 src/Room.cpp \
 	 src/Secret.cpp \
 	 src/SelectContacts.cpp \
 	 src/SettingsWindow.cpp \

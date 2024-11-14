@@ -5,6 +5,7 @@
 #include "Indices.h"
 #include "Logging.h"
 #include "MigrateDB.h"
+#include "Room.h"
 #include "SelectContacts.h"
 #include "SettingsWindow.h"
 #include <ByteOrder.h>
@@ -508,6 +509,7 @@ void Habitat::ReadyToRun() {
     this->clientMethods.registerConnectionHook(
         std::static_pointer_cast<muxrpc::ConnectionHook>(beginEBT));
   }
+  rooms2::installClient(&this->clientMethods);
   auto worker = new BLooper("Worker thread");
   worker->Run();
   worker->Lock();
