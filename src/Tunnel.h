@@ -27,13 +27,14 @@ private:
   sem_id queueLock;
   sem_id trackEmpty;
   std::queue<__priv__::Chunk> queue;
-  size_t progress;
+  size_t progress = 0;
 };
 
 class TunnelReader : public BHandler {
 public:
   TunnelReader(Tunnel *sink);
   void MessageReceived(BMessage *message);
+  ~TunnelReader();
 
 private:
   Tunnel *sink;

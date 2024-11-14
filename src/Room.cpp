@@ -124,7 +124,9 @@ status_t MkTunnel::call(muxrpc::Connection *connection,
                         BMessenger replyTo, BMessenger *inbound) {
   auto tunnel = new Tunnel(replyTo);
   auto reader = new TunnelReader(tunnel);
+  connection->Lock();
   connection->AddHandler(reader);
+  connection->Unlock();
   *inbound = BMessenger(reader);
   dynamic_cast<Habitat *>(be_app)->acceptConnection(tunnel);
   return B_OK;

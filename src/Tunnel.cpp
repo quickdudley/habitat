@@ -33,7 +33,7 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
 }
 
 ssize_t Tunnel::Write(const void *buffer, size_t size) {
-  size = std::max(size, (size_t)65536);
+  size = std::min(size, (size_t)65536);
   status_t err;
   if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
                                false)) == B_OK) {
@@ -48,6 +48,7 @@ status_t Tunnel::push(void *buffer, size_t size) {
   if (err != B_NO_ERROR)
     return err;
   std::unique_ptr<char[]> bytes(new char[size]);
+  std::memcpy(bytes.get(), buffer, size);
   this->queue.push({std::move(bytes), size});
   release_sem(this->trackEmpty);
   release_sem(this->queueLock);
@@ -57,6 +58,10 @@ status_t Tunnel::push(void *buffer, size_t size) {
 TunnelReader::TunnelReader(Tunnel *sink)
     :
     sink(sink) {}
+
+TunnelReader::~TunnelReader() {
+  this->sink->push(NULL, 0);
+}
 
 void TunnelReader::MessageReceived(BMessage *message) {
   unsigned char *data;
