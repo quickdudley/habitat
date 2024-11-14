@@ -60,12 +60,14 @@ public:
   void ReadyToRun();
   void Quit();
   BDirectory &settingsDir();
+  void acceptConnection(BDataIO *);
 
 private:
   void loadSettings();
   void saveSettings();
   void checkServerStatus();
   static int initiateConnection(void *message);
+  static int accept__(void *link);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   OwnFeed *ownFeed;

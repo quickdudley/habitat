@@ -1,5 +1,7 @@
 #include "Room.h"
 #include "Logging.h"
+#include "Main.h"
+#include "Tunnel.h"
 
 namespace rooms2 {
 namespace {
@@ -103,9 +105,34 @@ void MetadataHook::call(muxrpc::Connection *rpc) {
   rpc->request({"room", "metadata"}, muxrpc::RequestType::ASYNC, &args,
                BMessenger(stage1), NULL);
 }
+
+class MkTunnel : public muxrpc::Method {
+public:
+  MkTunnel();
+  status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
+                BMessage *args, BMessenger replyTo,
+                BMessenger *inbound) override;
+};
+
+MkTunnel::MkTunnel() {
+  this->name = {"tunnel", "connect"};
+  this->expectedType = muxrpc::RequestType::DUPLEX;
+}
+
+status_t MkTunnel::call(muxrpc::Connection *connection,
+                        muxrpc::RequestType type, BMessage *args,
+                        BMessenger replyTo, BMessenger *inbound) {
+  auto tunnel = new Tunnel(replyTo);
+  auto reader = new TunnelReader(tunnel);
+  connection->AddHandler(reader);
+  *inbound = BMessenger(reader);
+  dynamic_cast<Habitat *>(be_app)->acceptConnection(tunnel);
+  return B_OK;
+}
 } // namespace
 
 void installClient(muxrpc::MethodSuite *suite) {
   suite->registerConnectionHook(std::make_shared<MetadataHook>());
+  suite->registerMethod(std::make_shared<MkTunnel>());
 }
 } // namespace rooms2

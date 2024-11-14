@@ -3,6 +3,7 @@
 
 #include "MUXRPC.h"
 #include <DataIO.h>
+#include <Handler.h>
 #include <queue>
 
 namespace rooms2 {
@@ -27,6 +28,15 @@ private:
   sem_id trackEmpty;
   std::queue<__priv__::Chunk> queue;
   size_t progress;
+};
+
+class TunnelReader : public BHandler {
+public:
+  TunnelReader(Tunnel *sink);
+  void MessageReceived(BMessage *message);
+
+private:
+  Tunnel *sink;
 };
 } // namespace rooms2
 

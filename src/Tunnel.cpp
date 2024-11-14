@@ -53,4 +53,23 @@ status_t Tunnel::push(void *buffer, size_t size) {
   release_sem(this->queueLock);
   return B_OK;
 }
+
+TunnelReader::TunnelReader(Tunnel *sink)
+    :
+    sink(sink) {}
+
+void TunnelReader::MessageReceived(BMessage *message) {
+  unsigned char *data;
+  ssize_t bytes;
+  if (message->FindData("content", B_RAW_TYPE, (const void **)&data, &bytes) !=
+      B_OK) {
+    goto cleanup;
+  }
+  this->sink->push(data, bytes);
+cleanup:
+  if (message->GetBool("end", false) || !message->GetBool("stream", true)) {
+    this->Looper()->RemoveHandler(this);
+    delete this;
+  }
+}
 } // namespace rooms2

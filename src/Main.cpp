@@ -490,6 +490,31 @@ sendReply:
   return 0;
 }
 
+void Habitat::acceptConnection(BDataIO *link) {
+  thread_id t = spawn_thread(Habitat::accept__, "New Connection", 0, link);
+  resume_thread(t);
+}
+
+int Habitat::accept__(void *link) {
+  BDataIO *conn = (BDataIO *)link;
+  std::unique_ptr<BoxStream> shsPeer;
+  try {
+    shsPeer = std::make_unique<BoxStream>(
+        std::unique_ptr<BDataIO>(conn), SSB_NETWORK_ID,
+        static_cast<Habitat *>(be_app)->myId.get());
+    auto rpc = new muxrpc::Connection(
+        std::move(shsPeer), static_cast<Habitat *>(be_app)->clientMethods);
+    be_app->RegisterLooper(rpc);
+    rpc->Run();
+  } catch (HandshakeError err) {
+    return -1;
+  } catch (...) {
+    delete conn;
+    throw;
+  }
+  return 0;
+}
+
 void Habitat::ReadyToRun() {
   this->databaseLooper->Run();
   this->lanBroadcaster = std::make_unique<LanBroadcaster>(this->myId->pubkey);
