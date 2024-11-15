@@ -26,6 +26,8 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
     }
   }
   auto &chunk = this->queue.front();
+  if (chunk.count == 0)
+    return B_BUSTED_PIPE;
   size = std::max(size, chunk.count - this->progress);
   std::memcpy(buffer, chunk.bytes.get() + this->progress, size);
   this->progress += size;
@@ -38,6 +40,8 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
 }
 
 ssize_t Tunnel::Write(const void *buffer, size_t size) {
+  if (size == 0)
+    return B_OK;
   size = std::min(size, (size_t)65536);
   status_t err;
   if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
