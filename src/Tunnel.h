@@ -16,7 +16,7 @@ struct Chunk {
 
 class Tunnel : public BDataIO {
 public:
-  Tunnel(muxrpc::Sender sender);
+  Tunnel(BMessenger sender);
   ~Tunnel();
   ssize_t Read(void *buffer, size_t size) override;
   ssize_t Write(const void *buffer, size_t size) override;

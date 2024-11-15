@@ -4,7 +4,7 @@
 
 namespace rooms2 {
 
-Tunnel::Tunnel(muxrpc::Sender sender)
+Tunnel::Tunnel(BMessenger sender)
     :
     sender(sender),
     queueLock(create_sem(1, "Room tunnel queue lock")),
@@ -16,8 +16,15 @@ Tunnel::~Tunnel() {
 }
 
 ssize_t Tunnel::Read(void *buffer, size_t size) {
-  acquire_sem(this->trackEmpty);
-  acquire_sem(this->queueLock);
+  while (true) {
+    acquire_sem(this->queueLock);
+    if (this->queue.empty()) {
+      release_sem(this->queueLock);
+      acquire_sem(this->trackEmpty);
+    } else {
+      break;
+    }
+  }
   auto &chunk = this->queue.front();
   size = std::max(size, chunk.count - this->progress);
   std::memcpy(buffer, chunk.bytes.get() + this->progress, size);
@@ -25,8 +32,6 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
   if (this->progress >= chunk.count) {
     this->progress = 0;
     this->queue.pop();
-  } else {
-    release_sem(this->trackEmpty);
   }
   release_sem(this->queueLock);
   return size;
@@ -36,7 +41,7 @@ ssize_t Tunnel::Write(const void *buffer, size_t size) {
   size = std::min(size, (size_t)65536);
   status_t err;
   if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
-                               false)) == B_OK) {
+                               false, false)) == B_OK) {
     return size;
   } else {
     return err;
@@ -59,9 +64,7 @@ TunnelReader::TunnelReader(Tunnel *sink)
     :
     sink(sink) {}
 
-TunnelReader::~TunnelReader() {
-  this->sink->push(NULL, 0);
-}
+TunnelReader::~TunnelReader() { this->sink->push(NULL, 0); }
 
 void TunnelReader::MessageReceived(BMessage *message) {
   unsigned char *data;
