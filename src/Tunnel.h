@@ -20,7 +20,8 @@ public:
   ~Tunnel();
   ssize_t Read(void *buffer, size_t size) override;
   ssize_t Write(const void *buffer, size_t size) override;
-  status_t push(void *buffer, size_t size);
+  status_t push(void *buffer, size_t size, bool locked = false);
+  sem_id getLock();
 
 private:
   muxrpc::Sender sender;
@@ -28,6 +29,7 @@ private:
   sem_id trackEmpty;
   std::queue<__priv__::Chunk> queue;
   size_t progress = 0;
+  bool finished = false;
 };
 
 class TunnelReader : public BHandler {
@@ -38,6 +40,7 @@ public:
 
 private:
   Tunnel *sink;
+  sem_id queueLock;
 };
 } // namespace rooms2
 

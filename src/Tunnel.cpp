@@ -26,7 +26,11 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
     }
   }
   auto &chunk = this->queue.front();
-  size = std::max(size, chunk.count - this->progress);
+  if (chunk.count == 0) {
+    release_sem(this->queueLock);
+    return B_BUSTED_PIPE;
+  }
+  size = std::min(size, chunk.count - this->progress);
   std::memcpy(buffer, chunk.bytes.get() + this->progress, size);
   this->progress += size;
   if (this->progress >= chunk.count) {
@@ -48,23 +52,34 @@ ssize_t Tunnel::Write(const void *buffer, size_t size) {
   }
 }
 
-status_t Tunnel::push(void *buffer, size_t size) {
-  status_t err = acquire_sem(this->queueLock);
-  if (err != B_NO_ERROR)
-    return err;
+status_t Tunnel::push(void *buffer, size_t size, bool locked) {
+  if (!locked) {
+    status_t err = acquire_sem(this->queueLock);
+    if (err != B_NO_ERROR)
+      return err;
+  }
   std::unique_ptr<char[]> bytes(new char[size]);
   std::memcpy(bytes.get(), buffer, size);
   this->queue.push({std::move(bytes), size});
   release_sem(this->trackEmpty);
-  release_sem(this->queueLock);
+  if (!locked)
+    release_sem(this->queueLock);
   return B_OK;
 }
 
+sem_id Tunnel::getLock() { return this->queueLock; }
+
 TunnelReader::TunnelReader(Tunnel *sink)
     :
-    sink(sink) {}
+    sink(sink),
+    queueLock(sink->getLock()) {}
 
-TunnelReader::~TunnelReader() { this->sink->push(NULL, 0); }
+TunnelReader::~TunnelReader() {
+  if (acquire_sem(this->queueLock) == B_OK) {
+    this->sink->push(NULL, 0, true);
+    release_sem(this->queueLock);
+  }
+}
 
 void TunnelReader::MessageReceived(BMessage *message) {
   unsigned char *data;
@@ -73,7 +88,15 @@ void TunnelReader::MessageReceived(BMessage *message) {
       B_OK) {
     goto cleanup;
   }
-  this->sink->push(data, bytes);
+  if (bytes == 0)
+    goto cleanup;
+  if (acquire_sem(this->queueLock) == B_OK) {
+    this->sink->push(data, bytes, true);
+    release_sem(this->queueLock);
+  } else {
+    this->Looper()->RemoveHandler(this);
+    delete this;
+  }
 cleanup:
   if (message->GetBool("end", false) || !message->GetBool("stream", true)) {
     this->Looper()->RemoveHandler(this);
