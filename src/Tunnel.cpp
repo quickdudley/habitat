@@ -16,6 +16,7 @@ Tunnel::~Tunnel() {
 }
 
 ssize_t Tunnel::Read(void *buffer, size_t size) {
+  release_sem(this->trackEmpty); // hack to prevent deadlocks
   while (true) {
     acquire_sem(this->queueLock);
     if (this->queue.empty()) {
