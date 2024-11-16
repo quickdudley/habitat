@@ -13,6 +13,7 @@ Tunnel::Tunnel(BMessenger sender)
 Tunnel::~Tunnel() {
   delete_sem(this->queueLock);
   delete_sem(this->trackEmpty);
+  this->sender.send(false, true, true, true);
 }
 
 ssize_t Tunnel::Read(void *buffer, size_t size) {
@@ -21,7 +22,10 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
     acquire_sem(this->queueLock);
     if (this->queue.empty()) {
       release_sem(this->queueLock);
-      acquire_sem(this->trackEmpty);
+      if ((status_t err = acquire_sem_etc(
+               this->trackEmpty, 1, B_RELATIVE_TIMEOUT, 300000000)) != B_OK) {
+        return err;
+      }
     } else {
       break;
     }
@@ -43,7 +47,7 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
 }
 
 ssize_t Tunnel::Write(const void *buffer, size_t size) {
-  size = std::min(size, (size_t)65536);
+  size = std::min(size, (size_t)65535);
   status_t err;
   if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
                                false, false)) == B_OK) {
@@ -59,8 +63,9 @@ status_t Tunnel::push(void *buffer, size_t size, bool locked) {
     if (err != B_NO_ERROR)
       return err;
   }
-  std::unique_ptr<char[]> bytes(new char[size]);
-  std::memcpy(bytes.get(), buffer, size);
+  std::unique_ptr<char[]> bytes(size > 0 ? new char[size] : NULL);
+  if (size > 0)
+    std::memcpy(bytes.get(), buffer, size);
   this->queue.push({std::move(bytes), size});
   release_sem(this->trackEmpty);
   if (!locked)

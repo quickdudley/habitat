@@ -29,7 +29,6 @@ private:
   sem_id trackEmpty;
   std::queue<__priv__::Chunk> queue;
   size_t progress = 0;
-  bool finished = false;
 };
 
 class TunnelReader : public BHandler {
