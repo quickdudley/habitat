@@ -22,8 +22,9 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
     acquire_sem(this->queueLock);
     if (this->queue.empty()) {
       release_sem(this->queueLock);
-      if ((status_t err = acquire_sem_etc(
-               this->trackEmpty, 1, B_RELATIVE_TIMEOUT, 300000000)) != B_OK) {
+      if (status_t err;
+          (err = acquire_sem_etc(this->trackEmpty, 1, B_RELATIVE_TIMEOUT,
+                                 300000000)) != B_OK) {
         return err;
       }
     } else {
