@@ -11,6 +11,7 @@
 #include <Directory.h>
 #include <MenuBar.h>
 #include <Path.h>
+#include <StatusBar.h>
 #include <Window.h>
 #include <memory>
 #include <random>
@@ -19,11 +20,12 @@
 
 class MainWindow : public BWindow {
 public:
-  MainWindow(void);
+  MainWindow(SSBDatabase *db);
   void MessageReceived(BMessage *message) override;
 
 private:
   BMenuBar *menuBar;
+  BStatusBar *statusBar;
 };
 
 class Habitat;

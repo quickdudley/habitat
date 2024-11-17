@@ -185,9 +185,10 @@ Habitat::Habitat(void)
   this->ownFeed = new OwnFeed(database, this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
+  this->databaseLooper->loadFeeds();
   this->RegisterLooper(databaseLooper);
   // Open main window
-  this->mainWindow = new MainWindow();
+  this->mainWindow = new MainWindow(this->databaseLooper);
   this->mainWindow->Show();
 }
 
@@ -632,7 +633,7 @@ void Habitat::Quit() {
 
 BDirectory &Habitat::settingsDir() { return *this->settings; }
 
-MainWindow::MainWindow(void)
+MainWindow::MainWindow(SSBDatabase *db)
     :
     BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
             B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
@@ -644,6 +645,12 @@ MainWindow::MainWindow(void)
       new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
   this->menuBar->AddItem(appMenu);
   this->AddChild(this->menuBar);
+  BRect statusRect(this->Bounds());
+  statusRect.top = statusRect.bottom - 20;
+  // TODO: Find a better way to do this than BStatusBar
+  this->statusBar = new BStatusBar(statusRect, "");
+  this->AddChild(this->statusBar);
+  db->StartWatching(this, 'BKLG');
 }
 
 void MainWindow::MessageReceived(BMessage *message) {
@@ -652,6 +659,18 @@ void MainWindow::MessageReceived(BMessage *message) {
     SettingsWindow *window = new SettingsWindow();
     window->Show();
   } break;
+  case B_OBSERVER_NOTICE_CHANGE:
+    if (uint64 backlog; message->FindUInt64("backlog", &backlog) == B_OK) {
+      // TODO:
+      //   Refactor to allow for multiple details
+      //   Hide when the number is 0
+      BString numstring;
+      numstring << backlog;
+      BString status = BString(B_TRANSLATE("{} unindexed messages"))
+                           .Replace("{}", numstring, 1);
+      this->statusBar->SetText(status);
+    }
+    break;
   default:
     BWindow::MessageReceived(message);
   }

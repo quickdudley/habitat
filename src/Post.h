@@ -53,16 +53,21 @@ public:
   status_t findFeed(SSBFeed *&result, const BString &cypherkey);
   void notifySaved(const BString &author, int64 sequence,
                    unsigned char id[crypto_hash_sha256_BYTES]);
-  int transactionLevel = 0;
-  bool pulseRunning = false;
+  void ensurePulseRunning();
+  void notifyBacklog();
+  void loadFeeds();
 
 private:
   friend class SSBFeed;
   friend class QueryHandler;
   bool runCheck(BMessage *msg);
   sqlite3 *database;
+  sqlite3_stmt *backlog;
   std::map<BString, SSBFeed *> feeds;
+  uint64 backlogCount;
+  bool pulseRunning = false;
   bool clogged = false;
+  bool initialBacklog = true;
 };
 
 class SSBFeed : public QueryBacked {

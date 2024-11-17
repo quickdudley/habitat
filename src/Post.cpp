@@ -213,11 +213,8 @@ void QueryHandler::MessageReceived(BMessage *message) {
         if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
-      if (auto db = dynamic_cast<SSBDatabase *>(this->Looper());
-          !db->pulseRunning) {
-        db->pulseRunning = true;
-        BMessenger(db).SendMessage(B_PULSE);
-      }
+      if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()))
+        db->ensurePulseRunning();
     } else if (this->target.IsValid()) {
       this->target.SendMessage('DONE');
       this->mainDone = true;
@@ -375,14 +372,24 @@ SSBDatabase::SSBDatabase(sqlite3 *database)
     database(database) {
   if (runningDB == NULL)
     runningDB = this;
+  sqlite3_prepare_v2(database,
+                     "SELECT rowid, body FROM unprocessed "
+                     "ORDER BY rowid LIMIT 1",
+                     -1, &this->backlog, NULL);
+  sqlite3_stmt *count;
+  sqlite3_prepare_v2(database, "SELECT count(1) FROM unprocessed", -1, &count,
+                     NULL);
+  if (sqlite3_step(count) == SQLITE_ROW)
+    this->backlogCount = sqlite3_column_int64(count, 0);
+  sqlite3_finalize(count);
+  BMessage notify('CLOG');
+  notify.AddPointer("channel", this->backlog);
+  notify.AddBool("clogged", true);
+  BMessenger(be_app).SendMessage(&notify);
 }
 
 SSBDatabase::~SSBDatabase() {
-  if (this->transactionLevel != 0) {
-    char *error = NULL;
-    this->transactionLevel = 0;
-    sqlite3_exec(this->database, "END TRANSACTION", NULL, NULL, &error);
-  }
+  sqlite3_finalize(this->backlog);
   sqlite3_close_v2(this->database);
   if (runningDB == this)
     runningDB = NULL;
@@ -487,6 +494,8 @@ BHandler *SSBDatabase::ResolveSpecifier(BMessage *msg, int32 index,
   }
 }
 
+static void freeBuffer(void *arg) { delete[] (char *)arg; }
+
 void SSBDatabase::MessageReceived(BMessage *msg) {
   if (msg->HasSpecifiers()) {
     BMessage reply(B_REPLY);
@@ -582,10 +591,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         this->Lock();
         this->AddHandler(qh);
         this->Unlock();
-        if (!this->pulseRunning) {
-          this->pulseRunning = true;
-          BMessenger(this).SendMessage(B_PULSE);
-        }
+        this->ensurePulseRunning();
         error = B_OK;
       } else {
         error = qh->runBulk(&reply);
@@ -601,15 +607,18 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       msg->SendReply(&reply);
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
-    SSBFeed *feed;
-    if (this->findFeed(feed, author) == B_OK) {
-      feed->MessageReceived(msg);
-    } else {
-      BMessage notif(B_OBSERVER_NOTICE_CHANGE);
-      notif.AddString("feed", author);
-      notif.AddBool("deleted", true);
-      this->SendNotices('NMSG', &notif);
-    }
+    sqlite3_stmt *insert;
+    sqlite3_prepare_v2(this->database,
+                       "INSERT INTO unprocessed (body) VALUES (?)", -1, &insert,
+                       NULL);
+    ssize_t flatSize = msg->FlattenedSize();
+    char *buffer = new char[flatSize];
+    msg->Flatten(buffer, flatSize);
+    sqlite3_bind_blob64(insert, 1, buffer, flatSize, freeBuffer);
+    sqlite3_step(insert);
+    sqlite3_finalize(insert);
+    ++this->backlogCount;
+    this->notifyBacklog();
     return;
   } else if (msg->what == 'CHCK') {
     // This used to trigger garbage collection, but now I'm using it to forward
@@ -630,22 +639,49 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     }
   } else if (msg->what == B_PULSE && this->pulseRunning) {
     this->pulseRunning = false;
-    switch (this->transactionLevel) {
-    case 1: {
-      char *error = NULL;
-      this->transactionLevel = 0;
-      sqlite3_exec(this->database, "END TRANSACTION", NULL, NULL, &error);
-    } break;
-    case 2: {
-      BMessage pulse(B_PULSE);
-      BMessenger(this).SendMessage(&pulse);
-      this->pulseRunning = true;
-      this->transactionLevel = 1;
-    } break;
-    }
     for (int i = 0; i < this->CountHandlers(); i++) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
+    }
+    sqlite3_reset(this->backlog);
+    if (sqlite3_step(this->backlog) == SQLITE_ROW) {
+      BMessage post;
+      BString author;
+      if (post.Unflatten((const char *)sqlite3_column_blob(this->backlog, 1)) ==
+              B_OK &&
+          post.FindString("author", &author) == B_OK) {
+        SSBFeed *feed;
+        if (this->findFeed(feed, author) == B_OK) {
+          feed->MessageReceived(&post);
+        } else {
+          BMessage notif(B_OBSERVER_NOTICE_CHANGE);
+          notif.AddString("feed", author);
+          notif.AddBool("deleted", true);
+          this->SendNotices('NMSG', &notif);
+        }
+      }
+      sqlite3_stmt *del;
+      sqlite3_prepare_v2(this->database,
+                         "DELETE FROM unprocessed WHERE rowid = ?", -1, &del,
+                         NULL);
+      sqlite3_bind_int64(del, 1, sqlite3_column_int64(this->backlog, 0));
+      sqlite3_step(del);
+      sqlite3_finalize(del);
+      if (this->backlogCount) {
+        --this->backlogCount;
+        this->notifyBacklog();
+      }
+      this->ensurePulseRunning();
+    } else {
+      this->backlogCount = 0;
+      this->notifyBacklog();
+      if (this->initialBacklog) {
+        this->initialBacklog = false;
+        BMessage notify('CLOG');
+        notify.AddPointer("channel", this->backlog);
+        notify.AddBool("clogged", false);
+        BMessenger(be_app).SendMessage(&notify);
+      }
     }
   } else {
     return BLooper::MessageReceived(msg);
@@ -698,6 +734,38 @@ void SSBDatabase::notifySaved(const BString &author, int64 sequence,
   message.AddInt64("sequence", sequence);
   message.AddData("id", B_RAW_TYPE, id, crypto_hash_sha256_BYTES, false, 1);
   BMessenger(this).SendMessage(&message);
+}
+
+void SSBDatabase::ensurePulseRunning() {
+  if (!this->pulseRunning) {
+    this->pulseRunning = true;
+    BMessenger(this).SendMessage(B_PULSE);
+  }
+}
+
+void SSBDatabase::notifyBacklog() {
+  BMessage notice('BKLG');
+  notice.AddUInt64("backlog", this->backlogCount);
+  this->SendNotices('BKLG', &notice);
+}
+
+void SSBDatabase::loadFeeds() {
+  sqlite3_stmt *query;
+  sqlite3_prepare_v2(this->database, "SELECT DISTINCT author FROM messages", -1,
+                     &query, NULL);
+  while (sqlite3_step(query) == SQLITE_ROW) {
+    BString cypherkey((const char *)sqlite3_column_text(query, 0));
+    unsigned char key[crypto_sign_PUBLICKEYBYTES];
+    SSBFeed *feed;
+    if (this->findFeed(feed, cypherkey) != B_OK &&
+        SSBFeed::parseAuthor(key, cypherkey) == B_OK) {
+      feed = new SSBFeed(this->database, key);
+      this->AddHandler(feed);
+      this->feeds.insert({cypherkey, feed});
+      feed->load();
+    }
+  }
+  sqlite3_finalize(query);
 }
 
 static inline status_t eitherNumber(int64 *result, BMessage *source,
@@ -1109,8 +1177,6 @@ static inline status_t checkAttr(BNode *sink, const char *attr, int64 value) {
 }
 } // namespace
 
-static void freeBuffer(void *arg) { delete[] (char *)arg; }
-
 status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   status_t status;
   unsigned char msgHash[crypto_hash_sha256_BYTES];
@@ -1121,12 +1187,6 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   memcpy(this->lastHash, msgHash, crypto_hash_sha256_BYTES);
   int64 sequence;
   if (auto looper = dynamic_cast<SSBDatabase *>(this->Looper())) {
-    if (looper->transactionLevel == 0) {
-      char *error;
-      sqlite3_exec(this->database, "BEGIN IMMEDIATE TRANSACTION", NULL, NULL,
-                   &error);
-    }
-    looper->transactionLevel = 2;
     if (!looper->pulseRunning) {
       BMessage pulse(B_PULSE);
       BMessenger(looper).SendMessage(&pulse);

@@ -1,11 +1,12 @@
-1	English	application/x-vnd.habitat	907984650
+1	English	application/x-vnd.habitat	1885558358
 Application	MainWindow		Application
 Failed to initialize libsodium	MainWindow		Failed to initialize libsodium
 New	Settings		New
 Save	Settings		Save
 Settings	MainWindow		Settings
-Network	Settings		Network
 Remove	Settings		Remove
+Network	Settings		Network
 Network address	Settings		Network address
 Public key	Settings		Public key
+{} unindexed messages	MainWindow		{} unindexed messages
 Habitat Settings	Settings		Habitat Settings

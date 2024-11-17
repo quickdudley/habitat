@@ -45,6 +45,12 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
+  if (sqlite3_exec(database,
+                   "CREATE TABLE IF NOT EXISTS unprocessed(body BLOB)", NULL,
+                   NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
   return B_OK;
 }
 
