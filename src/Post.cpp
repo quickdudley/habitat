@@ -619,6 +619,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     sqlite3_finalize(insert);
     ++this->backlogCount;
     this->notifyBacklog();
+    this->ensurePulseRunning();
     return;
   } else if (msg->what == 'CHCK') {
     // This used to trigger garbage collection, but now I'm using it to forward
@@ -751,7 +752,7 @@ void SSBDatabase::notifyBacklog() {
 
 void SSBDatabase::loadFeeds() {
   sqlite3_stmt *query;
-  sqlite3_prepare_v2(this->database, "SELECT DISTINCT author FROM messages", -1,
+  sqlite3_prepare_v2(this->database, "SELECT DISTINCT author FROM feeds", -1,
                      &query, NULL);
   while (sqlite3_step(query) == SQLITE_ROW) {
     BString cypherkey((const char *)sqlite3_column_text(query, 0));
@@ -814,6 +815,15 @@ SSBFeed::SSBFeed(sqlite3 *database,
 
 status_t SSBFeed::load() {
   status_t error = B_OK;
+  BString key = this->cypherkey();
+  {
+    sqlite3_stmt *reg;
+    sqlite3_prepare_v2(this->database, "INSERT INTO feeds(author) VALUES(?)",
+                       -1, &reg, NULL);
+    sqlite3_bind_text(reg, 1, key.String(), key.Length(), SQLITE_STATIC);
+    sqlite3_step(reg);
+    sqlite3_finalize(reg);
+  }
   sqlite3_stmt *query;
   sqlite3_prepare_v2(
       this->database,
@@ -821,7 +831,7 @@ status_t SSBFeed::load() {
       " AND sequence = (SELECT max(m.sequence) FROM messages AS m"
       " WHERE m.author = messages.author)",
       -1, &query, NULL);
-  BString key = this->cypherkey();
+
   sqlite3_bind_text(query, 1, key.String(), key.Length(), SQLITE_STATIC);
   if (sqlite3_step(query) == SQLITE_ROW) {
     int64 sequence = sqlite3_column_int64(query, 0);
@@ -933,6 +943,12 @@ void SSBFeed::MessageReceived(BMessage *msg) {
                            "DELETE FROM messages WHERE author = ?", -1,
                            &deleter, NULL);
         BString key = this->cypherkey();
+        sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
+                          SQLITE_TRANSIENT);
+        sqlite3_step(deleter);
+        sqlite3_finalize(deleter);
+        sqlite3_prepare_v2(this->database, "DELETE FROM feeds WHERE author = ?",
+                           -1, &deleter, NULL);
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);
         sqlite3_step(deleter);

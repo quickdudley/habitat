@@ -359,11 +359,15 @@ void Link::MessageReceived(BMessage *message) {
         this->tick(author);
         int64 sequence = (int64)message->GetDouble("sequence", 0.0);
         BMessenger(this->db()).SendMessage(&content);
-        auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
-        if (auto note = this->ourState.find(author);
-            note != this->ourState.end() &&
-            sequence == note->second.sequence + 1) {
-          note->second.sequence = sequence;
+        // TODO: Store centrally instead of checking every handler
+        for (int i = this->Looper()->CountHandlers(); i >= 0; i--) {
+          if (auto link = dynamic_cast<Link *>(this->Looper()->HandlerAt(i))) {
+            if (auto note = link->ourState.find(author);
+                note != link->ourState.end() &&
+                sequence == note->second.sequence + 1) {
+              note->second.sequence = sequence;
+            }
+          }
         }
       }
     } else {

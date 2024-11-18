@@ -1,6 +1,7 @@
 #include "SelectContacts.h"
 #include "ContactGraph.h"
 #include "Plugin.h"
+#include <Application.h>
 #include <map>
 
 SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
@@ -10,17 +11,37 @@ SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
 
 void SelectContacts::MessageReceived(BMessage *message) {
   switch (message->what) {
-  case B_REPLY:
-    if (int32 status;
-        message->FindInt32("error", &status) == B_OK && status == B_OK) {
-      if (BMessage result; message->FindMessage("result", &result) == B_OK)
-        this->makeSelection(&result);
+  case B_REPLY: {
+    message->Previous()->PrintToStream();
+    BMessage prevSpec;
+    BString property;
+    if (message->Previous() &&
+        message->Previous()->FindMessage("specifiers", &prevSpec) == B_OK &&
+        prevSpec.FindString("property", &property) == B_OK &&
+        property == "ReplicatedFeed") {
+      BMessage inner;
+      this->current.clear();
+      for (int i = 0; message->FindMessage("result", i, &inner) == B_OK; i++) {
+        if (BString cypherkey;
+            inner.FindString("cypherkey", &cypherkey) == B_OK) {
+          this->current.insert(cypherkey);
+        }
+      }
+    } else {
+      if (int32 status;
+          message->FindInt32("error", &status) == B_OK && status == B_OK) {
+        if (BMessage result; message->FindMessage("result", &result) == B_OK)
+          this->makeSelection(&result);
+      }
+      this->fetching = false;
     }
-    this->fetching = false;
-    break;
-  case 'INIT':
+  } break;
+  case 'INIT': {
     this->StartWatching(this->graph, 'CTAC');
-    break;
+    BMessage get(B_GET_PROPERTY);
+    get.AddSpecifier("ReplicatedFeed");
+    BMessenger(be_app).SendMessage(&get, BMessenger(this));
+  } break;
   case B_OBSERVER_NOTICE_CHANGE:
     if (!this->fetching) {
       this->fetching = true;
