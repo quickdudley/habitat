@@ -1,4 +1,7 @@
+#include "BJSON.h"
 #include "ContactGraph.h"
+#include "Post.h"
+#include "SignJSON.h"
 #include <Looper.h>
 #include <Query.h>
 
@@ -38,7 +41,10 @@ ContactLinkState::ContactLinkState()
     blocking(false),
     pub(false) {}
 
-ContactGraph::ContactGraph() {}
+ContactGraph::ContactGraph(BMessenger db, BMessenger store)
+    :
+    db(db),
+    store(store) {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {
@@ -48,8 +54,53 @@ void ContactGraph::MessageReceived(BMessage *message) {
   case 'JSOB':
     return logContact(message);
   case 'DONE':
-    this->loaded = true;
-    this->SendNotices('CTAC');
+    break;
+  case B_REPLY:
+    if (BMessage result; message->FindMessage("result", &result) == B_OK) {
+      status_t err;
+      char *author;
+      type_code attrtype;
+      int32 aIndex = 0;
+      while ((err = result.GetInfo(B_MESSAGE_TYPE, aIndex, &author,
+                                   &attrtype)) != B_BAD_INDEX) {
+        if (err == B_OK) {
+          if (BMessage mNode; result.FindMessage(author, &mNode) == B_OK) {
+            this->graph.try_emplace(author,
+                                    std::map<BString, ContactLinkState>());
+            auto &node = this->graph.find(author)->second;
+            char *contact;
+            int32 cIndex = 0;
+            while ((err = mNode.GetInfo(B_MESSAGE_TYPE, cIndex, &contact,
+                                        &attrtype)) != B_BAD_INDEX) {
+              if (err == B_OK) {
+                if (BMessage mEdge;
+                    mNode.FindMessage(contact, &mEdge) == B_OK) {
+                  node.try_emplace(contact, ContactLinkState());
+                  auto &edge = node.find(contact)->second;
+                  std::pair<const char *, Updatable<bool> *> properties[] = {
+                      {"following", &edge.following},
+                      {"blocking", &edge.blocking},
+                      {"pub", &edge.pub}};
+                  for (auto &[property, data] : properties) {
+                    int64 sequence;
+                    bool value;
+                    if (BMessage mData;
+                        mEdge.FindMessage(property, &mData) == B_OK &&
+                        mData.FindInt64("sequence", &sequence) == B_OK &&
+                        mData.FindBool("value", &value) == B_OK) {
+                      data->check([&](auto &oldValue) { return value; },
+                                  sequence);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      this->loaded = true;
+      this->SendNotices('CTAC');
+    }
     break;
   default:
     return BHandler::MessageReceived(message);
@@ -81,12 +132,20 @@ void ContactGraph::logContact(BMessage *message) {
   node.try_emplace(contact, ContactLinkState());
   auto &edge = node.find(contact)->second;
   bool changed = false;
+  BMessage data;
+  // TODO: DRY
   edge.following.check(
       [&](auto &oldValue) {
         bool value = oldValue;
         if (content.FindBool("following", &value) == B_OK) {
           changed = true;
           oldValue = value;
+          {
+            BMessage prop;
+            prop.AddBool("value", value);
+            prop.AddInt64("sequence", sequence);
+            data.AddMessage("following", &prop);
+          }
           return true;
         } else {
           return false;
@@ -99,6 +158,12 @@ void ContactGraph::logContact(BMessage *message) {
         if (content.FindBool("blocking", &value) == B_OK) {
           changed = true;
           oldValue = value;
+          {
+            BMessage prop;
+            prop.AddBool("value", value);
+            prop.AddInt64("sequence", sequence);
+            data.AddMessage("blocking", &prop);
+          }
           return true;
         } else {
           return false;
@@ -111,14 +176,45 @@ void ContactGraph::logContact(BMessage *message) {
         if (content.FindBool("pub", &value) == B_OK) {
           changed = true;
           oldValue = value;
+          {
+            BMessage prop;
+            prop.AddBool("value", value);
+            prop.AddInt64("sequence", sequence);
+            data.AddMessage("pub", &prop);
+          }
           return true;
         } else {
           return false;
         }
       },
       sequence);
-  if (changed && this->loaded)
-    this->SendNotices('CTAC');
+  if (changed) {
+
+    BMessage setter(B_SET_PROPERTY);
+    setter.AddMessage("data", &data);
+    BString linkName(author);
+    linkName << ":";
+    linkName << contact;
+    setter.AddSpecifier("Contact", linkName);
+    BMessage reply;
+    status_t err;
+    if (this->store.SendMessage(&setter, &reply) == B_OK &&
+        (reply.FindInt32("error", &err) != B_OK || err == B_OK)) {
+      BMessage setter2(B_SET_PROPERTY);
+      BMessage data2;
+      data2.AddBool("processed", true);
+      setter2.AddMessage("data", &data2);
+      unsigned char msgHash[crypto_hash_sha256_BYTES];
+      {
+        JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+        JSON::fromBMessage(&rootSink, message);
+      }
+      setter2.AddSpecifier("Post", messageCypherkey(msgHash));
+      this->db.SendMessage(&setter2);
+    }
+    if (this->loaded)
+      this->SendNotices('CTAC');
+  }
 }
 
 void ContactGraph::sendState(BMessage *request) {

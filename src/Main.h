@@ -2,6 +2,7 @@
 #define MAIN_H
 
 #include "Blob.h"
+#include "ContactStore.h"
 #include "EBT.h"
 #include "Lan.h"
 #include "Listener.h"
@@ -72,6 +73,7 @@ private:
   static int accept__(void *link);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
+  ContactStore *contactStore;
   OwnFeed *ownFeed;
   ebt::Dispatcher *ebt;
   blob::Wanted *wantedBlobs;

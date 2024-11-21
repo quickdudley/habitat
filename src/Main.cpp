@@ -187,6 +187,8 @@ Habitat::Habitat(void)
   this->ownFeed->load();
   this->databaseLooper->loadFeeds();
   this->RegisterLooper(databaseLooper);
+  this->contactStore = new ContactStore(database);
+  this->databaseLooper->AddHandler(this->contactStore);
   // Open main window
   this->mainWindow = new MainWindow(this->databaseLooper);
   this->mainWindow->Show();
@@ -541,7 +543,7 @@ void Habitat::ReadyToRun() {
   worker->Lock();
   BVolume volume;
   this->settings->GetVolume(&volume);
-  auto graph = new ContactGraph();
+  auto graph = new ContactGraph(this->databaseLooper, this->contactStore);
   worker->AddHandler(graph);
   auto selector =
       new SelectContacts(BMessenger(this->databaseLooper), BMessenger(graph));
@@ -561,6 +563,15 @@ void Habitat::ReadyToRun() {
   this->wantedBlobs->registerMethods(this->serverMethods);
   worker->Unlock();
   this->RegisterLooper(worker);
+  while (!BMessenger(this->contactStore).IsValid() ||
+         !BMessenger(graph).IsValid()) {
+    snooze(500000);
+  }
+  {
+    BMessage getter(B_GET_PROPERTY);
+    getter.AddSpecifier("Contact");
+    BMessenger(this->contactStore).SendMessage(&getter, BMessenger(graph));
+  }
   {
     BMessage rq(B_GET_PROPERTY);
     BMessage specifier('CPLX');

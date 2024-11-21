@@ -36,6 +36,7 @@ APP_SRCS = \
 	 src/BJSON.cpp \
 	 src/Blob.cpp \
 	 src/Connection.cpp \
+	 src/ContactStore.cpp \
 	 src/EBT.cpp \
 	 src/Indices.cpp \
 	 src/Lan.cpp \
@@ -459,6 +460,10 @@ rmapp ::
 .PHONY: run
 run: $(TARGET)
 	env LIBRARY_PATH=$(TARGET_DIR):$(LIBRARY_PATH) $(TARGET)
+
+.PHONY: debug
+debug: $(TARGET)
+	env LIBRARY_PATH=$(TARGET_DIR):$(LIBRARY_PATH) /system/apps/Debugger $(TARGET)
 
 # For embedding the ssb validation dataset into the test executable
 $(TEST_DIR)/ssb_validation_dataset.json:

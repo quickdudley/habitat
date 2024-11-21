@@ -12,7 +12,6 @@ SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
 void SelectContacts::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_REPLY: {
-    message->Previous()->PrintToStream();
     BMessage prevSpec;
     BString property;
     if (message->Previous() &&

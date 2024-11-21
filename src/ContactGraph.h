@@ -3,6 +3,7 @@
 
 #include "Updatable.h"
 #include <Handler.h>
+#include <Messenger.h>
 #include <String.h>
 #include <map>
 #include <set>
@@ -26,13 +27,15 @@ struct ContactLinkState {
 
 class ContactGraph : public BHandler {
 public:
-  ContactGraph();
+  ContactGraph(BMessenger db, BMessenger store);
   void MessageReceived(BMessage *message) override;
 
 private:
   void logContact(BMessage *message);
   void sendState(BMessage *request);
   std::map<BString, std::map<BString, ContactLinkState>> graph;
+  BMessenger db;
+  BMessenger store;
   bool loaded = false;
 };
 

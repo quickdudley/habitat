@@ -25,10 +25,25 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
+  sqlite3_exec(database,
+               "ALTER TABLE messages "
+               "ADD COLUMN processed INTEGER NOT NULL DEFAULT 0",
+               NULL, NULL, &error);
+  sqlite3_exec(database,
+               "ALTER_TABLE messages "
+               "ADD COLUMN viewed INTEGER NOT NULL DEFAULT 0",
+               NULL, NULL, &error);
   if (sqlite3_exec(
           database,
           "CREATE INDEX IF NOT EXISTS typectx ON messages (type, context)",
           NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE INDEX IF NOT EXISTS proqueue ON messages (type) "
+                   "WHERE processed = 0",
+                   NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
@@ -54,6 +69,31 @@ status_t prepareDatabase(sqlite3 *database) {
   if (sqlite3_exec(database,
                    "CREATE TABLE IF NOT EXISTS feeds "
                    "AS SELECT DISTINCT author FROM messages",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE UNIQUE INDEX IF NOT EXISTS "
+                   "feedkey ON feeds(author)",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE TABLE IF NOT EXISTS contacts("
+                   "author TEXT NOT NULL, "
+                   "contact TEXT NOT NULL, "
+                   "property TEXT NOT NULL, "
+                   "sequence INTEGER NOT NULL, "
+                   "value INTEGER NOT NULL)",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE UNIQUE INDEX IF NOT EXISTS "
+                   "colink ON contacts(author, contact, property)",
                    NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
@@ -190,6 +230,7 @@ static inline status_t migrateMessages(sqlite3 *database,
 static inline void setWal(sqlite3 *database) {
   char *error = NULL;
   sqlite3_exec(database, "PRAGMA journal_mode = WAL", NULL, NULL, &error);
+  sqlite3_exec(database, "pragma wal_checkpoint(truncate)", NULL, NULL, &error);
 }
 
 sqlite3 *migrateToSqlite(const BDirectory &settings) {

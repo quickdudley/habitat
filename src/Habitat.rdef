@@ -8,7 +8,7 @@ resource app_version {
 	minor = 1,
 	variety = B_APPV_DEVELOPMENT,
 	short_info = "Habitat",
-	long_info = "Habitat ©2022 Jeremy List"
+	long_info = "Habitat ©2024 Jeremy List"
 };
 
 resource file_types message {

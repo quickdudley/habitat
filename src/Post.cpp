@@ -29,7 +29,10 @@ QueryBacked::QueryBacked(sqlite3_stmt *query)
     :
     query(query) {}
 
-QueryBacked::~QueryBacked() { sqlite3_finalize(this->query); }
+QueryBacked::~QueryBacked() {
+  if (this->query)
+    sqlite3_finalize(this->query);
+}
 
 namespace {
 template <class... Ts> struct overloaded : Ts... {
@@ -175,6 +178,11 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
 #undef QRY_TSP
 #undef QRY_INT
 #undef QRY_STR
+  if (specifier.GetBool("dregs", false)) {
+    query.Append(separator);
+    separator = " AND ";
+    query.Append("processed = 0");
+  }
   sqlite3_stmt *result;
   sqlite3_prepare_v2(db, query.String(), query.Length(), &result, NULL);
   int i = 1;
@@ -199,10 +207,12 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
     dregs(specifier.GetBool("dregs", false)) {}
 
 void QueryHandler::MessageReceived(BMessage *message) {
-  this->ongoing = true;
   switch (message->what) {
-  case B_PULSE:
-    if (!this->mainDone && sqlite3_step(this->query) == SQLITE_ROW) {
+  case B_PULSE: {
+    int i;
+    for (i = 0;
+         i < 128 && !this->mainDone && sqlite3_step(this->query) == SQLITE_ROW;
+         i++) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
           B_OK) {
@@ -213,15 +223,20 @@ void QueryHandler::MessageReceived(BMessage *message) {
         if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
-      if (auto db = dynamic_cast<SSBDatabase *>(this->Looper()))
-        db->ensurePulseRunning();
-    } else if (this->target.IsValid()) {
-      this->target.SendMessage('DONE');
-      this->mainDone = true;
-    } else {
-      goto canceled;
     }
-    break;
+    if (i == 0) {
+      if (this->target.IsValid()) {
+        sqlite3_finalize(this->query);
+        this->query = NULL;
+        this->target.SendMessage('DONE');
+        this->mainDone = true;
+      } else {
+        goto canceled;
+      }
+    } else if (auto db = dynamic_cast<SSBDatabase *>(this->Looper())) {
+      db->ensurePulseRunning();
+    }
+  } break;
   case 'CHCK':
     if (BMessage post; message->FindMessage("post", &post) == B_OK) {
       if (this->target.IsValid())
@@ -405,7 +420,7 @@ property_info databaseProperties[] = {
      kReplicatedFeed,
      {}},
     {"ReplicatedFeed",
-     {},
+     {B_GET_PROPERTY, 0},
      {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
      kAReplicatedFeed,
@@ -417,7 +432,7 @@ property_info databaseProperties[] = {
      kOwnID,
      {}},
     {"Post",
-     {B_GET_PROPERTY, 0},
+     {B_GET_PROPERTY, B_SET_PROPERTY, 0},
      {B_NAME_SPECIFIER, 'CPLX', 0},
      "An SSB message",
      kPostByID,
@@ -576,28 +591,53 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       }
       break;
-    case kPostByID: {
-      QueryHandler *qh;
-      bool live;
-      if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-        qh = new QueryHandler(this->database, target, specifier);
-        live = true;
-      } else {
-        qh = new QueryHandler(this->database, BMessenger(), specifier);
-        live = false;
+    case kPostByID:
+      switch (msg->what) {
+      case B_GET_PROPERTY: {
+        QueryHandler *qh;
+        bool live;
+        if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
+          qh = new QueryHandler(this->database, target, specifier);
+          live = true;
+        } else {
+          qh = new QueryHandler(this->database, BMessenger(), specifier);
+          live = false;
+        }
+        qh->limit = msg->GetInt32("limit", -1);
+        if (live) {
+          this->Lock();
+          this->AddHandler(qh);
+          this->Unlock();
+          this->ensurePulseRunning();
+          error = B_OK;
+        } else {
+          error = qh->runBulk(&reply);
+          delete qh;
+        }
+      } break;
+      case B_SET_PROPERTY: {
+        BString cypherkey;
+        BMessage data;
+        if (specifier.FindString("name", &cypherkey) == B_OK &&
+            msg->FindMessage("data", &data) == B_OK) {
+          error = B_OK;
+          if (bool value; data.FindBool("processed", &value) == B_OK) {
+            sqlite3_stmt *update;
+            sqlite3_prepare_v2(this->database,
+                               "UPDATE messages "
+                               "SET processed = ? "
+                               "WHERE cypherkey = ?",
+                               -1, &update, NULL);
+            sqlite3_bind_int64(update, 1, value);
+            sqlite3_bind_text(update, 2, cypherkey.String(), cypherkey.Length(),
+                              SQLITE_STATIC);
+            sqlite3_step(update);
+            sqlite3_finalize(update);
+          }
+        }
+      } break;
       }
-      qh->limit = msg->GetInt32("limit", -1);
-      if (live) {
-        this->Lock();
-        this->AddHandler(qh);
-        this->Unlock();
-        this->ensurePulseRunning();
-        error = B_OK;
-      } else {
-        error = qh->runBulk(&reply);
-        delete qh;
-      }
-    } break;
+      break;
     default:
       return BLooper::MessageReceived(msg);
     }
@@ -644,7 +684,6 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
     }
-    sqlite3_reset(this->backlog);
     if (sqlite3_step(this->backlog) == SQLITE_ROW) {
       BMessage post;
       BString author;
@@ -684,6 +723,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         BMessenger(be_app).SendMessage(&notify);
       }
     }
+    sqlite3_reset(this->backlog);
   } else {
     return BLooper::MessageReceived(msg);
   }
@@ -789,26 +829,9 @@ bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
   return l.sequence > r.sequence;
 }
 
-static sqlite3_stmt *feedQuery(sqlite3 *database,
-                               unsigned char key[crypto_sign_PUBLICKEYBYTES]) {
-  sqlite3_stmt *result;
-  sqlite3_prepare_v2(
-      database,
-      "SELECT cypherkey, context, body FROM messages WHERE author = ?", -1,
-      &result, NULL);
-  BString cypherkey("@");
-  cypherkey.Append(
-      base64::encode(key, crypto_sign_PUBLICKEYBYTES, base64::STANDARD));
-  cypherkey.Append(".ed25519");
-  sqlite3_bind_text(result, 1, cypherkey.String(), cypherkey.Length(),
-                    SQLITE_TRANSIENT);
-  return result;
-}
-
 SSBFeed::SSBFeed(sqlite3 *database,
                  unsigned char key[crypto_sign_PUBLICKEYBYTES])
     :
-    QueryBacked(feedQuery(database, key)),
     database(database) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
 }
@@ -1139,14 +1162,6 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
     }
   }
   return B_ERROR;
-}
-
-bool SSBFeed::queryMatch(const BString &cypherkey, const BString &context,
-                         const BMessage &msg) {
-  if (BString msgAuthor; msg.FindString("author", &msgAuthor) == B_OK)
-    return msgAuthor == this->cypherkey();
-  else
-    return false;
 }
 
 namespace {

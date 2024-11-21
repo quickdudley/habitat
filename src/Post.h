@@ -65,12 +65,13 @@ private:
   sqlite3_stmt *backlog;
   std::map<BString, SSBFeed *> feeds;
   uint64 backlogCount;
+  int checkpointCount = 0;
   bool pulseRunning = false;
   bool clogged = false;
   bool initialBacklog = true;
 };
 
-class SSBFeed : public QueryBacked {
+class SSBFeed : public BHandler {
 public:
   SSBFeed(sqlite3 *database, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
@@ -89,8 +90,6 @@ public:
   bool matchKey(unsigned char other[crypto_sign_PUBLICKEYBYTES]);
   void notifyChanges();
   void notifyChanges(BMessenger target);
-  bool queryMatch(const BString &cypherkey, const BString &context,
-                  const BMessage &msg) override;
 
 protected:
   status_t save(BMessage *message, BMessage *result = NULL);
