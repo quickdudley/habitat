@@ -1,5 +1,5 @@
-#include "BJSON.h"
 #include "ContactGraph.h"
+#include "BJSON.h"
 #include "Post.h"
 #include "SignJSON.h"
 #include <Looper.h>

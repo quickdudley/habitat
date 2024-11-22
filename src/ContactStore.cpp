@@ -118,6 +118,7 @@ void ContactStore::MessageReceived(BMessage *message) {
         name.CopyInto(author, 0, delimiter);
         name.CopyInto(contact, delimiter + 1, name.Length());
         if (BMessage data; message->FindMessage("data", &data) == B_OK) {
+          error = B_OK;
           static const char *properties[] = {"following", "blocking", "pub"};
           for (const char *property : properties) {
             if (BMessage state; data.FindMessage(property, &state) == B_OK) {
@@ -143,7 +144,7 @@ void ContactStore::MessageReceived(BMessage *message) {
                 sqlite3_finalize(qry);
                 switch (status) {
                 case SQLITE_ROW: {
-                  sqlite3_prepare_v2(
+                  status = sqlite3_prepare_v2(
                       this->database,
                       "UPDATE contacts SET sequence = ?, value = ? "
                       "WHERE author = ? "
@@ -157,14 +158,14 @@ void ContactStore::MessageReceived(BMessage *message) {
                   sqlite3_bind_text(qry, 4, contact.String(), contact.Length(),
                                     SQLITE_STATIC);
                   sqlite3_bind_text(qry, 5, property, -1, SQLITE_STATIC);
-                  sqlite3_step(qry);
+                  status = sqlite3_step(qry);
                   sqlite3_finalize(qry);
                 } break;
                 case SQLITE_DONE: {
-                  sqlite3_prepare_v2(
+                  status = sqlite3_prepare_v2(
                       this->database,
                       "INSERT INTO contacts("
-                      "author, contact, property, sequence value) "
+                      "author, contact, property, sequence, value) "
                       "VALUES(?,?,?,?,?)",
                       -1, &qry, NULL);
                   sqlite3_bind_text(qry, 1, author.String(), author.Length(),
@@ -174,10 +175,14 @@ void ContactStore::MessageReceived(BMessage *message) {
                   sqlite3_bind_text(qry, 3, property, -1, SQLITE_STATIC);
                   sqlite3_bind_int64(qry, 4, sequence);
                   sqlite3_bind_int64(qry, 5, value ? 0 : 1);
-                  sqlite3_step(qry);
+                  status = sqlite3_step(qry);
                   sqlite3_finalize(qry);
                 } break;
+                default:
+                  error = B_IO_ERROR;
                 }
+                if (status != SQLITE_DONE && status != SQLITE_ROW)
+                  error = B_IO_ERROR;
               }
             }
           }
@@ -205,7 +210,8 @@ status_t ContactStore::GetSupportedSuites(BMessage *data) {
   return BHandler::GetSupportedSuites(data);
 }
 
-BHandler *ContactStore::ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
-                             int32 what, const char *property) {
+BHandler *ContactStore::ResolveSpecifier(BMessage *msg, int32 index,
+                                         BMessage *specifier, int32 what,
+                                         const char *property) {
   return this;
 }

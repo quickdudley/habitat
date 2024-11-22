@@ -543,6 +543,10 @@ void Habitat::ReadyToRun() {
   worker->Lock();
   BVolume volume;
   this->settings->GetVolume(&volume);
+  while (!BMessenger(this->databaseLooper).IsValid() ||
+         !BMessenger(this->contactStore).IsValid()) {
+    snooze(500000);
+  }
   auto graph = new ContactGraph(this->databaseLooper, this->contactStore);
   worker->AddHandler(graph);
   auto selector =
