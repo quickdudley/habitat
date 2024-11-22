@@ -657,7 +657,13 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     sqlite3_bind_blob64(insert, 1, buffer, flatSize, freeBuffer);
     sqlite3_step(insert);
     sqlite3_finalize(insert);
-    ++this->backlogCount;
+    if (++this->backlogCount > 2097152) {
+      BMessage notify('CLOG');
+      notify.AddPointer("channel", this->backlog);
+      notify.AddBool("clogged", true);
+      this->initialBacklog = true;
+      BMessenger(be_app).SendMessage(&notify);
+    }
     this->notifyBacklog();
     this->ensurePulseRunning();
     return;
