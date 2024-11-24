@@ -420,7 +420,7 @@ property_info databaseProperties[] = {
      kReplicatedFeed,
      {}},
     {"ReplicatedFeed",
-     {B_GET_PROPERTY, 0},
+     {0},
      {B_INDEX_SPECIFIER, B_NAME_SPECIFIER, 0},
      "A known SSB log",
      kAReplicatedFeed,
