@@ -94,9 +94,11 @@ void ContactGraph::MessageReceived(BMessage *message) {
                   }
                 }
               }
+              cIndex++;
             }
           }
         }
+        aIndex++;
       }
       this->loaded = true;
       this->SendNotices('CTAC');
@@ -189,7 +191,6 @@ void ContactGraph::logContact(BMessage *message) {
       },
       sequence);
   if (changed) {
-
     BMessage setter(B_SET_PROPERTY);
     setter.AddMessage("data", &data);
     BString linkName(author);
@@ -200,20 +201,23 @@ void ContactGraph::logContact(BMessage *message) {
     status_t err;
     if (this->store.SendMessage(&setter, &reply) == B_OK &&
         (reply.FindInt32("error", &err) != B_OK || err == B_OK)) {
-      BMessage setter2(B_SET_PROPERTY);
-      BMessage data2;
-      data2.AddBool("processed", true);
-      setter2.AddMessage("data", &data2);
-      unsigned char msgHash[crypto_hash_sha256_BYTES];
-      {
-        JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
-        JSON::fromBMessage(&rootSink, message);
-      }
-      setter2.AddSpecifier("Post", messageCypherkey(msgHash));
-      this->db.SendMessage(&setter2);
+      goto mark;
     }
     if (this->loaded)
       this->SendNotices('CTAC');
+  } else {
+  mark:
+    BMessage setter2(B_SET_PROPERTY);
+    BMessage data2;
+    data2.AddBool("processed", true);
+    setter2.AddMessage("data", &data2);
+    unsigned char msgHash[crypto_hash_sha256_BYTES];
+    {
+      JSON::RootSink rootSink(std::make_unique<JSON::Hash>(msgHash));
+      JSON::fromBMessage(&rootSink, message);
+    }
+    setter2.AddSpecifier("Post", messageCypherkey(msgHash));
+    this->db.SendMessage(&setter2);
   }
 }
 

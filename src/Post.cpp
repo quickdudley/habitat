@@ -657,7 +657,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     sqlite3_bind_blob64(insert, 1, buffer, flatSize, freeBuffer);
     sqlite3_step(insert);
     sqlite3_finalize(insert);
-    if (++this->backlogCount > 2097152) {
+    if (++this->backlogCount > 65536) {
       BMessage notify('CLOG');
       notify.AddPointer("channel", this->backlog);
       notify.AddBool("clogged", true);
