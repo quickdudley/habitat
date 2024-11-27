@@ -152,7 +152,7 @@ void ContactStore::MessageReceived(BMessage *message) {
                       "AND property = ?",
                       -1, &qry, NULL);
                   sqlite3_bind_int64(qry, 1, sequence);
-                  sqlite3_bind_int64(qry, 2, value ? 0 : 1);
+                  sqlite3_bind_int64(qry, 2, value ? 1 : 0);
                   sqlite3_bind_text(qry, 3, author.String(), author.Length(),
                                     SQLITE_STATIC);
                   sqlite3_bind_text(qry, 4, contact.String(), contact.Length(),
@@ -174,7 +174,7 @@ void ContactStore::MessageReceived(BMessage *message) {
                                     SQLITE_STATIC);
                   sqlite3_bind_text(qry, 3, property, -1, SQLITE_STATIC);
                   sqlite3_bind_int64(qry, 4, sequence);
-                  sqlite3_bind_int64(qry, 5, value ? 0 : 1);
+                  sqlite3_bind_int64(qry, 5, value ? 1 : 0);
                   status = sqlite3_step(qry);
                   sqlite3_finalize(qry);
                 } break;

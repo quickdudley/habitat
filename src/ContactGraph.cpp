@@ -88,8 +88,12 @@ void ContactGraph::MessageReceived(BMessage *message) {
                         mEdge.FindMessage(property, &mData) == B_OK &&
                         mData.FindInt64("sequence", &sequence) == B_OK &&
                         mData.FindBool("value", &value) == B_OK) {
-                      data->check([&](auto &oldValue) { return value; },
-                                  sequence);
+                      data->check(
+                          [&](auto &oldValue) {
+                            oldValue = value;
+                            return true;
+                          },
+                          sequence);
                     }
                   }
                 }

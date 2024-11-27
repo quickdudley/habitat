@@ -94,19 +94,17 @@ void SelectContacts::makeSelection(BMessage *graph) {
   for (auto item : this->current) {
     if (leftover.find(item) == leftover.end()) {
       BMessage create(B_CREATE_PROPERTY);
-      BMessage reply;
       create.AddSpecifier("ReplicatedFeed");
       create.AddString("cypherkey", item);
-      this->db.SendMessage(&create, &reply);
+      this->db.SendMessage(&create);
     } else {
       leftover.erase(item);
     }
   }
   for (auto item : leftover) {
     BMessage request(B_DELETE_PROPERTY);
-    BMessage reply;
     request.AddSpecifier("ReplicatedFeed", item);
-    this->db.SendMessage(&request, &reply);
+    this->db.SendMessage(&request);
   }
   this->db.SendMessage('GCOK');
 }
