@@ -897,6 +897,8 @@ void SSBFeed::notifyChanges(BMessenger target) {
   BMessage notif(B_OBSERVER_NOTICE_CHANGE);
   notif.AddString("feed", this->cypherkey());
   notif.AddInt64("sequence", this->sequence());
+  notif.AddBool("broken", this->reorder);
+  notif.AddBool("forked", this->forked);
   target.SendMessage(&notif);
 }
 

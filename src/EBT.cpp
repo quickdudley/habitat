@@ -29,6 +29,11 @@ RemoteState::RemoteState(const RemoteState &original)
     note(original.note),
     updated(original.updated) {}
 
+static Note compose(const LocalState &state, const LinkLocalState &linkState) {
+  return {linkState.replicate, linkState.receive && !state.forked,
+          state.sequence, state.savedSequence};
+}
+
 Dispatcher::Dispatcher(SSBDatabase *db)
     :
     BLooper("EBT"),
@@ -61,59 +66,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   // TODO: Send and handle B_OBSERVER_NOTICE_CHANGE for changes to list of
   //   feeds that we're supposed to be syncing.
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
-    BString cypherkey;
-    int64 sequence;
-    if (msg->FindString("feed", &cypherkey) == B_OK &&
-        msg->FindInt64("sequence", &sequence) == B_OK) {
-      {
-        BString logText("Observer notice for ");
-        logText << cypherkey;
-        logText << ": sequence = " << sequence;
-        writeLog('EBT_', logText);
-      }
-      bool changed = false;
-      bool justOne = !this->polyLink();
-      bool forked = msg->GetBool("forked", false);
-      bool fixup = msg->GetBool("broken", false);
-      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-        if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-          if (forked) {
-            link->ourState.erase(cypherkey);
-            link->sendSequence.push(cypherkey);
-            changed = true;
-          } else if (auto foundNote = link->ourState.find(cypherkey);
-                     foundNote != link->ourState.end()) {
-            if (foundNote->second.savedSequence != sequence) {
-              foundNote->second.savedSequence = sequence;
-              changed = true;
-              link->sendSequence.push(cypherkey);
-            }
-            if (fixup || foundNote->second.sequence < sequence) {
-              foundNote->second.sequence = sequence;
-              changed = true;
-              link->sendSequence.push(cypherkey);
-            }
-          } else {
-            link->ourState.insert(
-                {cypherkey,
-                 {true, justOne, (uint64)sequence, (uint64)sequence}});
-            changed = true;
-            link->sendSequence.push(cypherkey);
-          }
-        }
-      }
-      if (changed)
-        this->startNotesTimer(1000);
-    } else if (BString cypherkey; msg->GetBool("deleted", false) &&
-               msg->FindString("feed", &cypherkey) == B_OK) {
-      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
-        if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-          link->ourState.erase(cypherkey);
-          link->sendSequence.push(cypherkey);
-        }
-      }
-      this->startNotesTimer(1000);
-    }
+  	this->noticeChange(msg);
     return;
   } else if (msg->what == 'CLOG') {
     bool nowClogged;
@@ -140,7 +93,6 @@ void Dispatcher::MessageReceived(BMessage *msg) {
     if (status_t response; msg->FindInt32("error", &response) == B_OK &&
         (response == B_ENTRY_NOT_FOUND || response == B_NAME_NOT_FOUND)) {
       const BMessage *request = msg->Previous();
-      int32 index;
       BMessage specifier;
       BString property;
       BString feedId;
@@ -275,6 +227,59 @@ void Dispatcher::initiate(muxrpc::Connection *connection) {
   }
 }
 
+void Dispatcher::noticeChange(BMessage *msg) {
+  BString cypherkey;
+  int64 sequence;
+  if (msg->FindString("feed", &cypherkey) == B_OK &&
+      msg->FindInt64("sequence", &sequence) == B_OK) {
+    {
+      BString logText("Observer notice for ");
+      logText << cypherkey;
+      logText << ": sequence = " << sequence;
+      writeLog('EBT_', logText);
+    }
+    bool changed = false;
+    bool justOne = !this->polyLink();
+    bool forked = msg->GetBool("forked", false);
+    bool fixup = msg->GetBool("broken", false);
+    if (auto state = this->ourState.find(cypherkey);
+        state != this->ourState.end()) {
+      if (state->second.savedSequence != sequence) {
+        changed = true;
+        state->second.savedSequence = sequence;
+      }
+      if (fixup || state->second.sequence < sequence) {
+        changed = true;
+        state->second.sequence = sequence;
+      }
+      if (forked != state->second.forked) {
+        changed = true;
+        state->second.forked = forked;
+      }
+    } else {
+      this->ourState.insert(
+          {cypherkey, {(uint64)sequence, (uint64)sequence, forked}});
+    }
+    if (changed) {
+      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+        if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link)
+          link->sendSequence.push(cypherkey);
+      }
+      this->startNotesTimer(1000);
+    }
+  } else if (BString cypherkey; msg->GetBool("deleted", false) &&
+             msg->FindString("feed", &cypherkey) == B_OK) {
+    this->ourState.erase(cypherkey);
+    for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+      if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
+        link->ourState.erase(cypherkey);
+        link->sendSequence.push(cypherkey);
+      }
+    }
+    this->startNotesTimer(1000);
+  }
+}
+
 void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
   BMessage message(B_GET_PROPERTY);
   message.AddSpecifier("Post", (int32)sequence);
@@ -303,12 +308,15 @@ void Dispatcher::sendNotes() {
         while (counter > 0 && !link->sendSequence.empty()) {
           auto &feedID = link->sendSequence.front();
           int64 noteValue;
-          if (auto state = link->ourState.find(feedID);
-              state != link->ourState.end()) {
-            auto noteStruct = state->second;
-            if (this->clogged)
-              noteStruct.receive = false;
-            noteValue = encodeNote(noteStruct);
+          if (auto state = this->ourState.find(feedID);
+              state != this->ourState.end()) {
+            if (auto linkState = link->ourState.find(feedID);
+                linkState != link->ourState.end()) {
+              auto noteStruct = compose(state->second, linkState->second);
+              if (this->clogged)
+                noteStruct.receive = false;
+              noteValue = encodeNote(noteStruct);
+            }
           } else {
             noteValue = -1;
           }
@@ -359,14 +367,11 @@ void Link::MessageReceived(BMessage *message) {
         this->tick(author);
         int64 sequence = (int64)message->GetDouble("sequence", 0.0);
         BMessenger(this->db()).SendMessage(&content);
-        // TODO: Store centrally instead of checking every handler
-        for (int i = this->Looper()->CountHandlers(); i >= 0; i--) {
-          if (auto link = dynamic_cast<Link *>(this->Looper()->HandlerAt(i))) {
-            if (auto note = link->ourState.find(author);
-                note != link->ourState.end() &&
-                sequence == note->second.sequence + 1) {
-              note->second.sequence = sequence;
-            }
+        if (auto dispatcher = dynamic_cast<Dispatcher *>(this->Looper())) {
+          if (auto state = dispatcher->ourState.find(author);
+              state != dispatcher->ourState.end() &&
+              sequence == state->second.sequence + 1) {
+            state->second.sequence = sequence;
           }
         }
       }
@@ -408,10 +413,8 @@ void Link::MessageReceived(BMessage *message) {
         !dynamic_cast<Dispatcher *>(this->Looper())->polyLink();
     while (message->FindMessage("result", i, &content) == B_OK) {
       BString feedId;
-      uint64 sequence;
-      if (content.FindUInt64("sequence", &sequence) == B_OK &&
-          content.FindString("cypherkey", &feedId) == B_OK) {
-        this->ourState.insert({feedId, {true, shouldReplicate, sequence}});
+      if (content.FindString("cypherkey", &feedId) == B_OK) {
+        this->ourState.insert({feedId, {true, shouldReplicate}});
         this->sendSequence.push(feedId);
       }
       i++;

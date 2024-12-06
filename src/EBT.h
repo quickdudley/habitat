@@ -25,6 +25,17 @@ struct RemoteState {
   RemoteState(const RemoteState &original);
 };
 
+struct LocalState {
+  uint64 sequence;
+  uint64 savedSequence;
+  uint64 forked; // TODO: Rename everywhere
+};
+
+struct LinkLocalState {
+  bool replicate;
+  bool receive;
+};
+
 class Dispatcher;
 
 class Link : public BHandler {
@@ -40,7 +51,7 @@ private:
   BMessenger *outbound();
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
-  std::map<BString, Note> ourState;
+  std::map<BString, LinkLocalState> ourState;
   std::queue<BString> sendSequence;
   std::map<BString, int64> lastSent;
   bool waiting;
@@ -59,10 +70,12 @@ public:
   void initiate(muxrpc::Connection *connection);
 
 private:
+  void noticeChange(BMessage *msg);
   void checkForMessage(const BString &author, uint64 sequence);
   void startNotesTimer(bigtime_t delay);
   void sendNotes();
   bool polyLink();
+  std::map<BString, LocalState> ourState;
   SSBDatabase *db;
   bool buildingNotes = false;
   bool clogged = false;
