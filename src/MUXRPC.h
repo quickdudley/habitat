@@ -6,6 +6,7 @@
 #include <Message.h>
 #include <Messenger.h>
 #include <String.h>
+#include <functional>
 #include <map>
 #include <memory>
 #include <queue>
@@ -127,6 +128,7 @@ public:
   status_t request(const std::vector<BString> &name, RequestType type,
                    BMessage *args, BMessenger replyTo, BMessenger *outbound);
   BString cypherkey();
+  void addCloseHook(std::function<void()> hook);
 
 private:
   status_t populateHeader(Header *out);
@@ -139,6 +141,7 @@ private:
   sem_id ongoingLock;
   std::shared_ptr<std::vector<std::shared_ptr<Method>>> handlers;
   unsigned char peer[crypto_sign_PUBLICKEYBYTES];
+  std::vector<std::function<void()>> cleanup;
   int32 nextRequest = 1;
   std::map<BString, BMessenger> crossTalk;
   BString serverName;

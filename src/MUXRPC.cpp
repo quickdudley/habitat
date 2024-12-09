@@ -336,6 +336,9 @@ Connection::~Connection() {
     link.second.target.SendMessage(&stop);
   }
   delete_sem(this->ongoingLock);
+  for (auto &hook : this->cleanup) {
+  	hook();
+  }
 }
 
 thread_id Connection::Run() {
@@ -521,6 +524,8 @@ status_t Connection::request(const std::vector<BString> &name, RequestType type,
       break;
     case RequestType::ASYNC:
       content.AddString("type", "async");
+      break;
+    default:
       break;
     }
     content.AddMessage("args", args);
@@ -798,15 +803,12 @@ status_t Connection::readOne() {
         if (result != B_OK)
           return result;
       }
-      MethodMatch overall = MethodMatch::NO_MATCH;
       for (int i = 0; i < this->handlers->size(); i++) {
         MethodMatch match =
             (*this->handlers)[i]->check(this, name, requestType);
         switch (match) {
         case MethodMatch::NO_MATCH:
-          break;
         case MethodMatch::WRONG_TYPE:
-          overall = MethodMatch::WRONG_TYPE;
           break;
         case MethodMatch::MATCH:
           SenderHandler *replies = NULL;
@@ -821,7 +823,7 @@ status_t Connection::readOne() {
           this->AddHandler(replies);
           this->Unlock();
           BMessenger inbound;
-          status_t result = (*this->handlers)[i]->call(
+          (*this->handlers)[i]->call(
               this, requestType, &args, BMessenger(replies), &inbound);
           if (header.stream() && !header.endOrError()) {
             if (acquire_sem(this->ongoingLock) == B_OK) {
@@ -900,6 +902,10 @@ BString Connection::cypherkey() {
                            base64::STANDARD);
   result << ".ed25519";
   return result;
+}
+
+void Connection::addCloseHook(std::function<void()> hook) {
+  this->cleanup.push_back(std::move(hook));
 }
 
 BodyType Header::bodyType() { return static_cast<BodyType>(this->flags & 3); }

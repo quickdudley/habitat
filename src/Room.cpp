@@ -30,7 +30,7 @@ void AttendantsClient::MessageReceived(BMessage *message) {
            i++) {
         logEntry << delimiter;
         logEntry << id;
-        delimiter.SetTo(",");
+        delimiter.SetTo(", ");
         writeLog('ROOM', logEntry);
       }
     } else if (type == "joined") {
