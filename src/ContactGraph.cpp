@@ -114,102 +114,107 @@ void ContactGraph::MessageReceived(BMessage *message) {
 }
 
 void ContactGraph::logContact(BMessage *message) {
-  int64 sequence;
   {
-    double sq;
-    if (message->FindDouble("sequence", &sq) != B_OK)
-      return;
-    sequence = (int64)sq;
-  }
-  BString author;
-  if (message->FindString("author", &author) != B_OK)
-    return;
-  BMessage content;
-  if (message->FindMessage("content", &content) != B_OK)
-    return;
-  BString type;
-  if (content.FindString("type", &type) != B_OK || type != "contact")
-    return;
-  BString contact;
-  if (content.FindString("contact", &contact) != B_OK)
-    return;
-  this->graph.try_emplace(author, std::map<BString, ContactLinkState>());
-  auto &node = this->graph.find(author)->second;
-  node.try_emplace(contact, ContactLinkState());
-  auto &edge = node.find(contact)->second;
-  bool changed = false;
-  BMessage data;
-  // TODO: DRY
-  edge.following.check(
-      [&](auto &oldValue) {
-        bool value = oldValue;
-        if (content.FindBool("following", &value) == B_OK) {
-          changed = true;
-          oldValue = value;
-          {
-            BMessage prop;
-            prop.AddBool("value", value);
-            prop.AddInt64("sequence", sequence);
-            data.AddMessage("following", &prop);
+    int64 sequence;
+    {
+      double sq;
+      if (message->FindDouble("sequence", &sq) != B_OK)
+        return;
+      sequence = (int64)sq;
+    }
+    BString author;
+    if (message->FindString("author", &author) != B_OK)
+      goto mark;
+    BMessage content;
+    if (message->FindMessage("content", &content) != B_OK)
+      goto mark;
+    BString type;
+    if (content.FindString("type", &type) != B_OK || type != "contact")
+      goto mark;
+    BString contact;
+    if (content.FindString("contact", &contact) != B_OK)
+      goto mark;
+    this->graph.try_emplace(author, std::map<BString, ContactLinkState>());
+    auto &node = this->graph.find(author)->second;
+    node.try_emplace(contact, ContactLinkState());
+    auto &edge = node.find(contact)->second;
+    bool changed = false;
+    BMessage data;
+    // TODO: DRY
+    edge.following.check(
+        [&](auto &oldValue) {
+          bool value = oldValue;
+          if (content.FindBool("following", &value) == B_OK) {
+            changed = true;
+            oldValue = value;
+            {
+              BMessage prop;
+              prop.AddBool("value", value);
+              prop.AddInt64("sequence", sequence);
+              data.AddMessage("following", &prop);
+            }
+            return true;
+          } else {
+            return false;
           }
-          return true;
-        } else {
-          return false;
-        }
-      },
-      sequence);
-  edge.blocking.check(
-      [&](auto &oldValue) {
-        bool value = oldValue;
-        if (content.FindBool("blocking", &value) == B_OK) {
-          changed = true;
-          oldValue = value;
-          {
-            BMessage prop;
-            prop.AddBool("value", value);
-            prop.AddInt64("sequence", sequence);
-            data.AddMessage("blocking", &prop);
+        },
+        sequence);
+    edge.blocking.check(
+        [&](auto &oldValue) {
+          bool value = oldValue;
+          if (content.FindBool("blocking", &value) == B_OK) {
+            changed = true;
+            oldValue = value;
+            {
+              BMessage prop;
+              prop.AddBool("value", value);
+              prop.AddInt64("sequence", sequence);
+              data.AddMessage("blocking", &prop);
+            }
+            return true;
+          } else {
+            return false;
           }
-          return true;
-        } else {
-          return false;
-        }
-      },
-      sequence);
-  edge.pub.check(
-      [&](auto &oldValue) {
-        bool value = oldValue;
-        if (content.FindBool("pub", &value) == B_OK) {
-          changed = true;
-          oldValue = value;
-          {
-            BMessage prop;
-            prop.AddBool("value", value);
-            prop.AddInt64("sequence", sequence);
-            data.AddMessage("pub", &prop);
+        },
+        sequence);
+    edge.pub.check(
+        [&](auto &oldValue) {
+          bool value = oldValue;
+          if (content.FindBool("pub", &value) == B_OK) {
+            changed = true;
+            oldValue = value;
+            {
+              BMessage prop;
+              prop.AddBool("value", value);
+              prop.AddInt64("sequence", sequence);
+              data.AddMessage("pub", &prop);
+            }
+            return true;
+          } else {
+            return false;
           }
-          return true;
-        } else {
-          return false;
-        }
-      },
-      sequence);
-  if (changed) {
-    BMessage setter(B_SET_PROPERTY);
-    setter.AddMessage("data", &data);
-    BString linkName(author);
-    linkName << ":";
-    linkName << contact;
-    setter.AddSpecifier("Contact", linkName);
-    BMessage reply;
-    status_t err;
-    if (this->store.SendMessage(&setter, &reply) == B_OK &&
-        (reply.FindInt32("error", &err) != B_OK || err == B_OK)) {
+        },
+        sequence);
+    if (changed) {
+      BMessage setter(B_SET_PROPERTY);
+      setter.AddMessage("data", &data);
+      BString linkName(author);
+      linkName << ":";
+      linkName << contact;
+      setter.AddSpecifier("Contact", linkName);
+      BMessage reply;
+      status_t err;
+      if (this->store.SendMessage(&setter, &reply) == B_OK &&
+          (reply.FindInt32("error", &err) != B_OK || err == B_OK)) {
+        goto mark;
+      }
+      if (this->loaded)
+        this->SendNotices('CTAC');
+    } else {
       goto mark;
     }
-    if (this->loaded)
-      this->SendNotices('CTAC');
-  } else {
+  }
+  if (false) {
   mark:
     BMessage setter2(B_SET_PROPERTY);
     BMessage data2;
