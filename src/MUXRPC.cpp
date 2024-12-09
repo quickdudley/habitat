@@ -336,9 +336,6 @@ Connection::~Connection() {
     link.second.target.SendMessage(&stop);
   }
   delete_sem(this->ongoingLock);
-  for (auto &hook : this->cleanup) {
-  	hook();
-  }
 }
 
 thread_id Connection::Run() {
@@ -379,6 +376,7 @@ void Connection::Quit() {
   }
   if (acquire_sem(this->ongoingLock) == B_OK)
     release_sem(this->ongoingLock);
+  // TODO: Use a disconnection hook instead.
   if (this->serverName != "") {
     BMessage data;
     data.AddBool("connected", false);
@@ -387,6 +385,8 @@ void Connection::Quit() {
     update.AddSpecifier("Server", this->serverName);
     BMessageRunner::StartSending(BMessenger(be_app), (&update), 1000000, 1);
   }
+  for (auto &hook : this->cleanup)
+    hook();
   BLooper::Quit();
 }
 
@@ -823,8 +823,8 @@ status_t Connection::readOne() {
           this->AddHandler(replies);
           this->Unlock();
           BMessenger inbound;
-          (*this->handlers)[i]->call(
-              this, requestType, &args, BMessenger(replies), &inbound);
+          (*this->handlers)[i]->call(this, requestType, &args,
+                                     BMessenger(replies), &inbound);
           if (header.stream() && !header.endOrError()) {
             if (acquire_sem(this->ongoingLock) == B_OK) {
               this->inboundOngoing.insert({header.requestNumber, {inbound, 1}});

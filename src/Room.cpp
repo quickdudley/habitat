@@ -2,13 +2,39 @@
 #include "Logging.h"
 #include "Main.h"
 #include "Tunnel.h"
+#include <Application.h>
 
 namespace rooms2 {
 namespace {
-class AttendantsClient : public BHandler {
+class ConnectedList : public BHandler {
 public:
   void MessageReceived(BMessage *message) override;
+
+private:
+  std::set<BString> connected;
 };
+
+void ConnectedList::MessageReceived(BMessage *message) {
+  // TODO:
+  //   1. Open connection when AttendantsClient sees a non-connected attendant.
+  //   2a. Add attendants to the connected set when we proactively connect.
+  //   2b. Add attendants to the connected set when they connect with us.
+  //   3. Remove attendants from the connected set when the connection drops
+  //      or fails.
+}
+
+class AttendantsClient : public BHandler {
+public:
+  AttendantsClient(ConnectedList *connected);
+  void MessageReceived(BMessage *message) override;
+
+private:
+  BMessenger connected;
+};
+
+AttendantsClient::AttendantsClient(ConnectedList *connected)
+    :
+    connected(connected) {}
 
 void AttendantsClient::MessageReceived(BMessage *message) {
   {
@@ -53,8 +79,16 @@ cleanup:
 
 class Stage1 : public BHandler {
 public:
+  Stage1(ConnectedList *connectedList);
   void MessageReceived(BMessage *message) override;
+
+private:
+  ConnectedList *connectedList;
 };
+
+Stage1::Stage1(ConnectedList *connectedList)
+    :
+    connectedList(connectedList) {}
 
 void Stage1::MessageReceived(BMessage *message) {
   bool hasRoom2 = false;
@@ -81,7 +115,7 @@ void Stage1::MessageReceived(BMessage *message) {
     }
   }
   if (hasRoom2 && hasTunnel) {
-    auto attendants = new AttendantsClient();
+    auto attendants = new AttendantsClient(this->connectedList);
     this->Looper()->AddHandler(attendants);
     BMessage args('JSAR');
     dynamic_cast<muxrpc::Connection *>(this->Looper())
@@ -95,11 +129,19 @@ cleanup:
 
 class MetadataHook : public muxrpc::ConnectionHook {
 public:
+  MetadataHook(ConnectedList *connectedList);
   void call(muxrpc::Connection *rpc) override;
+
+private:
+  ConnectedList *connectedList;
 };
 
+MetadataHook::MetadataHook(ConnectedList *connectedList)
+    :
+    connectedList(connectedList) {}
+
 void MetadataHook::call(muxrpc::Connection *rpc) {
-  auto stage1 = new Stage1();
+  auto stage1 = new Stage1(this->connectedList);
   rpc->AddHandler(stage1);
   BMessage args('JSAR');
   rpc->request({"room", "metadata"}, muxrpc::RequestType::ASYNC, &args,
@@ -134,7 +176,11 @@ status_t MkTunnel::call(muxrpc::Connection *connection,
 } // namespace
 
 void installClient(muxrpc::MethodSuite *suite) {
-  suite->registerConnectionHook(std::make_shared<MetadataHook>());
+  auto connectedList = new ConnectedList();
+  be_app->Lock();
+  be_app->AddHandler(connectedList);
+  be_app->Unlock();
+  suite->registerConnectionHook(std::make_shared<MetadataHook>(connectedList));
   suite->registerMethod(std::make_shared<MkTunnel>());
 }
 } // namespace rooms2

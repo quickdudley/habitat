@@ -66,7 +66,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   // TODO: Send and handle B_OBSERVER_NOTICE_CHANGE for changes to list of
   //   feeds that we're supposed to be syncing.
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
-  	this->noticeChange(msg);
+    this->noticeChange(msg);
     return;
   } else if (msg->what == 'CLOG') {
     bool nowClogged;
