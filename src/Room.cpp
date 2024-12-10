@@ -21,6 +21,7 @@ void ConnectedList::MessageReceived(BMessage *message) {
   //   2b. Add attendants to the connected set when they connect with us.
   //   3. Remove attendants from the connected set when the connection drops
   //      or fails.
+  //   4. Put peers connected via other transports in the set too.
 }
 
 class AttendantsClient : public BHandler {
