@@ -10,6 +10,7 @@
 #include <NodeMonitor.h>
 #include <Path.h>
 #include <StringList.h>
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -41,6 +42,26 @@ template <class... Ts> struct overloaded : Ts... {
 template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 SSBDatabase *runningDB = NULL;
+
+enum struct TimeThreshold {
+  EARLIEST,
+  LATEST,
+};
+
+std::vector<std::pair<TimeThreshold, int64>>
+timeBoundaries(const BMessage &specifier) {
+  std::vector<std::pair<TimeThreshold, int64>> result;
+  int64 value;
+  for (int32 i = 0; specifier.FindInt64("earliest", i, &value) == B_OK; i++)
+    result.push_back({TimeThreshold::EARLIEST, value});
+  for (int32 i = 0; specifier.FindInt64("latest", i, &value) == B_OK; i++)
+    result.push_back({TimeThreshold::LATEST, value});
+  std::sort(
+      result.begin(), result.end(),
+      [](std::pair<TimeThreshold, int64> &a,
+         std::pair<TimeThreshold, int64> &b) { return a.second < b.second; });
+  return result;
+}
 
 class QueryHandler : public QueryBacked {
 public:
