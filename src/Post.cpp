@@ -63,6 +63,36 @@ timeBoundaries(const BMessage &specifier) {
   return result;
 }
 
+status_t timestamps_clause(BString &clause, std::vector<std::variant<BString, int64>> &terms, const BMessage &specifier) {
+  auto boundaries = timeBoundaries(specifier);
+  if (boundaries.empty())
+    return B_NAME_NOT_FOUND;
+  BString delimiter;
+  BString subclause;
+  for (auto &[btype, boundary] : boundaries) {
+  	clause << delimiter;
+  	if (btype == TimeThreshold::LATEST) {
+  	  if (subclause == "") {
+  	  	clause << "timestamp <= ?";
+  	  } else {
+  	  	clause << "(";
+  	  	clause << subclause;
+  	  	clause << " OR timestamp <= ?)";
+  	  	subclause = "";
+  	  }
+  	} else {
+  	  subclause = "timestamp >= ?";
+  	}
+  	terms.push_back(boundary);
+  	delimiter = " AND ";
+  }
+  if (subclause != "") {
+  	clause << delimiter;
+  	clause << subclause;
+  }
+  return B_OK;
+}
+
 class QueryHandler : public QueryBacked {
 public:
   QueryHandler(sqlite3 *db, BMessenger target, const BMessage &specifier);
@@ -114,51 +144,6 @@ static int string_term(BString &clause,
   return values.size();
 }
 
-static int integer_term(BString &clause,
-                        std::vector<std::variant<BString, int64>> &terms,
-                        const BString &attrName, const BString &columnName,
-                        const BMessage &specifier) {
-  std::vector<int64> values;
-  int32 i = 0;
-  status_t error;
-  do {
-    values.push_back(0);
-    error = specifier.FindInt64(attrName, i, &values.back());
-    if (error != B_OK)
-      values.pop_back();
-  } while (error != B_BAD_INDEX && error != B_NAME_NOT_FOUND);
-  if (values.size() == 1) {
-    clause = columnName;
-    clause.Append(" = ?");
-  } else if (values.size() >= 1) {
-    clause = columnName;
-    clause.Append(" IN(");
-    for (unsigned int j = 0; j < values.size(); j++) {
-      if (j > 0)
-        clause.Append(", ");
-      clause.Append("?");
-    }
-    clause.Append(")");
-  }
-  for (auto &value : values)
-    terms.push_back(value);
-  return values.size();
-}
-
-static status_t timestamp_term(BString &clause,
-                               std::vector<std::variant<BString, int64>> &terms,
-                               const BString &attrName, const char *op,
-                               const BMessage &specifier) {
-  int64 value;
-  if (status_t err; (err = specifier.FindInt64(attrName, &value)) != B_OK)
-    return err;
-  clause = "timestamp ";
-  clause.Append(op);
-  clause.Append(" ?");
-  terms.push_back(value);
-  return B_OK;
-}
-
 static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   std::vector<std::variant<BString, int64>> terms;
   BString query = "SELECT cypherkey, context, body FROM messages";
@@ -172,32 +157,18 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
       query.Append(clause);                                                    \
     }                                                                          \
   }
-#define QRY_INT(attr, column)                                                  \
-  {                                                                            \
-    BString clause;                                                            \
-    if (integer_term(clause, terms, attr, column, specifier) > 0) {            \
-      query.Append(separator);                                                 \
-      separator = " AND ";                                                     \
-      query.Append(clause);                                                    \
-    }                                                                          \
-  }
-#define QRY_TSP(attr, op)                                                      \
-  {                                                                            \
-    BString clause;                                                            \
-    if (timestamp_term(clause, terms, attr, op, specifier) == B_OK) {          \
-      query.Append(separator);                                                 \
-      separator = " AND ";                                                     \
-      query.Append(clause);                                                    \
-    }                                                                          \
-  }
   QRY_STR(specifier.what == 'CPLX' ? "cypherkey" : "name", "cypherkey")
   QRY_STR("author", "author")
   QRY_STR("context", "context")
   QRY_STR("type", "type")
-  QRY_TSP("latest", "<=")
-  QRY_TSP("earliest", ">=")
-#undef QRY_TSP
-#undef QRY_INT
+  {
+  	BString clause;
+  	if (timestamps_clause(clause, terms, specifier) == B_OK) {
+  	  query.Append(separator);
+  	  separator = " AND ";
+  	  query.Append(clause);
+  	}
+  }
 #undef QRY_STR
   if (specifier.GetBool("dregs", false)) {
     query.Append(separator);
