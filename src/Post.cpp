@@ -338,6 +338,8 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
       break;
     }
   }
+  if (!match)
+    return false;
   auto boundaries = timeBoundaries(this->specifier);
   if (int64 timestamp; !boundaries.empty() &&
       eitherNumber(&timestamp, &msg, "timestamp") == B_OK) {
