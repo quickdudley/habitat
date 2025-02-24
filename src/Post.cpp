@@ -10,6 +10,7 @@
 #include <NodeMonitor.h>
 #include <Path.h>
 #include <StringList.h>
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -18,12 +19,23 @@
 #include <vector>
 
 /*
-TODO:
-Identify parts of the code which exist purely to work around limitations of
-  `BQuery`s
-Store contact graph in sqlite too
-Add something to periodically recompute `context` column
+TODO: Add something to periodically recompute `context` column
 */
+
+static inline status_t eitherNumber(int64 *result, const BMessage *source,
+                                    const char *name) {
+  if (source->FindInt64(name, result) == B_OK) {
+    return B_OK;
+  } else {
+    JSON::number parsed;
+    if (source->FindDouble(name, &parsed) == B_OK) {
+      *result = parsed;
+      return B_OK;
+    } else {
+      return B_NAME_NOT_FOUND;
+    }
+  }
+}
 
 QueryBacked::QueryBacked(sqlite3_stmt *query)
     :
@@ -41,6 +53,60 @@ template <class... Ts> struct overloaded : Ts... {
 template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 SSBDatabase *runningDB = NULL;
+
+enum struct TimeThreshold {
+  EARLIEST,
+  LATEST,
+};
+
+std::vector<std::pair<TimeThreshold, int64>>
+timeBoundaries(const BMessage &specifier) {
+  std::vector<std::pair<TimeThreshold, int64>> result;
+  int64 value;
+  for (int32 i = 0; specifier.FindInt64("earliest", i, &value) == B_OK; i++)
+    result.push_back({TimeThreshold::EARLIEST, value});
+  for (int32 i = 0; specifier.FindInt64("latest", i, &value) == B_OK; i++)
+    result.push_back({TimeThreshold::LATEST, value});
+  std::sort(
+      result.begin(), result.end(),
+      [](std::pair<TimeThreshold, int64> &a,
+         std::pair<TimeThreshold, int64> &b) { return a.second < b.second; });
+  return result;
+}
+
+status_t timestamps_clause(BString &clause,
+                           std::vector<std::variant<BString, int64>> &terms,
+                           const BMessage &specifier) {
+  auto boundaries = timeBoundaries(specifier);
+  if (boundaries.empty())
+    return B_NAME_NOT_FOUND;
+  clause = "(";
+  BString delimiter;
+  BString subclause;
+  for (auto &[btype, boundary] : boundaries) {
+    clause << delimiter;
+    if (btype == TimeThreshold::LATEST) {
+      if (subclause == "") {
+        clause << "timestamp <= ?";
+      } else {
+        clause << "(";
+        clause << subclause;
+        clause << " AND timestamp <= ?)";
+        subclause = "";
+      }
+    } else {
+      subclause = "timestamp >= ?";
+    }
+    terms.push_back(boundary);
+    delimiter = " OR ";
+  }
+  if (subclause != "") {
+    clause << delimiter;
+    clause << subclause;
+  }
+  clause << ")";
+  return B_OK;
+}
 
 class QueryHandler : public QueryBacked {
 public:
@@ -93,51 +159,6 @@ static int string_term(BString &clause,
   return values.size();
 }
 
-static int integer_term(BString &clause,
-                        std::vector<std::variant<BString, int64>> &terms,
-                        const BString &attrName, const BString &columnName,
-                        const BMessage &specifier) {
-  std::vector<int64> values;
-  int32 i = 0;
-  status_t error;
-  do {
-    values.push_back(0);
-    error = specifier.FindInt64(attrName, i, &values.back());
-    if (error != B_OK)
-      values.pop_back();
-  } while (error != B_BAD_INDEX && error != B_NAME_NOT_FOUND);
-  if (values.size() == 1) {
-    clause = columnName;
-    clause.Append(" = ?");
-  } else if (values.size() >= 1) {
-    clause = columnName;
-    clause.Append(" IN(");
-    for (unsigned int j = 0; j < values.size(); j++) {
-      if (j > 0)
-        clause.Append(", ");
-      clause.Append("?");
-    }
-    clause.Append(")");
-  }
-  for (auto &value : values)
-    terms.push_back(value);
-  return values.size();
-}
-
-static status_t timestamp_term(BString &clause,
-                               std::vector<std::variant<BString, int64>> &terms,
-                               const BString &attrName, const char *op,
-                               const BMessage &specifier) {
-  int64 value;
-  if (status_t err; (err = specifier.FindInt64(attrName, &value)) != B_OK)
-    return err;
-  clause = "timestamp ";
-  clause.Append(op);
-  clause.Append(" ?");
-  terms.push_back(value);
-  return B_OK;
-}
-
 static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   std::vector<std::variant<BString, int64>> terms;
   BString query = "SELECT cypherkey, context, body FROM messages";
@@ -151,32 +172,17 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
       query.Append(clause);                                                    \
     }                                                                          \
   }
-#define QRY_INT(attr, column)                                                  \
-  {                                                                            \
-    BString clause;                                                            \
-    if (integer_term(clause, terms, attr, column, specifier) > 0) {            \
-      query.Append(separator);                                                 \
-      separator = " AND ";                                                     \
-      query.Append(clause);                                                    \
-    }                                                                          \
-  }
-#define QRY_TSP(attr, op)                                                      \
-  {                                                                            \
-    BString clause;                                                            \
-    if (timestamp_term(clause, terms, attr, op, specifier) == B_OK) {          \
-      query.Append(separator);                                                 \
-      separator = " AND ";                                                     \
-      query.Append(clause);                                                    \
-    }                                                                          \
-  }
   QRY_STR(specifier.what == 'CPLX' ? "cypherkey" : "name", "cypherkey")
   QRY_STR("author", "author")
   QRY_STR("context", "context")
-  QRY_STR("type", "type")
-  QRY_TSP("latest", "<=")
-  QRY_TSP("earliest", ">=")
-#undef QRY_TSP
-#undef QRY_INT
+  QRY_STR("type", "type") {
+    BString clause;
+    if (timestamps_clause(clause, terms, specifier) == B_OK) {
+      query.Append(separator);
+      separator = " AND ";
+      query.Append(clause);
+    }
+  }
 #undef QRY_STR
   if (specifier.GetBool("dregs", false)) {
     query.Append(separator);
@@ -332,22 +338,22 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
       break;
     }
   }
-  // TODO: Handle multiple values for these too
-  int64 timestamp = INT64_MIN;
-  if (int64 earliest;
-      this->specifier.FindInt64("earliest", &earliest) == B_OK) {
-    if (msg.FindInt64("timestamp", &timestamp) != B_OK)
-      return false;
-    if (timestamp < earliest)
-      return false;
-  }
-  if (int64 latest; this->specifier.FindInt64("latest", &latest) == B_OK) {
-    if (timestamp == INT64_MIN &&
-        msg.FindInt64("timestamp", &timestamp) != B_OK) {
-      return false;
+  auto boundaries = timeBoundaries(this->specifier);
+  if (int64 timestamp; !boundaries.empty() &&
+      eitherNumber(&timestamp, &msg, "timestamp") == B_OK) {
+    bool provisio = true;
+    for (auto &[btype, boundary] : boundaries) {
+      if (btype == TimeThreshold::EARLIEST) {
+        if (timestamp < boundary)
+          return false;
+        provisio = true;
+      } else {
+        if (timestamp <= boundary)
+          return true;
+        provisio = false;
+      }
     }
-    if (timestamp > latest)
-      return false;
+    return provisio;
   }
   return true;
 }
@@ -813,21 +819,6 @@ void SSBDatabase::loadFeeds() {
     }
   }
   sqlite3_finalize(query);
-}
-
-static inline status_t eitherNumber(int64 *result, BMessage *source,
-                                    const char *name) {
-  if (source->FindInt64(name, result) == B_OK) {
-    return B_OK;
-  } else {
-    JSON::number parsed;
-    if (source->FindDouble(name, &parsed) == B_OK) {
-      *result = parsed;
-      return B_OK;
-    } else {
-      return B_NAME_NOT_FOUND;
-    }
-  }
 }
 
 bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
