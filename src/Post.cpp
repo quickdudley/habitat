@@ -80,6 +80,7 @@ status_t timestamps_clause(BString &clause,
   auto boundaries = timeBoundaries(specifier);
   if (boundaries.empty())
     return B_NAME_NOT_FOUND;
+  clause = "(";
   BString delimiter;
   BString subclause;
   for (auto &[btype, boundary] : boundaries) {
@@ -90,19 +91,20 @@ status_t timestamps_clause(BString &clause,
       } else {
         clause << "(";
         clause << subclause;
-        clause << " OR timestamp <= ?)";
+        clause << " AND timestamp <= ?)";
         subclause = "";
       }
     } else {
       subclause = "timestamp >= ?";
     }
     terms.push_back(boundary);
-    delimiter = " AND ";
+    delimiter = " OR ";
   }
   if (subclause != "") {
     clause << delimiter;
     clause << subclause;
   }
+  clause << ")";
   return B_OK;
 }
 
