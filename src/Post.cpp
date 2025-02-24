@@ -19,12 +19,23 @@
 #include <vector>
 
 /*
-TODO:
-Identify parts of the code which exist purely to work around limitations of
-  `BQuery`s
-Store contact graph in sqlite too
-Add something to periodically recompute `context` column
+TODO: Add something to periodically recompute `context` column
 */
+
+static inline status_t eitherNumber(int64 *result, const BMessage *source,
+                                    const char *name) {
+  if (source->FindInt64(name, result) == B_OK) {
+    return B_OK;
+  } else {
+    JSON::number parsed;
+    if (source->FindDouble(name, &parsed) == B_OK) {
+      *result = parsed;
+      return B_OK;
+    } else {
+      return B_NAME_NOT_FOUND;
+    }
+  }
+}
 
 QueryBacked::QueryBacked(sqlite3_stmt *query)
     :
@@ -63,32 +74,34 @@ timeBoundaries(const BMessage &specifier) {
   return result;
 }
 
-status_t timestamps_clause(BString &clause, std::vector<std::variant<BString, int64>> &terms, const BMessage &specifier) {
+status_t timestamps_clause(BString &clause,
+                           std::vector<std::variant<BString, int64>> &terms,
+                           const BMessage &specifier) {
   auto boundaries = timeBoundaries(specifier);
   if (boundaries.empty())
     return B_NAME_NOT_FOUND;
   BString delimiter;
   BString subclause;
   for (auto &[btype, boundary] : boundaries) {
-  	clause << delimiter;
-  	if (btype == TimeThreshold::LATEST) {
-  	  if (subclause == "") {
-  	  	clause << "timestamp <= ?";
-  	  } else {
-  	  	clause << "(";
-  	  	clause << subclause;
-  	  	clause << " OR timestamp <= ?)";
-  	  	subclause = "";
-  	  }
-  	} else {
-  	  subclause = "timestamp >= ?";
-  	}
-  	terms.push_back(boundary);
-  	delimiter = " AND ";
+    clause << delimiter;
+    if (btype == TimeThreshold::LATEST) {
+      if (subclause == "") {
+        clause << "timestamp <= ?";
+      } else {
+        clause << "(";
+        clause << subclause;
+        clause << " OR timestamp <= ?)";
+        subclause = "";
+      }
+    } else {
+      subclause = "timestamp >= ?";
+    }
+    terms.push_back(boundary);
+    delimiter = " AND ";
   }
   if (subclause != "") {
-  	clause << delimiter;
-  	clause << subclause;
+    clause << delimiter;
+    clause << subclause;
   }
   return B_OK;
 }
@@ -160,14 +173,13 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   QRY_STR(specifier.what == 'CPLX' ? "cypherkey" : "name", "cypherkey")
   QRY_STR("author", "author")
   QRY_STR("context", "context")
-  QRY_STR("type", "type")
-  {
-  	BString clause;
-  	if (timestamps_clause(clause, terms, specifier) == B_OK) {
-  	  query.Append(separator);
-  	  separator = " AND ";
-  	  query.Append(clause);
-  	}
+  QRY_STR("type", "type") {
+    BString clause;
+    if (timestamps_clause(clause, terms, specifier) == B_OK) {
+      query.Append(separator);
+      separator = " AND ";
+      query.Append(clause);
+    }
   }
 #undef QRY_STR
   if (specifier.GetBool("dregs", false)) {
@@ -324,22 +336,22 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
       break;
     }
   }
-  // TODO: Handle multiple values for these too
-  int64 timestamp = INT64_MIN;
-  if (int64 earliest;
-      this->specifier.FindInt64("earliest", &earliest) == B_OK) {
-    if (msg.FindInt64("timestamp", &timestamp) != B_OK)
-      return false;
-    if (timestamp < earliest)
-      return false;
-  }
-  if (int64 latest; this->specifier.FindInt64("latest", &latest) == B_OK) {
-    if (timestamp == INT64_MIN &&
-        msg.FindInt64("timestamp", &timestamp) != B_OK) {
-      return false;
+  auto boundaries = timeBoundaries(this->specifier);
+  if (int64 timestamp; !boundaries.empty() &&
+      eitherNumber(&timestamp, &msg, "timestamp") == B_OK) {
+    bool provisio = true;
+    for (auto &[btype, boundary] : boundaries) {
+      if (btype == TimeThreshold::EARLIEST) {
+        if (timestamp < boundary)
+          return false;
+        provisio = true;
+      } else {
+        if (timestamp <= boundary)
+          return true;
+        provisio = false;
+      }
     }
-    if (timestamp > latest)
-      return false;
+    return provisio;
   }
   return true;
 }
@@ -805,21 +817,6 @@ void SSBDatabase::loadFeeds() {
     }
   }
   sqlite3_finalize(query);
-}
-
-static inline status_t eitherNumber(int64 *result, BMessage *source,
-                                    const char *name) {
-  if (source->FindInt64(name, result) == B_OK) {
-    return B_OK;
-  } else {
-    JSON::number parsed;
-    if (source->FindDouble(name, &parsed) == B_OK) {
-      *result = parsed;
-      return B_OK;
-    } else {
-      return B_NAME_NOT_FOUND;
-    }
-  }
 }
 
 bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
