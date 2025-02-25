@@ -204,12 +204,12 @@ void ContactGraph::logContact(BMessage *message) {
       setter.AddSpecifier("Contact", linkName);
       BMessage reply;
       status_t err;
+      if (this->loaded)
+        this->SendNotices('CTAC');
       if (this->store.SendMessage(&setter, &reply) == B_OK &&
           (reply.FindInt32("error", &err) != B_OK || err == B_OK)) {
         goto mark;
       }
-      if (this->loaded)
-        this->SendNotices('CTAC');
     } else {
       goto mark;
     }
