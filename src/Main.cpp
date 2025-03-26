@@ -467,6 +467,17 @@ int Habitat::initiateConnection(void *message) {
           static_cast<Habitat *>(be_app)->clientMethods,
           msg->GetString("name", ""));
       sockptr->SetTimeout(B_INFINITE_TIMEOUT);
+      if (BString name; msg->FindString("name", &name) == B_OK) {
+        conn->addCloseHook(std::function<void()>([name]() {
+          BMessage data;
+          data.AddBool("connected", false);
+          BMessage update(B_SET_PROPERTY);
+          update.AddMessage("data", &data);
+          update.AddSpecifier("Server", name);
+          BMessageRunner::StartSending(BMessenger(be_app), (&update), 1000000,
+                                       1);
+        }));
+      }
       be_app->RegisterLooper(conn);
       conn->Run();
     } catch (...) {

@@ -376,15 +376,6 @@ void Connection::Quit() {
   }
   if (acquire_sem(this->ongoingLock) == B_OK)
     release_sem(this->ongoingLock);
-  // TODO: Use a disconnection hook instead.
-  if (this->serverName != "") {
-    BMessage data;
-    data.AddBool("connected", false);
-    BMessage update(B_SET_PROPERTY);
-    update.AddMessage("data", &data);
-    update.AddSpecifier("Server", this->serverName);
-    BMessageRunner::StartSending(BMessenger(be_app), (&update), 1000000, 1);
-  }
   for (auto &hook : this->cleanup)
     hook();
   BLooper::Quit();
