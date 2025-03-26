@@ -29,11 +29,13 @@ You can run unit tests with `make test`.
 
 ## Contributing
 
-This project's primary home is on GitLab at [quickdudley/habitat](https://gitlab.com/quickdudley/habitat) and I will likely notice pull requests and
-issue reports sooner than on the GitHub mirror. Furthermore, before starting a
-pull request I advise checking GitLab for any related branches as GitHub only
-has `main`. With those said: feel free to submit pull requests and issue reports
-to either.
+This project's primary home is on TildeGit at [jeremylist/habitat](https://tildegit.org/jeremylist/habitat) and I will likely notice pull requests and
+issue reports sooner than on the other mirrors, but I will eventually notice them regardless of where they're placed. In order to reduce the likelihood of doubling up I recommend checking which branches exist on TildeGit before beginning a pull request.
+
+The full list of mirrors that I actively maintain and monitor is as follows:
+
+- [Codeberg](https://codeberg.org/jeremylist/habitat)
+- [Gitlab](https://gitlab.com/quickdudley/habitat)
 
 Please run `haiku-format -i {src,tests}/*.{h,cpp}` and commit any changes it
 makes before submitting pull requests, and otherwise try to stay consistent with
