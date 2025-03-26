@@ -294,6 +294,7 @@ status_t QueryHandler::runBulk(BMessage *reply) {
 
 bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
                               const BMessage &msg) {
+  // TODO: Handle multiple values in specifier here too.
   if (BString specKey;
       this->specifier.FindString(this->specifier.what == 'CPLX' ? "cypherkey"
                                                                 : "name",

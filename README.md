@@ -36,6 +36,7 @@ The full list of mirrors that I actively maintain and monitor is as follows:
 
 - [Codeberg](https://codeberg.org/jeremylist/habitat)
 - [Gitlab](https://gitlab.com/quickdudley/habitat)
+- [Github](https://github.com/quickdudley/habitat) (main branch only)
 
 Please run `haiku-format -i {src,tests}/*.{h,cpp}` and commit any changes it
 makes before submitting pull requests, and otherwise try to stay consistent with
