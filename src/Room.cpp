@@ -10,6 +10,10 @@ namespace {
 class ConnectedList : public BHandler {
 public:
   void MessageReceived(BMessage *message) override;
+  void addConnected(const BString &key);
+  void rmConnected(const BString &key);
+  bool checkConnected(const BString &key);
+  std::set<BString> getConnected();
 
 private:
   std::set<BString> connected;
@@ -68,6 +72,40 @@ void ConnectedList::MessageReceived(BMessage *message) {
   } else {
     return BHandler::MessageReceived(message);
   }
+}
+
+void ConnectedList::addConnected(const BString &key) {
+  BMessage message(B_CREATE_PROPERTY);
+  message.AddSpecifier("peer");
+  message.AddString("cypherkey", key);
+  BMessenger(this).SendMessage(&message);
+}
+
+void ConnectedList::rmConnected(const BString &key) {
+  BMessage message(B_DELETE_PROPERTY);
+  message.AddSpecifier("peer", key.String());
+  BMessenger(this).SendMessage(&message);
+}
+
+bool ConnectedList::checkConnected(const BString &key) {
+  BMessage message(B_GET_PROPERTY);
+  BMessage reply;
+  message.AddSpecifier("peer", key.String());
+  BMessenger(this).SendMessage(&message, &reply);
+  return reply.what == B_REPLY && reply.GetInt32("error", B_ERROR) == B_OK;
+}
+
+std::set<BString> ConnectedList::getConnected() {
+  BMessage message(B_GET_PROPERTY);
+  BMessage reply;
+  message.AddSpecifier("peer");
+  BMessenger(this).SendMessage(&message, &reply);
+  BString key;
+  std::set<BString> result;
+  for (int32 i = 0; reply.FindString("result", i, &key) == B_OK; i++) {
+  	result.insert(key);
+  }
+  return result;
 }
 
 class AttendantsClient : public BHandler {
