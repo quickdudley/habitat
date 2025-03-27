@@ -39,7 +39,7 @@ void ConnectedList::MessageReceived(BMessage *message) {
         return BHandler::MessageReceived(message);
       this->connected.insert(key);
       BMessage reply(B_REPLY);
-      reply.AddInt32("result", B_OK);
+      reply.AddInt32("error", B_OK);
       message->SendReply(&reply);
     } break;
     case B_DELETE_PROPERTY: {
@@ -47,11 +47,21 @@ void ConnectedList::MessageReceived(BMessage *message) {
       if (specifier.FindString("name", &key) != B_OK)
         return BHandler::MessageReceived(message);
       BMessage reply(B_REPLY);
-      reply.AddInt32("result",
+      reply.AddInt32("error",
                      this->connected.erase(key) > 0 ? B_OK : B_NAME_NOT_FOUND);
       message->SendReply(&reply);
     } break;
-    // TODO: Something to check the contents.
+    case B_GET_PROPERTY: if (BString key; specifier.FindString("name", &key) == B_OK) {
+	  BMessage reply(B_REPLY);
+	  reply.AddInt32("error", this->connected.find(key) != this->connected.end() ? B_OK : B_NAME_NOT_FOUND);
+      message->SendReply(&reply);
+    } else {
+      BMessage reply(B_REPLY);
+      for (auto &key : this->connected) {
+      	reply.AddString("result", key);
+      }
+      message->SendReply(&reply);
+    } break;
     default:
       return BHandler::MessageReceived(message);
     }
