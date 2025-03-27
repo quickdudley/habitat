@@ -3,6 +3,7 @@
 #include "Main.h"
 #include "Tunnel.h"
 #include <Application.h>
+#include <cstring>
 
 namespace rooms2 {
 namespace {
@@ -23,6 +24,40 @@ void ConnectedList::MessageReceived(BMessage *message) {
   //      or fails.
   //   3b. But not if the peer actively refuses our connection.
   //   4. Put peers connected via other transports in the set too.
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  if (message->GetCurrentSpecifier(&index, &specifier, &what, &property) < 0)
+    return BHandler::MessageReceived(message);
+
+  if (std::strcmp("peer", property) == 0) {
+    switch (message->what) {
+    case B_CREATE_PROPERTY: {
+      BString key;
+      if (message->FindString("cypherkey", &key) != B_OK)
+        return BHandler::MessageReceived(message);
+      this->connected.insert(key);
+      BMessage reply(B_REPLY);
+      reply.AddInt32("result", B_OK);
+      message->SendReply(&reply);
+    } break;
+    case B_DELETE_PROPERTY: {
+      BString key;
+      if (specifier.FindString("name", &key) != B_OK)
+        return BHandler::MessageReceived(message);
+      BMessage reply(B_REPLY);
+      reply.AddInt32("result",
+                     this->connected.erase(key) > 0 ? B_OK : B_NAME_NOT_FOUND);
+      message->SendReply(&reply);
+    } break;
+    // TODO: Something to check the contents.
+    default:
+      return BHandler::MessageReceived(message);
+    }
+  } else {
+    return BHandler::MessageReceived(message);
+  }
 }
 
 class AttendantsClient : public BHandler {
@@ -152,13 +187,18 @@ void MetadataHook::call(muxrpc::Connection *rpc) {
 
 class MkTunnel : public muxrpc::Method {
 public:
-  MkTunnel();
+  MkTunnel(ConnectedList *connectedList);
   status_t call(muxrpc::Connection *connection, muxrpc::RequestType type,
                 BMessage *args, BMessenger replyTo,
                 BMessenger *inbound) override;
+
+private:
+  ConnectedList *connectedList;
 };
 
-MkTunnel::MkTunnel() {
+MkTunnel::MkTunnel(ConnectedList *connectedList)
+    :
+    connectedList(connectedList) {
   this->name = {"tunnel", "connect"};
   this->expectedType = muxrpc::RequestType::DUPLEX;
 }
@@ -183,6 +223,6 @@ void installClient(muxrpc::MethodSuite *suite) {
   be_app->AddHandler(connectedList);
   be_app->Unlock();
   suite->registerConnectionHook(std::make_shared<MetadataHook>(connectedList));
-  suite->registerMethod(std::make_shared<MkTunnel>());
+  suite->registerMethod(std::make_shared<MkTunnel>(connectedList));
 }
 } // namespace rooms2

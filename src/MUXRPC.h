@@ -144,7 +144,7 @@ private:
   std::vector<std::function<void()>> cleanup;
   int32 nextRequest = 1;
   std::map<BString, BMessenger> crossTalk;
-  BString serverName;
+  BString serverName; // TODO: Check that this is still used.
   bool stoppedRecv = false;
   friend BDataIO *SenderHandler::output();
   friend void SenderHandler::actuallySend(const BMessage *wrapper);
