@@ -26,7 +26,6 @@ void ConnectedList::MessageReceived(BMessage *message) {
   // TODO:
   //   1. Open connection when AttendantsClient sees a non-connected attendant.
   //   2a. Add attendants to the connected set when we proactively connect.
-  //   2b. Add attendants to the connected set when they connect with us.
   //   3. Remove attendants from the connected set when the connection drops
   //      or fails.
   //   3b. But not if the peer actively refuses our connection.
@@ -274,6 +273,10 @@ MkTunnel::MkTunnel(ConnectedList *connectedList)
 status_t MkTunnel::call(muxrpc::Connection *connection,
                         muxrpc::RequestType type, BMessage *args,
                         BMessenger replyTo, BMessenger *inbound) {
+  if (BMessage arg0; args->FindMessage("0", &arg0) == B_OK) {
+    if (BString origin; arg0.FindMessage("origin", &origin) == B_OK)
+      this->connectedList->addConnected(origin);
+  }
   auto tunnel = new Tunnel(replyTo);
   auto reader = new TunnelReader(tunnel);
   connection->Lock();
