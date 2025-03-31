@@ -14,6 +14,7 @@
 #include <Path.h>
 #include <StatusBar.h>
 #include <Window.h>
+#include <functional>
 #include <memory>
 #include <random>
 #include <set>
@@ -63,7 +64,7 @@ public:
   void ReadyToRun();
   void Quit();
   BDirectory &settingsDir();
-  void acceptConnection(BDataIO *);
+  void acceptConnection(BDataIO *, std::function<void()> closeHook = NULL);
 
 private:
   void loadSettings();

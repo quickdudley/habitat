@@ -504,13 +504,23 @@ sendReply:
   return 0;
 }
 
-void Habitat::acceptConnection(BDataIO *link) {
-  thread_id t = spawn_thread(Habitat::accept__, "New Connection", 0, link);
+namespace {
+struct AcceptArgs {
+  BDataIO *link;
+  std::function<void()> closeHook;
+};
+} // namespace
+
+void Habitat::acceptConnection(BDataIO *link, std::function<void()> closeHook) {
+  auto args = new AcceptArgs{link, closeHook};
+  thread_id t = spawn_thread(Habitat::accept__, "New Connection", 0, args);
   resume_thread(t);
 }
 
-int Habitat::accept__(void *link) {
-  BDataIO *conn = (BDataIO *)link;
+int Habitat::accept__(void *args) {
+  BDataIO *conn = ((AcceptArgs *)args)->link;
+  std::function<void()> closeHook = ((AcceptArgs *)args)->closeHook;
+  delete (AcceptArgs *)args;
   std::unique_ptr<BoxStream> shsPeer;
   try {
     shsPeer = std::make_unique<BoxStream>(
@@ -518,6 +528,8 @@ int Habitat::accept__(void *link) {
         static_cast<Habitat *>(be_app)->myId.get());
     auto rpc = new muxrpc::Connection(
         std::move(shsPeer), static_cast<Habitat *>(be_app)->clientMethods);
+    if (closeHook)
+      rpc->addCloseHook(closeHook);
     be_app->RegisterLooper(rpc);
     rpc->Run();
   } catch (HandshakeError err) {

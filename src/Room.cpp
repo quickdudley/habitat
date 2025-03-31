@@ -274,7 +274,7 @@ status_t MkTunnel::call(muxrpc::Connection *connection,
                         muxrpc::RequestType type, BMessage *args,
                         BMessenger replyTo, BMessenger *inbound) {
   if (BMessage arg0; args->FindMessage("0", &arg0) == B_OK) {
-    if (BString origin; arg0.FindMessage("origin", &origin) == B_OK)
+    if (BString origin; arg0.FindString("origin", &origin) == B_OK)
       this->connectedList->addConnected(origin);
   }
   auto tunnel = new Tunnel(replyTo);
