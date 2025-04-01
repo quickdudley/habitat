@@ -58,6 +58,8 @@ int32 clientThread(void *data) {
 } // namespace
 
 TEST_CASE("SHS connection works", "[shs]") {
+  SKIP("Current version of Catch2 is not compatible with Haiku-style "
+       "multithreading");
   TestData testdata;
   crypto_auth_keygen(testdata.netkey);
   testdata.serverKeys.generate();
