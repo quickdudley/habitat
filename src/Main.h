@@ -65,13 +65,18 @@ public:
   void Quit();
   BDirectory &settingsDir();
   void acceptConnection(BDataIO *, std::function<void()> closeHook = NULL);
+  void initiateConnection(BDataIO *, const BString &key,
+                          std::function<void()> closeHook = NULL);
 
 private:
   void loadSettings();
   void saveSettings();
   void checkServerStatus();
   static int initiateConnection(void *message);
-  static int accept__(void *link);
+  static int accept__(void *args);
+  static int initiate__(void *args);
+  int initiate__(std::unique_ptr<BDataIO> &, unsigned char *key,
+                 std::function<void()> closeHook = NULL);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
   ContactStore *contactStore;

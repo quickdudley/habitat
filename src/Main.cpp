@@ -16,6 +16,7 @@
 #include <MenuItem.h>
 #include <PropertyInfo.h>
 #include <TimeZone.h>
+#include <cstring>
 #include <iostream>
 #include <signal.h>
 #include <sodium.h>
@@ -452,34 +453,27 @@ int Habitat::initiateConnection(void *message) {
     if ((error = msg->FindString("key", &key)) != B_OK)
       goto sendReply;
     auto rawKey = base64::decode(key);
-    if (rawKey.size() != 32) {
+    if (rawKey.size() != crypto_sign_PUBLICKEYBYTES) {
       error = B_BAD_VALUE;
       goto sendReply;
     }
     try {
       auto sock = std::make_unique<BSocket>(BNetworkAddress(host, port));
       sock->SetTimeout(15000000);
-      auto sockptr = sock.get();
-      auto conn = new muxrpc::Connection(
-          std::make_unique<BoxStream>(
-              std::move(sock), SSB_NETWORK_ID,
-              static_cast<Habitat *>(be_app)->myId.get(), rawKey.data()),
-          static_cast<Habitat *>(be_app)->clientMethods,
-          msg->GetString("name", ""));
-      sockptr->SetTimeout(B_INFINITE_TIMEOUT);
-      if (BString name; msg->FindString("name", &name) == B_OK) {
-        conn->addCloseHook(std::function<void()>([name]() {
-          BMessage data;
-          data.AddBool("connected", false);
-          BMessage update(B_SET_PROPERTY);
-          update.AddMessage("data", &data);
-          update.AddSpecifier("Server", name);
-          BMessageRunner::StartSending(BMessenger(be_app), (&update), 1000000,
-                                       1);
-        }));
-      }
-      be_app->RegisterLooper(conn);
-      conn->Run();
+      BString name;
+      static_cast<Habitat *>(be_app)->initiate__(
+          sock, rawKey.data(),
+          msg->FindString("name", &name) == B_OK
+              ? std::function<void()>([name]() {
+                  BMessage data;
+                  data.AddBool("connected", false);
+                  BMessage update(B_SET_PROPERTY);
+                  update.AddMessage("data", &data);
+                  update.AddSpecifier("Server", name);
+                  BMessageRunner::StartSending(BMessenger(be_app), (&update),
+                                               1000000, 1);
+                })
+              : NULL);
     } catch (...) {
       error = B_IO_ERROR;
       goto sendReply;
@@ -509,11 +503,28 @@ struct AcceptArgs {
   BDataIO *link;
   std::function<void()> closeHook;
 };
+
+struct InitiateArgs {
+  BDataIO *link;
+  unsigned char key[crypto_sign_PUBLICKEYBYTES];
+  std::function<void()> closeHook;
+};
 } // namespace
 
 void Habitat::acceptConnection(BDataIO *link, std::function<void()> closeHook) {
   auto args = new AcceptArgs{link, closeHook};
   thread_id t = spawn_thread(Habitat::accept__, "New Connection", 0, args);
+  resume_thread(t);
+}
+
+void Habitat::initiateConnection(BDataIO *link, const BString &key,
+                                 std::function<void()> closeHook) {
+  auto args = new InitiateArgs{link, {0}, closeHook};
+  auto rawKey = base64::decode(key);
+  if (rawKey.size() != crypto_sign_PUBLICKEYBYTES)
+    return;
+  std::memcpy(args->key, rawKey.data(), crypto_sign_PUBLICKEYBYTES);
+  thread_id t = spawn_thread(Habitat::initiate__, "New Connection", 0, args);
   resume_thread(t);
 }
 
@@ -538,6 +549,37 @@ int Habitat::accept__(void *args) {
     delete conn;
     throw;
   }
+  return 0;
+}
+
+int Habitat::initiate__(void *args) {
+  try {
+    int result =
+        ((Habitat *)be_app)
+            ->initiate__(std::unique_ptr<BDataIO>(((InitiateArgs *)args)->link),
+                         ((InitiateArgs *)args)->key,
+                         ((InitiateArgs *)args)->closeHook);
+    delete (InitiateArgs *)args;
+    return result;
+  } catch (...) {
+    return -1;
+  }
+}
+
+int Habitat::initiate__(std::unique_ptr<BDataIO> &link, unsigned char *key,
+                        std::function<void()> closeHook) {
+  auto sockptr = dynamic_cast<BSocket *>(link.get());
+  // TODO: Check whether or not the "name" argument is still being used anywhere
+  auto conn = new muxrpc::Connection(
+      std::make_unique<BoxStream>(std::move(link), SSB_NETWORK_ID,
+                                  this->myId.get(), key),
+      this->clientMethods, "");
+  if (sockptr)
+    sockptr->SetTimeout(B_INFINITE_TIMEOUT);
+  if (closeHook)
+    conn->addCloseHook(closeHook);
+  be_app->RegisterLooper(conn);
+  conn->Run();
   return 0;
 }
 
