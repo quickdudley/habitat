@@ -140,7 +140,12 @@ std::unique_ptr<NodeSink> NodeSink::addArray(const BString &rawname,
   return std::make_unique<IgnoreNode>();
 }
 
-SerializerStart::SerializerStart(BString *target) { this->target = target; }
+SerializerStart::SerializerStart(BString *target, int32 indentation,
+                                 bool newlines)
+    :
+    target(target),
+    indentation(indentation),
+    newlines(newlines) {}
 
 void SerializerStart::addNumber(const BString &rawname, const BString &name,
                                 const BString &raw, number value) {
@@ -163,7 +168,8 @@ void SerializerStart::addString(const BString &rawname, const BString &name,
 
 class ObjectSerializer : public NodeSink {
 public:
-  ObjectSerializer(BString *target, int indent);
+  ObjectSerializer(BString *target, int32 indent, int32 indentStep,
+                   bool newlines);
   ~ObjectSerializer();
   void addNumber(const BString &rawname, const BString &name,
                  const BString &raw, number value) override;
@@ -180,13 +186,16 @@ public:
 private:
   void property(const BString &name);
   BString *target;
-  int indent;
+  int32 indent;
+  int32 indentStep;
   bool nonempty;
+  bool newlines;
 };
 
 class ArraySerializer : public NodeSink {
 public:
-  ArraySerializer(BString *target, int indent);
+  ArraySerializer(BString *target, int32 indent, int32 indentStep,
+                  bool newlines);
   ~ArraySerializer();
   void addNumber(const BString &rawname, const BString &name,
                  const BString &raw, number value) override;
@@ -203,31 +212,40 @@ public:
 private:
   void item();
   BString *target;
-  int indent;
+  int32 indent;
+  int32 indentStep;
   bool nonempty;
+  bool newlines;
 };
 
 std::unique_ptr<NodeSink> SerializerStart::addObject(const BString &rawname,
                                                      const BString &name) {
-  return std::make_unique<ObjectSerializer>(this->target, 2);
+  return std::make_unique<ObjectSerializer>(this->target, this->indentation,
+                                            this->indentation, this->newlines);
 }
 
 std::unique_ptr<NodeSink> SerializerStart::addArray(const BString &rawname,
                                                     const BString &name) {
-  return std::make_unique<ArraySerializer>(this->target, 2);
+  return std::make_unique<ArraySerializer>(this->target, this->indentation,
+                                           this->indentation, this->newlines);
 }
 
-ObjectSerializer::ObjectSerializer(BString *target, int indent) {
+ObjectSerializer::ObjectSerializer(BString *target, int32 indent,
+                                   int32 indentStep, bool newlines)
+    :
+    indent(indent),
+    indentStep(indentStep),
+    nonempty(false),
+    newlines(newlines) {
   this->target = target;
-  this->indent = indent;
-  this->nonempty = false;
   target->Append("{");
 }
 
 ObjectSerializer::~ObjectSerializer() {
   if (this->nonempty) {
-    this->target->Append("\n");
-    this->target->Append(' ', this->indent - 2);
+    if (this->newlines)
+      this->target->Append("\n");
+    this->target->Append(' ', this->indent - this->indentStep);
   }
   this->target->Append("}");
 }
@@ -258,13 +276,17 @@ void ObjectSerializer::addString(const BString &rawname, const BString &name,
 std::unique_ptr<NodeSink> ObjectSerializer::addObject(const BString &rawname,
                                                       const BString &name) {
   this->property(rawname);
-  return std::make_unique<ObjectSerializer>(this->target, this->indent + 2);
+  return std::make_unique<ObjectSerializer>(this->target,
+                                            this->indent + this->indentStep,
+                                            this->indentStep, this->newlines);
 }
 
 std::unique_ptr<NodeSink> ObjectSerializer::addArray(const BString &rawname,
                                                      const BString &name) {
   this->property(rawname);
-  return std::make_unique<ArraySerializer>(this->target, this->indent + 2);
+  return std::make_unique<ArraySerializer>(this->target,
+                                           this->indent + this->indentStep,
+                                           this->indentStep, this->newlines);
 }
 
 void ObjectSerializer::property(const BString &rawname) {
@@ -272,23 +294,29 @@ void ObjectSerializer::property(const BString &rawname) {
     this->target->Append(",");
   else
     this->nonempty = true;
-  this->target->Append('\n', 1);
+  if (this->newlines)
+    this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
   this->target->Append(rawname);
-  this->target->Append(": ");
+  this->target->Append(this->newlines || this->indent > 0 ? ": " : ":");
 }
 
-ArraySerializer::ArraySerializer(BString *target, int indent) {
+ArraySerializer::ArraySerializer(BString *target, int32 indent,
+                                 int32 indentStep, bool newlines)
+    :
+    indent(indent),
+    indentStep(indentStep),
+    nonempty(false),
+    newlines(newlines) {
   this->target = target;
-  this->indent = indent;
-  this->nonempty = false;
   target->Append("[");
 }
 
 ArraySerializer::~ArraySerializer() {
   if (this->nonempty) {
-    this->target->Append("\n");
-    this->target->Append(' ', this->indent - 2);
+    if (this->newlines)
+      this->target->Append("\n");
+    this->target->Append(' ', this->indent - this->indentStep);
   }
   this->target->Append("]");
 }
@@ -319,13 +347,17 @@ void ArraySerializer::addString(const BString &rawname, const BString &name,
 std::unique_ptr<NodeSink> ArraySerializer::addObject(const BString &rawname,
                                                      const BString &name) {
   this->item();
-  return std::make_unique<ObjectSerializer>(this->target, this->indent + 2);
+  return std::make_unique<ObjectSerializer>(this->target,
+                                            this->indent + this->indentStep,
+                                            this->indentStep, this->newlines);
 }
 
 std::unique_ptr<NodeSink> ArraySerializer::addArray(const BString &rawname,
                                                     const BString &name) {
   this->item();
-  return std::make_unique<ArraySerializer>(this->target, this->indent + 2);
+  return std::make_unique<ArraySerializer>(this->target,
+                                           this->indent + this->indentStep,
+                                           this->indentStep, this->newlines);
 }
 
 void ArraySerializer::item() {
@@ -333,7 +365,8 @@ void ArraySerializer::item() {
     this->target->Append(",");
   else
     this->nonempty = true;
-  this->target->Append('\n', 1);
+  if (this->newlines)
+    this->target->Append('\n', 1);
   this->target->Append(' ', this->indent);
 }
 

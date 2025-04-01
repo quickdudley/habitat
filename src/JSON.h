@@ -32,7 +32,7 @@ typedef NodeSink IgnoreNode;
 
 class SerializerStart : public NodeSink {
 public:
-  SerializerStart(BString *target);
+  SerializerStart(BString *target, int32 indentation = 2, bool newlines = true);
   void addNumber(const BString &rawname, const BString &name,
                  const BString &raw, number value) override;
   void addBool(const BString &rawname, const BString &name,
@@ -47,6 +47,8 @@ public:
 
 private:
   BString *target;
+  int32 indentation;
+  bool newlines;
 };
 
 class Splitter : public NodeSink {
