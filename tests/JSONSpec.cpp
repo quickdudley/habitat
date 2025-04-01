@@ -348,3 +348,48 @@ TEST_CASE("Round-trips escape sequences found in failing message", "[JSON]") {
   }
   REQUIRE(reconstructed == original);
 }
+
+TEST_CASE("Generates JSON without additional whitespace when required",
+          "[JSON]") {
+  BMessage outer('JSOB');
+  BMessage a('JSAR');
+  a.AddDouble("0", 1.0);
+  a.AddBool("1", false);
+  outer.AddMessage("a", &a);
+  BMessage b('JSOB');
+  b.AddDouble("c", 2.0);
+  outer.AddMessage("b", &b);
+  BString output;
+  {
+    JSON::RootSink rootSink(
+        std::make_unique<JSON::SerializerStart>(&output, 0, false));
+    JSON::fromBMessage(&rootSink, &outer);
+  }
+  REQUIRE(output == "{\"a\":[1,false],\"b\":{\"c\":2}}");
+}
+
+TEST_CASE("Generates JSON with additional whitespace by default", "[JSON]") {
+  BMessage outer('JSOB');
+  BMessage a('JSAR');
+  a.AddDouble("0", 1.0);
+  a.AddBool("1", false);
+  outer.AddMessage("a", &a);
+  BMessage b('JSOB');
+  b.AddDouble("c", 2.0);
+  outer.AddMessage("b", &b);
+  BString output;
+  {
+    JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&output));
+    JSON::fromBMessage(&rootSink, &outer);
+  }
+  REQUIRE(output ==
+          "{\n"
+          "  \"a\": [\n"
+          "    1,\n"
+          "    false\n"
+          "  ],\n"
+          "  \"b\": {\n"
+          "    \"c\": 2\n"
+          "  }\n"
+          "}");
+}
