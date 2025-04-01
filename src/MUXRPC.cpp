@@ -167,7 +167,7 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
     public:
       ExtractContent(BString *target, Header *header)
           :
-          JSON::SerializerStart(target),
+          JSON::SerializerStart(target, 0, false),
           target(target),
           header(header) {}
       void addNumber(const BString &rawname, const BString &name,
