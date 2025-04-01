@@ -462,7 +462,7 @@ int Habitat::initiateConnection(void *message) {
       sock->SetTimeout(15000000);
       BString name;
       static_cast<Habitat *>(be_app)->initiate__(
-          sock, rawKey.data(),
+          std::move(sock), rawKey.data(),
           msg->FindString("name", &name) == B_OK
               ? std::function<void()>([name]() {
                   BMessage data;
@@ -566,7 +566,7 @@ int Habitat::initiate__(void *args) {
   }
 }
 
-int Habitat::initiate__(std::unique_ptr<BDataIO> &link, unsigned char *key,
+int Habitat::initiate__(std::unique_ptr<BDataIO> link, unsigned char *key,
                         std::function<void()> closeHook) {
   auto sockptr = dynamic_cast<BSocket *>(link.get());
   // TODO: Check whether or not the "name" argument is still being used anywhere

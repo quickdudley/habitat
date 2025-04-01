@@ -75,7 +75,7 @@ private:
   static int initiateConnection(void *message);
   static int accept__(void *args);
   static int initiate__(void *args);
-  int initiate__(std::unique_ptr<BDataIO> &, unsigned char *key,
+  int initiate__(std::unique_ptr<BDataIO>, unsigned char *key,
                  std::function<void()> closeHook = NULL);
   MainWindow *mainWindow;
   SSBDatabase *databaseLooper;
