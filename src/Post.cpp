@@ -1536,7 +1536,7 @@ static inline status_t validateSize(BMessage *message) {
   BString serialized;
   {
     JSON::RootSink rootSink(
-        std::make_unique<JSON::SerializerStart>(&serialized));
+        std::make_unique<JSON::SerializerStart>(&serialized, 0, false));
     JSON::fromBMessage(&rootSink, message);
   }
   const char *u8 = serialized.String();
