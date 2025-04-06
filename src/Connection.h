@@ -3,8 +3,11 @@
 
 #include "Secret.h"
 #include <DataIO.h>
+#include <Handler.h>
+#include <Messenger.h>
 #include <String.h>
 #include <memory>
+#include <set>
 #include <sodium.h>
 
 extern const unsigned char SSB_NETWORK_ID[32];
@@ -43,6 +46,20 @@ private:
   unsigned char sendnonce[24];
   unsigned char recvkey[32];
   unsigned char recvnonce[24];
+};
+
+class ConnectedList : public BHandler {
+public:
+  void MessageReceived(BMessage *message) override;
+  void addConnected(const BString &key);
+  void rmConnected(const BString &key);
+  bool checkConnected(const BString &key);
+  std::set<BString> getConnected();
+
+private:
+  bool _checkConnected(const BString &key);
+  std::set<BString> _getConnected();
+  std::set<BString> connected;
 };
 
 enum PortOption { PORT_FORBIDDEN = 0, PORT_OPTIONAL = 1, PORT_REQUIRED = 2 };

@@ -1,6 +1,8 @@
 #include "Connection.h"
 #include "Base64.h"
 #include <Errors.h>
+#include <Handler.h>
+#include <Looper.h>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -627,6 +629,104 @@ static bool validateIPv6(const char *hostName, int32 end) {
     }
   }
   return fields == 7 || chunks > 0;
+}
+
+void ConnectedList::MessageReceived(BMessage *message) {
+  int32 index;
+  BMessage specifier;
+  int32 what;
+  const char *property;
+  if (message->GetCurrentSpecifier(&index, &specifier, &what, &property) < 0)
+    return BHandler::MessageReceived(message);
+
+  if (std::strcmp("peer", property) == 0) {
+    switch (message->what) {
+    case B_CREATE_PROPERTY: {
+      BString key;
+      if (message->FindString("cypherkey", &key) != B_OK)
+        return BHandler::MessageReceived(message);
+      this->connected.insert(key);
+      BMessage reply(B_REPLY);
+      reply.AddInt32("error", B_OK);
+      message->SendReply(&reply);
+    } break;
+    case B_DELETE_PROPERTY: {
+      BString key;
+      if (specifier.FindString("name", &key) != B_OK)
+        return BHandler::MessageReceived(message);
+      BMessage reply(B_REPLY);
+      reply.AddInt32("error",
+                     this->connected.erase(key) > 0 ? B_OK : B_NAME_NOT_FOUND);
+      message->SendReply(&reply);
+    } break;
+    case B_GET_PROPERTY:
+      if (BString key; specifier.FindString("name", &key) == B_OK) {
+        BMessage reply(B_REPLY);
+        reply.AddInt32("error",
+                       this->_checkConnected(key) ? B_OK : B_NAME_NOT_FOUND);
+        message->SendReply(&reply);
+      } else {
+        BMessage reply(B_REPLY);
+        for (auto &key : this->connected)
+          reply.AddString("result", key);
+        message->SendReply(&reply);
+      }
+      break;
+    default:
+      return BHandler::MessageReceived(message);
+    }
+  } else {
+    return BHandler::MessageReceived(message);
+  }
+}
+
+void ConnectedList::addConnected(const BString &key) {
+  BMessage message(B_CREATE_PROPERTY);
+  message.AddSpecifier("peer");
+  message.AddString("cypherkey", key);
+  BMessenger(this).SendMessage(&message);
+}
+
+void ConnectedList::rmConnected(const BString &key) {
+  BMessage message(B_DELETE_PROPERTY);
+  message.AddSpecifier("peer", key.String());
+  BMessenger(this).SendMessage(&message);
+}
+
+bool ConnectedList::checkConnected(const BString &key) {
+  if (this->Looper()->Thread() == find_thread(NULL)) {
+    return this->checkConnected(key);
+  } else {
+    BMessage message(B_GET_PROPERTY);
+    message.AddSpecifier("peer", key.String());
+    BMessage reply;
+    BMessenger(this).SendMessage(&message, &reply);
+    return reply.what == B_REPLY && reply.GetInt32("error", B_ERROR) == B_OK;
+  }
+}
+
+std::set<BString> ConnectedList::getConnected() {
+  if (this->Looper()->Thread() == find_thread(NULL)) {
+    return this->_getConnected();
+  } else {
+    BMessage message(B_GET_PROPERTY);
+    BMessage reply;
+    message.AddSpecifier("peer");
+    BMessenger(this).SendMessage(&message, &reply);
+    BString key;
+    std::set<BString> result;
+    for (int32 i = 0; reply.FindString("result", i, &key) == B_OK; i++)
+      result.insert(key);
+    return result;
+  }
+}
+
+bool ConnectedList::_checkConnected(const BString &key) {
+  return this->connected.find(key) != this->connected.end();
+}
+
+std::set<BString> ConnectedList::_getConnected() {
+  return std::set<BString>(this->connected.begin(), this->connected.end());
 }
 
 static inline bool validateDomainName(const BString &hostName, int end) {
