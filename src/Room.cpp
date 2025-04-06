@@ -184,10 +184,7 @@ status_t MkTunnel::call(muxrpc::Connection *connection,
 } // namespace
 
 void installClient(muxrpc::MethodSuite *suite) {
-  auto connectedList = new ConnectedList();
-  be_app->Lock();
-  be_app->AddHandler(connectedList);
-  be_app->Unlock();
+  auto connectedList = ConnectedList::instance();
   suite->registerConnectionHook(std::make_shared<MetadataHook>(connectedList));
   suite->registerMethod(std::make_shared<MkTunnel>(connectedList));
 }

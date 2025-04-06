@@ -1,5 +1,6 @@
 #include "Connection.h"
 #include "Base64.h"
+#include <Application.h>
 #include <Errors.h>
 #include <Handler.h>
 #include <Looper.h>
@@ -719,6 +720,17 @@ std::set<BString> ConnectedList::getConnected() {
       result.insert(key);
     return result;
   }
+}
+
+ConnectedList *ConnectedList::instance() {
+  static ConnectedList *result = NULL;
+  if (!result) {
+  	result = new ConnectedList();
+  	be_app->Lock();
+  	be_app->AddHandler(result);
+  	be_app->Unlock();
+  }
+  return result;
 }
 
 bool ConnectedList::_checkConnected(const BString &key) {

@@ -55,6 +55,7 @@ public:
   void rmConnected(const BString &key);
   bool checkConnected(const BString &key);
   std::set<BString> getConnected();
+  static ConnectedList *instance();
 
 private:
   bool _checkConnected(const BString &key);
