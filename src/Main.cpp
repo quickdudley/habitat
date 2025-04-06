@@ -180,6 +180,7 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
+    ConnectedList::instance()->addConnected(this->myId->getCypherkey());
   }
   // Create main feed looper
   this->databaseLooper = new SSBDatabase(database);
