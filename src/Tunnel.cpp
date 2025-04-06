@@ -79,7 +79,7 @@ sem_id Tunnel::getLock() { return this->queueLock; }
 TunnelReader::TunnelReader(Tunnel *sink)
     :
     sink(sink),
-    queueLock(sink->getLock()) {}
+    queueLock(sink ? sink->getLock() : 0) {}
 
 TunnelReader::~TunnelReader() {
   if (acquire_sem(this->queueLock) == B_OK) {
@@ -108,6 +108,16 @@ cleanup:
   if (message->GetBool("end", false) || !message->GetBool("stream", true)) {
     this->Looper()->RemoveHandler(this);
     delete this;
+  }
+}
+
+status_t TunnelReader::setSink(Tunnel *sink) {
+  if (this->sink == NULL) {
+    this->sink = sink;
+    this->queueLock = sink->getLock();
+    return B_OK;
+  } else {
+    return B_ERROR;
   }
 }
 } // namespace rooms2

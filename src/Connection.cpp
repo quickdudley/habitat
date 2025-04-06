@@ -725,10 +725,10 @@ std::set<BString> ConnectedList::getConnected() {
 ConnectedList *ConnectedList::instance() {
   static ConnectedList *result = NULL;
   if (!result) {
-  	result = new ConnectedList();
-  	be_app->Lock();
-  	be_app->AddHandler(result);
-  	be_app->Unlock();
+    result = new ConnectedList();
+    be_app->Lock();
+    be_app->AddHandler(result);
+    be_app->Unlock();
   }
   return result;
 }

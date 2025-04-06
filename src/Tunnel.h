@@ -33,9 +33,11 @@ private:
 
 class TunnelReader : public BHandler {
 public:
+  TunnelReader();
   TunnelReader(Tunnel *sink);
   void MessageReceived(BMessage *message);
   ~TunnelReader();
+  status_t setSink(Tunnel *sink);
 
 private:
   Tunnel *sink;
