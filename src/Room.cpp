@@ -7,12 +7,6 @@
 #include <cstring>
 
 // TODO:
-//   1. Open connection when AttendantsClient sees a non-connected attendant.
-//      (in progress)
-//   2a. Add attendants to the connected set when we proactively connect.
-//   3. Remove attendants from the connected set when the connection drops
-//      or fails. (in progress)
-//   3b. But not if the peer actively refuses our connection.
 //   4. Put peers connected via other transports in the set too. (in progress)
 
 namespace rooms2 {
