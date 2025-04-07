@@ -1,4 +1,5 @@
 #include "JSON.h"
+#include "Logging.h"
 #include <cctype>
 #include <cmath>
 #include <iostream>
@@ -882,8 +883,13 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
   } else {
     this->state = estate;
     this->token.Truncate(this->token.Length() - 1);
-    this->target->addNumber(this->rawname, this->name, this->token,
-                            std::stod(this->token.String()));
+    number value = std::stod(this->token.String());
+    this->target->addNumber(this->rawname, this->name, this->token, value);
+    if (BString es = stringifyNumber(value); es != this->token) {
+      BString message("JSON reconstruction mismatch ");
+      message << es << " != " << this->token;
+      writeLog('JSON', message);
+    }
     this->rawname = "";
     this->name = "";
     this->token = "";
@@ -902,6 +908,11 @@ status_t Parser::charInString(char c, int cstate, int estate) {
     } else if (this->highsurrogate != 0) {
       return B_ILLEGAL_DATA;
     } else if (c == '\"') {
+      if (BString es = escapeString(this->unescaped); this->token != es) {
+        BString message("JSON reconstruction mismatch ");
+        message << es << " != " << this->token;
+        writeLog('JSON', message);
+      }
       this->state = estate;
     } else {
       this->unescaped.Append(c, 1);

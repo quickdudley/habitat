@@ -470,5 +470,8 @@ $(TEST_DIR)/ssb_validation_dataset.json:
 	curl -o "$@" https://raw.githubusercontent.com/fraction/ssb-validation-dataset/master/data.json
 $(TEST_DIR)/ssb_validation_dataset.h: $(TEST_DIR)/ssb_validation_dataset.json
 	xxd -i $(TEST_DIR)/ssb_validation_dataset.json "$@"
+$(TEST_DIR)/failures.h: tests/failures.json
+	xxd -i tests/failures.json "$@"
 generated/test/ValidationDatasetSpec.o : $(TEST_DIR)/ssb_validation_dataset.h
+$(TEST_DIR)/PreviousFailuresSpec.o : $(TEST_DIR)/failures.h
 

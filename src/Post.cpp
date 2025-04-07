@@ -1098,6 +1098,11 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       }
       BString message("Validation failed: message on ");
       message << this->cypherkey();
+      message << "; ";
+      {
+      	JSON::RootSink rootSink(std::make_unique<JSON::SerializerStart>(&message, 0, false));
+        JSON::fromBMessage(&rootSink, msg);
+      }
       writeLog('FORK', message);
     }
   } else {
