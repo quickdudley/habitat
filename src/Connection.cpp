@@ -670,12 +670,22 @@ void ConnectedList::MessageReceived(BMessage *message) {
         BMessage reply(B_REPLY);
         for (auto &key : this->connected)
           reply.AddString("result", key);
+        for (auto &key : this->excluded)
+          reply.AddString("result", key);
         message->SendReply(&reply);
       }
       break;
     default:
       return BHandler::MessageReceived(message);
     }
+  } else if (std::strcmp("excluded", property) == 0 && message->what == B_CREATE_PROPERTY) {
+	      BString key;
+      if (message->FindString("cypherkey", &key) != B_OK)
+        return BHandler::MessageReceived(message);
+      this->excluded.insert(key);
+      BMessage reply(B_REPLY);
+      reply.AddInt32("error", B_OK);
+      message->SendReply(&reply);
   } else {
     return BHandler::MessageReceived(message);
   }
@@ -684,6 +694,13 @@ void ConnectedList::MessageReceived(BMessage *message) {
 void ConnectedList::addConnected(const BString &key) {
   BMessage message(B_CREATE_PROPERTY);
   message.AddSpecifier("peer");
+  message.AddString("cypherkey", key);
+  BMessenger(this).SendMessage(&message);
+}
+
+void ConnectedList::addExcluded(const BString &key) {
+  BMessage message(B_CREATE_PROPERTY);
+  message.AddSpecifier("excluded");
   message.AddString("cypherkey", key);
   BMessenger(this).SendMessage(&message);
 }
@@ -734,11 +751,13 @@ ConnectedList *ConnectedList::instance() {
 }
 
 bool ConnectedList::_checkConnected(const BString &key) {
-  return this->connected.find(key) != this->connected.end();
+  return this->connected.find(key) != this->connected.end() || this->excluded.find(key) != this->excluded.end();
 }
 
 std::set<BString> ConnectedList::_getConnected() {
-  return std::set<BString>(this->connected.begin(), this->connected.end());
+  std::set<BString> result(this->connected.begin(), this->connected.end());
+  result.insert(this->excluded.begin(), this->excluded.end());
+  return result;
 }
 
 static inline bool validateDomainName(const BString &hostName, int end) {

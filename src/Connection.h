@@ -52,6 +52,7 @@ class ConnectedList : public BHandler {
 public:
   void MessageReceived(BMessage *message) override;
   void addConnected(const BString &key);
+  void addExcluded(const BString &key);
   void rmConnected(const BString &key);
   bool checkConnected(const BString &key);
   std::set<BString> getConnected();
@@ -61,6 +62,7 @@ private:
   bool _checkConnected(const BString &key);
   std::set<BString> _getConnected();
   std::set<BString> connected;
+  std::set<BString> excluded;
 };
 
 enum PortOption { PORT_FORBIDDEN = 0, PORT_OPTIONAL = 1, PORT_REQUIRED = 2 };
