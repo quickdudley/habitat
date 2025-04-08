@@ -2,6 +2,7 @@
 #include <File.h>
 #include <limits>
 #include <set>
+#include <iostream>
 
 namespace JSON {
 
@@ -33,6 +34,7 @@ bool wasArray(const BMessage *msg) {
   return true;
 }
 
+// TODO: escape nulls
 static inline BString jsonAttrName(const BString &attrName) {
   if (attrName.EndsWith("_")) {
     BString substr;
@@ -122,7 +124,11 @@ void fromBMessageData(RootSink *target, const BMessage *source,
     target->addString(jsonAttrName(attrname), value);
   } break;
   case B_STRING_TYPE: {
+  	BString value0;
+  	source->FindString(attrname, &value0);
     BString value(source->GetString(attrname.String(), ""));
+    if (value0 != value)
+      std::cerr << value0.String() << std::endl;
     target->addString(jsonAttrName(attrname), value);
   } break;
   }
@@ -249,7 +255,7 @@ void BMessageObjectDocSink::addNull(const BString &rawname,
 void BMessageObjectDocSink::addString(const BString &rawname,
                                       const BString &name, const BString &raw,
                                       const BString &value) {
-  this->target->AddString(messageAttrName(name).String(), value.String());
+  this->target->AddString(messageAttrName(name), value);
 }
 
 std::unique_ptr<NodeSink>

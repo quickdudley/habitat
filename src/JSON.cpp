@@ -1,5 +1,6 @@
 #include "JSON.h"
 #include "Logging.h"
+#include <File.h>
 #include <cctype>
 #include <cmath>
 #include <iostream>
@@ -28,6 +29,9 @@ BString escapeString(const BString &src) {
       BString addenum;
       addenum.SetToFormat("\\u%04x", (int)c);
       result << addenum;
+    } else if (c == (char)0xC0 && src[i + 1] == (char)0x80) {
+      result << "\\u0000";
+      i++;
     } else {
       result << c;
     }
@@ -537,7 +541,7 @@ status_t parse(std::unique_ptr<NodeSink> target, BDataIO *input, size_t bytes) {
 }
 
 status_t parse(Parser *target, BDataIO *input, size_t bytes) {
-  //  static BFile dump("jsondump", B_WRITE_ONLY | B_CREATE_FILE);
+  static BFile dump("jsondump", B_WRITE_ONLY | B_CREATE_FILE);
   char buffer[1024];
   status_t result;
   ssize_t remaining = bytes;
@@ -545,7 +549,7 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
     ssize_t count = input->Read(
         buffer, remaining > sizeof(buffer) ? sizeof(buffer) : remaining);
     remaining -= count;
-    //    dump.WriteExactly(buffer, count);
+    dump.WriteExactly(buffer, count);
     if (count <= 0) {
       std::cout << std::endl;
       return B_PARTIAL_READ;
@@ -562,8 +566,7 @@ status_t parse(Parser *target, BDataIO *input, size_t bytes) {
       }
     }
   }
-  //  dump.WriteExactly("\n\n", 2);
-  //  dump.Flush();
+  dump.Flush();
   return B_OK;
 }
 
@@ -900,6 +903,7 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
+  static unsigned char pseudoNull[] = { 0xC0, 0x80, 0};
   this->token.Append(c, 1);
   if (this->state2 == 0) {
     if (c == '\\') {
@@ -987,7 +991,9 @@ status_t Parser::charInString(char c, int cstate, int estate) {
         this->highsurrogate = 0;
         this->escape = 0;
       }
-      if (codepoint < 0x0080) {
+      if (codepoint == 0) {
+      	this->unescaped.Append((char *)pseudoNull);
+      } else if (codepoint < 0x0080) {
         this->unescaped.Append((char)codepoint, 1);
       } else if (codepoint < 0x0800) {
         this->unescaped.Append((char)(codepoint >> 6) | 0xC0, 1);
