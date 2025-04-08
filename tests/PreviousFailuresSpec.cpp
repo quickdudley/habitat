@@ -11,18 +11,15 @@ static inline BString showNumber(int n) {
   return result;
 }
 
-TEST_CASE("Validation failures found in the wild are fixed", "[message][validation][wild]") {
+TEST_CASE("Validation failures found in the wild are fixed",
+          "[message][validation][wild]") {
   BMessage examples;
   {
     status_t parseStatus = B_OK;
     {
       JSON::Parser parser(std::make_unique<JSON::BMessageDocSink>(&examples));
-      for (int i = 0; parseStatus == B_OK &&
-           i < tests_failures_json_len;
-           i++) {
-        parseStatus =
-            parser.nextChar(tests_failures_json[i]);
-      }
+      for (int i = 0; parseStatus == B_OK && i < tests_failures_json_len; i++)
+        parseStatus = parser.nextChar(tests_failures_json[i]);
     }
     REQUIRE(parseStatus == B_OK);
   }
@@ -35,10 +32,26 @@ TEST_CASE("Validation failures found in the wild are fixed", "[message][validati
       double sequence;
       sample.FindDouble("sequence", &sequence);
       BString hmacKey;
-      REQUIRE(
-            post::validate(&sample, sequence - 1, lastID, false, hmacKey) ==
-                B_OK);
+      REQUIRE(post::validate(&sample, sequence - 1, lastID, false, hmacKey) ==
+              B_OK);
     }
     i++;
+  }
+  SECTION("Known hash") {
+    REQUIRE(examples.FindMessage("9", &sample) == B_OK);
+    BString lastID;
+    BString hmacKey;
+    post::validate(&sample, 0, lastID, false, hmacKey);
+    BString expected("%ZGEQGbV0AugQWONqVd0FsFrbAONGhEQlckP1D8h0LZY=.sha256");
+    BString computed("%");
+    unsigned char hash[crypto_hash_sha256_BYTES];
+    {
+      JSON::RootSink rootSink(std::make_unique<JSON::Hash>(hash));
+      JSON::fromBMessage(&rootSink, &sample);
+    }
+    computed.Append(
+        base64::encode(hash, crypto_hash_sha256_BYTES, base64::STANDARD));
+    computed.Append(".sha256");
+    REQUIRE(computed == expected);
   }
 }
