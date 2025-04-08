@@ -1402,7 +1402,7 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
 
 namespace post {
 
-static inline status_t validateSignature(BMessage *message, bool useHMac,
+static inline status_t validateSignatureV1(BMessage *message, bool useHMac,
                                          BString &hmacKey) {
   bool signatureValid;
   {
@@ -1416,6 +1416,30 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
     return B_OK;
   else
     return B_NOT_ALLOWED;
+}
+
+static inline status_t validateSignature(BMessage *message, bool useHMac, BString &hmacKey) {
+  if (validateSignatureV1(message, useHMac, hmacKey) == B_OK)
+    return B_OK;
+  {
+  	// We occasionally get messages with fields swapped around.
+  	BMessage swap(message->what);
+  	char *propName;
+  	type_code typeFound;
+  	for (int32 i = 0; message->GetInfo(B_ANY_TYPE, i == 1 ? 2 : (i == 2 ? 1 : i), &propName, &typeFound) == B_OK; i++) {
+	  bool fixedSize;
+	  int32 count;
+	  if (auto err = message->GetInfo(propName, &typeFound, &count, &fixedSize); err != B_OK)
+        return err;
+	  const void *data;
+	  ssize_t dataSize;
+	  if (auto err = message->FindData(propName, typeFound, &data, &dataSize); err != B_OK)
+        return err;
+      swap.AddData(propName, typeFound, data, dataSize, fixedSize);
+  	}
+  	*message = swap;
+  }
+  return validateSignatureV1(message, useHMac, hmacKey);
 }
 
 static inline status_t validateSequence(BMessage *message, int lastSequence) {
