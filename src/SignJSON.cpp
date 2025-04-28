@@ -230,7 +230,14 @@ void VerifyObjectSignature::addString(const BString &rawname,
     memcpy(this->author, buffer.data(), buffer.size());
     this->inner->addString(rawname, name, raw, value);
   } else if (name == "signature" && value.EndsWith(".sig.ed25519")) {
-    value.CopyInto(stuff, 0, value.Length() - 12);
+  	int32 suffixLength;
+  	if (value.EndsWith(".sig.ed25519"))
+  	  suffixLength = 12;
+  	else if (value.EndsWith(".sign.ed25519"))
+  	  suffixLength = 13;
+  	else
+  	  return this->inner->addString(rawname, name, raw, value);
+    value.CopyInto(stuff, 0, value.Length() - suffixLength);
     std::vector<unsigned char> buffer =
         base64::decode(stuff.String(), stuff.Length());
     if (base64::encode(buffer, base64::STANDARD) != stuff)
