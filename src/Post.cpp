@@ -1098,6 +1098,12 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       }
       BString message("Validation failed: message on ");
       message << this->cypherkey();
+      message << "; ";
+      {
+        JSON::RootSink rootSink(
+            std::make_unique<JSON::SerializerStart>(&message, 0, false));
+        JSON::fromBMessage(&rootSink, msg);
+      }
       writeLog('FORK', message);
     }
   } else {
@@ -1396,8 +1402,8 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
 
 namespace post {
 
-static inline status_t validateSignature(BMessage *message, bool useHMac,
-                                         BString &hmacKey) {
+static inline status_t validateSignatureV1(BMessage *message, bool useHMac,
+                                           BString &hmacKey) {
   bool signatureValid;
   {
     JSON::RootSink rootSink(
@@ -1410,6 +1416,38 @@ static inline status_t validateSignature(BMessage *message, bool useHMac,
     return B_OK;
   else
     return B_NOT_ALLOWED;
+}
+
+static inline status_t validateSignature(BMessage *message, bool useHMac,
+                                         BString &hmacKey) {
+  if (validateSignatureV1(message, useHMac, hmacKey) == B_OK)
+    return B_OK;
+  {
+    // We occasionally get messages with fields swapped around.
+    BMessage swap(message->what);
+    char *propName;
+    type_code typeFound;
+    for (int32 i = 0;
+         message->GetInfo(B_ANY_TYPE, i == 1 ? 2 : (i == 2 ? 1 : i), &propName,
+                          &typeFound) == B_OK;
+         i++) {
+      bool fixedSize;
+      int32 count;
+      if (auto err = message->GetInfo(propName, &typeFound, &count, &fixedSize);
+          err != B_OK) {
+        return err;
+      }
+      const void *data;
+      ssize_t dataSize;
+      if (auto err = message->FindData(propName, typeFound, &data, &dataSize);
+          err != B_OK) {
+        return err;
+      }
+      swap.AddData(propName, typeFound, data, dataSize, fixedSize);
+    }
+    *message = swap;
+  }
+  return validateSignatureV1(message, useHMac, hmacKey);
 }
 
 static inline status_t validateSequence(BMessage *message, int lastSequence) {
@@ -1482,50 +1520,60 @@ static inline status_t validateOrder(BMessage *message) {
   int32 index = 0;
   int32 state = 0;
   while (message->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
-    if (state == 0) {
-      if (BString("previous") == attrname)
+    switch (state) {
+    case 0: {
+      if (std::strcmp("previous", attrname) == 0)
         state = 1;
       else
         return B_BAD_VALUE;
-    } else if (state == 1) {
-      if (BString("author") == attrname)
+    } break;
+    case 1: {
+      if (std::strcmp("author", attrname) == 0)
         state = 2;
-      else if (BString("sequence") == attrname)
+      else if (std::strcmp("sequence", attrname) == 0)
         state = 3;
       else
         return B_BAD_VALUE;
-    } else if (state == 2) {
-      if (BString("sequence") == attrname)
+    } break;
+    case 2: {
+      if (std::strcmp("sequence", attrname) == 0)
         state = 4;
       else
         return B_BAD_VALUE;
-    } else if (state == 3) {
-      if (BString("author") == attrname)
+    } break;
+    case 3: {
+      if (std::strcmp("author", attrname) == 0)
         state = 4;
       else
         return B_BAD_VALUE;
-    } else if (state == 4) {
-      if (BString("timestamp") == attrname)
+    } break;
+    case 4: {
+      if (std::strcmp("timestamp", attrname) == 0)
         state = 5;
       else
         return B_BAD_VALUE;
-    } else if (state == 5) {
-      if (BString("hash") == attrname)
+    } break;
+    case 5: {
+      if (std::strcmp("hash", attrname) == 0)
         state = 6;
       else
         return B_BAD_VALUE;
-    } else if (state == 6) {
-      if (BString("content") == attrname)
+    } break;
+    case 6: {
+      if (std::strcmp("content", attrname) == 0)
         state = 7;
       else
         return B_BAD_VALUE;
-    } else if (state == 7) {
-      if (BString("signature") == attrname)
+    } break;
+    case 7: {
+      if (std::strcmp("signature", attrname) == 0)
         state = 8;
       else
         return B_BAD_VALUE;
-    } else {
+    } break;
+    default: {
       return B_BAD_VALUE;
+    }
     }
     index++;
   }
@@ -1548,7 +1596,7 @@ static inline status_t validateSize(BMessage *message) {
       tally += 2;
     else
       tally++;
-    if (tally > 8192)
+    if (tally > 11192)
       return B_BAD_VALUE;
   }
   return B_OK;

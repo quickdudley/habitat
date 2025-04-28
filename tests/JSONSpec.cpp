@@ -9,6 +9,13 @@ TEST_CASE("Handles unicode", "[JSON]") {
   REQUIRE(result == "\"🀐\"");
 }
 
+TEST_CASE("Escapes overwide UTF-8 NUL", "[JSON]") {
+  unsigned char pseudoNull[] = {0xC0, 0x80, 0};
+  BString source((char *)pseudoNull);
+  BString result = JSON::escapeString(source);
+  REQUIRE(result == "\"\\u0000\"");
+}
+
 TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
   class AExpect : public JSON::NodeSink {
   public:

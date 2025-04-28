@@ -33,6 +33,7 @@ bool wasArray(const BMessage *msg) {
   return true;
 }
 
+// TODO: escape nulls
 static inline BString jsonAttrName(const BString &attrName) {
   if (attrName.EndsWith("_")) {
     BString substr;
@@ -249,7 +250,7 @@ void BMessageObjectDocSink::addNull(const BString &rawname,
 void BMessageObjectDocSink::addString(const BString &rawname,
                                       const BString &name, const BString &raw,
                                       const BString &value) {
-  this->target->AddString(messageAttrName(name).String(), value.String());
+  this->target->AddString(messageAttrName(name), value);
 }
 
 std::unique_ptr<NodeSink>
