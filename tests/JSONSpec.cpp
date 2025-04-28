@@ -10,7 +10,7 @@ TEST_CASE("Handles unicode", "[JSON]") {
 }
 
 TEST_CASE("Escapes overwide UTF-8 NUL", "[JSON]") {
-  unsigned char pseudoNull[] = { 0xC0, 0x80, 0 };
+  unsigned char pseudoNull[] = {0xC0, 0x80, 0};
   BString source((char *)pseudoNull);
   BString result = JSON::escapeString(source);
   REQUIRE(result == "\"\\u0000\"");

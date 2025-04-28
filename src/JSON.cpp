@@ -903,7 +903,7 @@ status_t Parser::charInNumber(bool neg, char c, int cstate, int estate) {
 }
 
 status_t Parser::charInString(char c, int cstate, int estate) {
-  static unsigned char pseudoNull[] = { 0xC0, 0x80, 0};
+  static unsigned char pseudoNull[] = {0xC0, 0x80, 0};
   this->token.Append(c, 1);
   if (this->state2 == 0) {
     if (c == '\\') {
@@ -992,7 +992,7 @@ status_t Parser::charInString(char c, int cstate, int estate) {
         this->escape = 0;
       }
       if (codepoint == 0) {
-      	this->unescaped.Append((char *)pseudoNull);
+        this->unescaped.Append((char *)pseudoNull);
       } else if (codepoint < 0x0080) {
         this->unescaped.Append((char)codepoint, 1);
       } else if (codepoint < 0x0800) {
