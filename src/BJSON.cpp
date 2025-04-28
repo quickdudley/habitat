@@ -2,7 +2,6 @@
 #include <File.h>
 #include <limits>
 #include <set>
-#include <iostream>
 
 namespace JSON {
 
@@ -124,11 +123,7 @@ void fromBMessageData(RootSink *target, const BMessage *source,
     target->addString(jsonAttrName(attrname), value);
   } break;
   case B_STRING_TYPE: {
-  	BString value0;
-  	source->FindString(attrname, &value0);
     BString value(source->GetString(attrname.String(), ""));
-    if (value0 != value)
-      std::cerr << value0.String() << std::endl;
     target->addString(jsonAttrName(attrname), value);
   } break;
   }
