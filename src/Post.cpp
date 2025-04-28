@@ -1578,7 +1578,7 @@ static inline status_t validateSize(BMessage *message) {
       tally += 2;
     else
       tally++;
-    if (tally > 8192)
+    if (tally > 11192)
       return B_BAD_VALUE;
   }
   return B_OK;
