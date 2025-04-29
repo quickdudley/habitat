@@ -1130,6 +1130,30 @@ status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
   return err;
 }
 
+status_t SSBFeed::getSegment(BMessage *reply, uint64 sequence, uint16 count) {
+  sqlite3_stmt *fetch;
+  sqlite3_prepare_v2(
+      this->database,
+      "SELECT body FROM messages WHERE author = ? AND sequence >= ? "
+      "ORDER BY sequence LIMIT ?",
+      -1, &fetch, NULL);
+  BString cypherkey = this->cypherkey();
+  sqlite3_bind_text(fetch, 1, cypherkey.String(), cypherkey.Length(),
+                    SQLITE_STATIC);
+  sqlite3_bind_int64(fetch, 2, (int64)sequence);
+  sqlite3_bind_int64(fetch, 3, (int64)count);
+  status_t err = B_OK;
+  while (sqlite3_step(fetch) == SQLITE_ROW) {
+    BMessage post;
+    err = post.Unflatten((const char *)sqlite3_column_blob(fetch, 0));
+    if (err != B_OK)
+      break;
+    reply->AddMessage("result", &post);
+  }
+  sqlite3_finalize(fetch);
+  return err;
+}
+
 BHandler *SSBFeed::ResolveSpecifier(BMessage *msg, int32 index,
                                     BMessage *specifier, int32 what,
                                     const char *property) {
