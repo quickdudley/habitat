@@ -166,7 +166,6 @@ VerifySignature::VerifySignature(bool *target, const BString &hmac)
 }
 
 VerifySignature::~VerifySignature() {
-  static int ix = 0;
   this->inner.reset();
   if (this->useHmac) {
     unsigned char sig1[crypto_auth_BYTES];
