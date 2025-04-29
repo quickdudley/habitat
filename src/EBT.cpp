@@ -66,7 +66,7 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   // TODO: Send and handle B_OBSERVER_NOTICE_CHANGE for changes to list of
   //   feeds that we're supposed to be syncing.
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
-  	this->noticeChange(msg);
+    this->noticeChange(msg);
     return;
   } else if (msg->what == 'CLOG') {
     bool nowClogged;
@@ -281,10 +281,13 @@ void Dispatcher::noticeChange(BMessage *msg) {
 }
 
 void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
-  BMessage message(B_GET_PROPERTY);
-  message.AddSpecifier("Post", (int32)sequence);
-  message.AddSpecifier("ReplicatedFeed", author);
-  BMessenger(this->db).SendMessage(&message, BMessenger(this));
+  if (auto s = this->ourState.find(author);
+      s != this->ourState.end() && s->second.savedSequence >= sequence) {
+    BMessage message(B_GET_PROPERTY);
+    message.AddSpecifier("Post", (int32)sequence);
+    message.AddSpecifier("ReplicatedFeed", author);
+    BMessenger(this->db).SendMessage(&message, BMessenger(this));
+  }
 }
 
 bool Dispatcher::polyLink() {
@@ -390,8 +393,6 @@ void Link::MessageReceived(BMessage *message) {
                 BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
             if (this->ourState.find(attrname) != this->ourState.end()) {
-              dispatcher->checkForMessage(inserted.first->first,
-                                          inserted.first->second.note.sequence);
               if (inserted.first->second.note.receive) {
                 dispatcher->checkForMessage(
                     inserted.first->first,
