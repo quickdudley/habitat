@@ -1026,12 +1026,17 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         if (spWhat == B_INDEX_SPECIFIER) {
           if ((error = specifier.FindInt32("index", &index)) != B_OK)
             break;
-          BMessage post;
-          BString id;
-          if ((error = this->findPost(&id, &post, index)) != B_OK)
-            break;
-          reply.AddMessage("result", &post);
-          reply.AddString("cypherkey", id);
+          uint16 count;
+          if (specifier.FindUInt16("count", &count) == B_OK) {
+            error = this->getSegment(&reply, index, count);
+          } else {
+            BMessage post;
+            BString id;
+            if ((error = this->findPost(&id, &post, index)) != B_OK)
+              break;
+            reply.AddMessage("result", &post);
+            reply.AddString("cypherkey", id);
+          }
         }
       } break;
       default:
