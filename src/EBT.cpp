@@ -283,7 +283,11 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
   if (auto s = this->ourState.find(author);
       s != this->ourState.end() && s->second.savedSequence >= sequence) {
     BMessage message(B_GET_PROPERTY);
-    message.AddSpecifier("Post", (int32)sequence);
+    BMessage specifier(B_INDEX_SPECIFIER);
+    specifier.AddInt32("index", (int32)sequence);
+    specifier.AddInt32("count", 256);
+    specifier.AddString("property", "Post");
+    message.AddSpecifier(&specifier);
     message.AddSpecifier("ReplicatedFeed", author);
     BMessenger(this->db).SendMessage(&message, BMessenger(this));
   }
