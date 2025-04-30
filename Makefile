@@ -55,6 +55,7 @@ APP_SRCS = \
 
 LIB_SRCS = \
 	 src/ContactGraph.cpp \
+	 src/Invite.cpp \
 	 src/JSON.cpp \
 	 src/Logging.cpp \
 
@@ -63,6 +64,7 @@ TESTABLE_SRCS = \
 	 src/BJSON.cpp \
 	 src/Connection.cpp \
 	 src/EBT.cpp \
+	 src/Invite.cpp \
 	 src/JSON.cpp \
 	 src/Logging.cpp \
 	 src/MUXRPC.cpp \

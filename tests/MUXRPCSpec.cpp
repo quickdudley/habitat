@@ -21,8 +21,7 @@ TEST_CASE("Correctly determines payload type from MUXRPC header", "[MUXRPC]") {
   REQUIRE(header.bodyType() == BodyType::JSON);
 }
 
-TEST_CASE("Correctly determines body length from MUXRPC header",
-          "[MUXRPC][debugging]") {
+TEST_CASE("Correctly determines body length from MUXRPC header", "[MUXRPC]") {
   unsigned char buffer[9];
   std::memset(buffer, 0, sizeof(buffer));
   buffer[4] = 32;
