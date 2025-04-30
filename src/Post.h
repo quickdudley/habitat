@@ -86,6 +86,7 @@ public:
   static status_t parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
                               const BString &in);
   status_t findPost(BString *id, BMessage *post, uint64 sequence);
+  status_t getSegment(BMessage *reply, uint64 sequence, uint16 count);
   uint64 sequence();
   bool matchKey(unsigned char other[crypto_sign_PUBLICKEYBYTES]);
   void notifyChanges();

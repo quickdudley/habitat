@@ -63,8 +63,7 @@ BHandler *Dispatcher::ResolveSpecifier(BMessage *msg, int32 index,
 }
 
 void Dispatcher::MessageReceived(BMessage *msg) {
-  // TODO: Send and handle B_OBSERVER_NOTICE_CHANGE for changes to list of
-  //   feeds that we're supposed to be syncing.
+  // TODO: Break this up into smaller methods.
   if (msg->what == B_OBSERVER_NOTICE_CHANGE) {
     this->noticeChange(msg);
     return;
@@ -175,13 +174,15 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   }
   {
     BMessage result;
-    if (msg->FindMessage("result", &result) == B_OK) {
+    std::map<BString, uint64> sent;
+    for (int32 i = 0; msg->FindMessage("result", i, &result) == B_OK; i++) {
       BString author;
       JSON::number sequence;
       if (result.FindDouble("sequence", &sequence) == B_OK &&
           result.FindString("author", &author) == B_OK) {
+        // Separate variables because we retrieve the number by assigning
+        // to a double*
         uint64 actualSequence = sequence;
-        bool sentAny = false;
         for (int i = this->CountHandlers() - 1; i >= 0; i--) {
           if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
             if (auto state = link->remoteState.find(author);
@@ -189,18 +190,16 @@ void Dispatcher::MessageReceived(BMessage *msg) {
               if (state->second.note.sequence + 1 == sequence) {
                 link->sender.send(&result, true, false, false);
                 state->second.note.sequence++;
-                sentAny = true;
+                sent[author] = actualSequence;
               }
             }
           }
         }
-        if (sentAny)
-          this->checkForMessage(author, actualSequence + 1);
-        return;
       }
     }
+    for (auto &[author, sequence] : sent)
+      this->checkForMessage(author, sequence + 1);
   }
-  return BLooper::MessageReceived(msg);
 }
 
 void Dispatcher::Quit() {
@@ -281,10 +280,17 @@ void Dispatcher::noticeChange(BMessage *msg) {
 }
 
 void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
-  BMessage message(B_GET_PROPERTY);
-  message.AddSpecifier("Post", (int32)sequence);
-  message.AddSpecifier("ReplicatedFeed", author);
-  BMessenger(this->db).SendMessage(&message, BMessenger(this));
+  if (auto s = this->ourState.find(author);
+      s != this->ourState.end() && s->second.savedSequence >= sequence) {
+    BMessage message(B_GET_PROPERTY);
+    BMessage specifier(B_INDEX_SPECIFIER);
+    specifier.AddInt32("index", (int32)sequence);
+    specifier.AddInt32("count", 256);
+    specifier.AddString("property", "Post");
+    message.AddSpecifier(&specifier);
+    message.AddSpecifier("ReplicatedFeed", author);
+    BMessenger(this->db).SendMessage(&message, BMessenger(this));
+  }
 }
 
 bool Dispatcher::polyLink() {
@@ -390,8 +396,6 @@ void Link::MessageReceived(BMessage *message) {
                 BString(attrname), RemoteState(note));
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
             if (this->ourState.find(attrname) != this->ourState.end()) {
-              dispatcher->checkForMessage(inserted.first->first,
-                                          inserted.first->second.note.sequence);
               if (inserted.first->second.note.receive) {
                 dispatcher->checkForMessage(
                     inserted.first->first,

@@ -1026,12 +1026,17 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         if (spWhat == B_INDEX_SPECIFIER) {
           if ((error = specifier.FindInt32("index", &index)) != B_OK)
             break;
-          BMessage post;
-          BString id;
-          if ((error = this->findPost(&id, &post, index)) != B_OK)
-            break;
-          reply.AddMessage("result", &post);
-          reply.AddString("cypherkey", id);
+          uint16 count;
+          if (specifier.FindUInt16("count", &count) == B_OK) {
+            error = this->getSegment(&reply, index, count);
+          } else {
+            BMessage post;
+            BString id;
+            if ((error = this->findPost(&id, &post, index)) != B_OK)
+              break;
+            reply.AddMessage("result", &post);
+            reply.AddString("cypherkey", id);
+          }
         }
       } break;
       default:
@@ -1126,6 +1131,30 @@ status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
   if (auto *text = (const char *)sqlite3_column_text(fetch, 0))
     *id = text;
   status_t err = post->Unflatten((const char *)sqlite3_column_blob(fetch, 1));
+  sqlite3_finalize(fetch);
+  return err;
+}
+
+status_t SSBFeed::getSegment(BMessage *reply, uint64 sequence, uint16 count) {
+  sqlite3_stmt *fetch;
+  sqlite3_prepare_v2(
+      this->database,
+      "SELECT body FROM messages WHERE author = ? AND sequence >= ? "
+      "ORDER BY sequence LIMIT ?",
+      -1, &fetch, NULL);
+  BString cypherkey = this->cypherkey();
+  sqlite3_bind_text(fetch, 1, cypherkey.String(), cypherkey.Length(),
+                    SQLITE_STATIC);
+  sqlite3_bind_int64(fetch, 2, (int64)sequence);
+  sqlite3_bind_int64(fetch, 3, (int64)count);
+  status_t err = B_OK;
+  while (sqlite3_step(fetch) == SQLITE_ROW) {
+    BMessage post;
+    err = post.Unflatten((const char *)sqlite3_column_blob(fetch, 0));
+    if (err != B_OK)
+      break;
+    reply->AddMessage("result", &post);
+  }
   sqlite3_finalize(fetch);
   return err;
 }
