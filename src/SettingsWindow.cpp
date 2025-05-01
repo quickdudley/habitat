@@ -1,9 +1,11 @@
 #include "SettingsWindow.h"
 #include "Base64.h"
 #include "Connection.h"
+#include "Invite.h"
 #include <Application.h>
 #include <Button.h>
 #include <Catalog.h>
+#include <Clipboard.h>
 #include <ControlLook.h>
 #include <GroupLayout.h>
 #include <ListView.h>
@@ -122,13 +124,24 @@ void NetworkTab::AttachedToWindow() {
     rq.AddSpecifier("Server");
     BMessenger(be_app).SendMessage(&rq, BMessenger(this));
   }
+  be_clipboard->StartWatching(this);
 }
 
 void NetworkTab::MessageReceived(BMessage *message) {
   switch (message->what) {
   case 'ASRV': {
     this->serverList->DeselectAll();
-    // TODO: check for invite code in clipboard
+    if (be_clipboard->Lock()) {
+      const char *clip;
+      ssize_t cliplen;
+      be_clipboard->Data()->FindData("text/plain", B_MIME_TYPE, (const void**)&clip, &cliplen);
+      be_clipboard->Unlock();
+      BMessage parsed;
+      if (invite::parse(&parsed, clip) == B_OK) {
+      	this->addrControl->SetText(parsed.GetString("hostname", ""));
+      	this->keyControl->SetText(parsed.GetString("cypherkey", ""));
+      }
+    }
   } break;
   case 'DSRV': {
     if (auto item = dynamic_cast<ServerEntry *>(
