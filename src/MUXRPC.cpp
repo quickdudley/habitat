@@ -336,6 +336,9 @@ Connection::~Connection() {
     link.second.target.SendMessage(&stop);
   }
   delete_sem(this->ongoingLock);
+  be_app->Lock();
+  be_app->UnregisterLooper(this);
+  be_app->Unlock();
 }
 
 thread_id Connection::Run() {
