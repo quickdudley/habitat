@@ -9,6 +9,8 @@ SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
     db(db),
     graph(graph) {}
 
+SelectContacts::~SelectContacts() { this->StopWatchingAll(this->graph); }
+
 void SelectContacts::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_REPLY: {

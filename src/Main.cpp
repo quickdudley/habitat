@@ -709,6 +709,7 @@ void Habitat::saveSettings() {
 void Habitat::Quit() {
   this->saveSettings();
   this->ipListener->halt();
+  this->StopWatchingAll(BMessenger(this->databaseLooper));
   BApplication::Quit();
 }
 

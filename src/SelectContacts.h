@@ -9,7 +9,8 @@
 class SelectContacts : public BHandler {
 public:
   SelectContacts(const BMessenger &db, const BMessenger &graph);
-  void MessageReceived(BMessage *message);
+  ~SelectContacts();
+  void MessageReceived(BMessage *message) override;
 
 private:
   void makeSelection(BMessage *graph);
