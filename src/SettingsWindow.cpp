@@ -134,12 +134,13 @@ void NetworkTab::MessageReceived(BMessage *message) {
     if (be_clipboard->Lock()) {
       const char *clip;
       ssize_t cliplen;
-      be_clipboard->Data()->FindData("text/plain", B_MIME_TYPE, (const void**)&clip, &cliplen);
+      be_clipboard->Data()->FindData("text/plain", B_MIME_TYPE,
+                                     (const void **)&clip, &cliplen);
       be_clipboard->Unlock();
       BMessage parsed;
       if (invite::parse(&parsed, clip) == B_OK) {
-      	this->addrControl->SetText(parsed.GetString("hostname", ""));
-      	this->keyControl->SetText(parsed.GetString("cypherkey", ""));
+        this->addrControl->SetText(parsed.GetString("hostname", ""));
+        this->keyControl->SetText(parsed.GetString("cypherkey", ""));
       }
     }
   } break;
