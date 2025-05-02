@@ -25,6 +25,14 @@
 #define HABITAT_AUTO_CONNECTIONS 10
 #define B_TRANSLATION_CONTEXT "MainWindow"
 
+namespace {
+class TidyLooper : public BLooper {
+public:
+  TidyLooper(const char *name);
+  void Quit() override;
+};
+} // namespace
+
 Habitat *app;
 
 int main(int argc, const char **args) {
@@ -180,7 +188,6 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
-    ConnectedList::instance()->addExcluded(this->myId->getCypherkey());
   }
   // Create main feed looper
   this->databaseLooper = new SSBDatabase(database);
@@ -604,9 +611,9 @@ void Habitat::ReadyToRun() {
         std::static_pointer_cast<muxrpc::ConnectionHook>(beginEBT));
   }
   rooms2::installClient(&this->clientMethods);
-  auto worker = new BLooper("Worker thread");
-  worker->Run();
-  worker->Lock();
+  this->worker = new TidyLooper("Worker thread");
+  this->worker->Run();
+  this->worker->Lock();
   BVolume volume;
   this->settings->GetVolume(&volume);
   while (!BMessenger(this->databaseLooper).IsValid() ||
@@ -631,6 +638,8 @@ void Habitat::ReadyToRun() {
   }
   worker->AddHandler(this->wantedBlobs);
   this->wantedBlobs->registerMethods(this->serverMethods);
+  worker->AddHandler(ConnectedList::instance());
+  ConnectedList::instance()->addExcluded(this->myId->getCypherkey());
   worker->Unlock();
   this->RegisterLooper(worker);
   while (!BMessenger(this->contactStore).IsValid() ||
@@ -655,6 +664,16 @@ void Habitat::ReadyToRun() {
     BMessageRunner::StartSending(this->databaseLooper, &rq, 500000, 1);
   }
   this->checkServerStatus();
+}
+
+BMessenger Habitat::addWorker(BHandler *w) {
+  auto worker = this->worker;
+  if (!worker->Lock())
+    return BMessenger();
+  worker->AddHandler(w);
+  BMessenger result(w);
+  worker->Unlock();
+  return result;
 }
 
 void Habitat::loadSettings() {
@@ -710,6 +729,29 @@ void Habitat::Quit() {
   this->saveSettings();
   this->ipListener->halt();
   this->StopWatchingAll(BMessenger(this->databaseLooper));
+  // Avoid race condition that can happen in `BApplication::Quit` by waiting
+  // for other loopers to finish first.
+  std::set<thread_id> lt;
+  for (int32 i = this->CountLoopers() - 1; i > 0;) {
+    auto l = this->LooperAt(i);
+    this->Unlock();
+    if (l != this && l->Lock()) {
+      lt.insert(l->Thread());
+      BMessenger(l).SendMessage(B_QUIT_REQUESTED);
+      l->Unlock();
+      this->Lock();
+      this->UnregisterLooper(l);
+    } else {
+      this->Lock();
+    }
+    i--;
+  }
+  this->Unlock();
+  for (auto t : lt) {
+    status_t exitValue;
+    wait_for_thread(t, &exitValue);
+  }
+  this->Lock();
   BApplication::Quit();
 }
 
@@ -860,5 +902,22 @@ void ServerRecord::connect() {
   BMessenger(be_app).SendMessage(&trigger);
   this->connected = true;
 }
+
+namespace {
+
+TidyLooper::TidyLooper(const char *name)
+    :
+    BLooper(name) {}
+
+void TidyLooper::Quit() {
+  for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+    auto h = this->HandlerAt(i);
+    if (!dynamic_cast<BLooper *>(h)) {
+      delete h;
+      this->RemoveHandler(h);
+    }
+  }
+}
+} // namespace
 
 #undef B_TRANSLATION_CONTEXT

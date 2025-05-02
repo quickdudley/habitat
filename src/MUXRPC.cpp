@@ -371,8 +371,8 @@ void Connection::Quit() {
       this->Lock();
   }
   if (this->Lock()) {
-    for (int32 i = this->CountHandlers() - 1; i <= 0; i--) {
-      if (BHandler *handler = this->HandlerAt(i); handler != this)
+    for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+      if (BHandler *handler = this->HandlerAt(i); handler && handler != this)
         delete handler;
     }
     this->Unlock();

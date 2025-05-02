@@ -57,16 +57,17 @@ private:
 class Habitat : public BApplication {
 public:
   Habitat(void);
-  status_t GetSupportedSuites(BMessage *data);
-  void MessageReceived(BMessage *msg);
+  status_t GetSupportedSuites(BMessage *data) override;
+  void MessageReceived(BMessage *msg) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
-                             int32 what, const char *property);
-  void ReadyToRun();
-  void Quit();
+                             int32 what, const char *property) override;
+  void ReadyToRun() override;
+  void Quit() override;
   BDirectory &settingsDir();
   void acceptConnection(BDataIO *, std::function<void()> closeHook = NULL);
   void initiateConnection(BDataIO *, const BString &key,
                           std::function<void()> closeHook = NULL);
+  BMessenger addWorker(BHandler *w);
 
 private:
   void loadSettings();
@@ -78,6 +79,7 @@ private:
   int initiate__(std::unique_ptr<BDataIO>, unsigned char *key,
                  std::function<void()> closeHook = NULL);
   MainWindow *mainWindow;
+  BLooper *worker;
   SSBDatabase *databaseLooper;
   ContactStore *contactStore;
   OwnFeed *ownFeed;
