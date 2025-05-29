@@ -917,6 +917,7 @@ void TidyLooper::Quit() {
       this->RemoveHandler(h);
     }
   }
+  BLooper::Quit();
 }
 } // namespace
 
