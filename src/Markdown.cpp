@@ -1,11 +1,34 @@
 #include "Markdown.h"
+#include <StringList.h>
 #include <utility>
 
 namespace markdown {
+namespace {
+class ParseContext {
+public:
+  ParseContext(std::vector<std::unique_ptr<BlockNode>> *sink);
+  std::vector<std::unique_ptr<BlockNode>> *sink;
+};
+
+ParseContext::ParseContext(std::vector<std::unique_ptr<BlockNode>> *sink)
+    :
+    sink(sink) {}
+
+bool parseLine(const BString &line, void *arg) {
+  auto ctx = (ParseContext *)arg;
+  std::vector<std::unique_ptr<SpanNode>> spanNodes;
+  spanNodes.push_back(std::make_unique<TextNode>(line));
+  ctx->sink->push_back(std::make_unique<ParagraphNode>(std::move(spanNodes)));
+  return false;
+}
+} // namespace
 
 std::vector<std::unique_ptr<BlockNode>> parse(const BString &text) {
   std::vector<std::unique_ptr<BlockNode>> result;
-
+  BStringList lines;
+  text.Split("\n", true, lines);
+  ParseContext ctx(&result);
+  lines.DoForEach(parseLine, (void *)&ctx);
   return result;
 }
 
@@ -30,11 +53,6 @@ BString BlockNode::toString() const { return "BlockNode"; }
 BString SpanNode::toString() const { return "SpanNode"; }
 
 ParagraphNode::ParagraphNode(std::vector<std::unique_ptr<SpanNode>> contents)
-    :
-    contents(std::move(contents)) {}
-
-ParagraphNode::ParagraphNode(
-    std::initializer_list<std::unique_ptr<SpanNode>> init)
     :
     contents(std::move(contents)) {}
 

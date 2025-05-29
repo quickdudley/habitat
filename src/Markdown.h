@@ -29,7 +29,6 @@ std::ostream &operator<<(std::ostream &os, SpanNode const &value);
 class ParagraphNode : public BlockNode {
 public:
   ParagraphNode(std::vector<std::unique_ptr<SpanNode>> contents);
-  ParagraphNode(std::initializer_list<std::unique_ptr<SpanNode>> init);
   bool operator==(const BlockNode &other) const override;
   BString toString() const override;
 

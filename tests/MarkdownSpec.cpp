@@ -11,13 +11,15 @@ static std::map<JSON::number, BString> *testcases = NULL;
 
 TEST_CASE("Example 219", "[markdown]") {
   auto parsed = markdown::parse((*testcases)[219.0]);
-  REQUIRE(parsed.size() == 2);
+  REQUIRE(parsed.size() >= 1);
+  std::vector<std::unique_ptr<markdown::SpanNode>> spans;
+  spans.push_back(std::make_unique<markdown::TextNode>("aaa"));
   REQUIRE(*parsed[0] ==
-          markdown::ParagraphNode
-              {std::make_unique<markdown::TextNode>("aaa")});
+          markdown::ParagraphNode(std::move(spans)));
+  REQUIRE(parsed.size() == 2);
+  spans.push_back(std::make_unique<markdown::TextNode>("bbb"));
   REQUIRE(*parsed[1] ==
-          markdown::ParagraphNode
-              {std::make_unique<markdown::TextNode>("bbb")});
+          markdown::ParagraphNode(std::move(spans)));
 }
 
 namespace {

@@ -155,7 +155,7 @@ SYMBOLS :=
 DEBUGGER := TRUE
 
 #	Specify any additional compiler flags to be used.
-COMPILER_FLAGS = -gdwarf-3 -Wall
+COMPILER_FLAGS = -g -Wall
 
 #	Specify any additional linker flags to be used.
 LINKER_FLAGS =
