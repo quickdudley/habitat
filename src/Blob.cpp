@@ -270,32 +270,43 @@ void WantSink::MessageReceived(BMessage *message) {
         BString cypherkey;
         if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
           return;
-        BMessenger wantStream;
-        status_t wsStatus;
-        {
-          BMessage getMessenger(B_GET_PROPERTY);
-          getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
-          BMessage msgReply;
-          BMessenger(this->connection).SendMessage(&getMessenger, &msgReply);
-          wsStatus = msgReply.FindMessenger("result", &wantStream);
-        }
-        if (wsStatus == B_OK && wantStream.IsValid()) {
-          BMessage toSend('HAVE');
-          off_t size;
-          if (node.GetSize(&size) != B_OK)
-            return;
-          toSend.AddString("cypherkey", cypherkey);
-          toSend.AddInt64("size", size);
-          wantStream.SendMessage(&toSend);
-        }
-        BMessage arg0('JSAR');
-        arg0.AddString("0", cypherkey);
-        BMessage args('JSAR');
-        args.AddMessage("0", &arg0);
-        std::vector<BString> name = {"blobs", "has"};
-        this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
-                                  BMessenger(), NULL);
+        BMessage getMessenger(B_GET_PROPERTY);
+        getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
+        BMessenger(this->connection).SendMessage(&getMessenger, this);
       }
+    }
+  } else if (message->IsReply()) {
+    const BMessage *previous = message->Previous();
+    entry_ref ref;
+    ref.device = previous->GetInt32("device", B_ERROR);
+    ref.directory = previous->GetInt64("directory", B_ERROR);
+    BString name;
+    if (message->FindString("name", &name) == B_OK)
+      ref.set_name(name.String());
+    BEntry entry(&ref);
+    if (entry.InitCheck() == B_OK && entry.Exists()) {
+      BNode node(&ref);
+      BString cypherkey;
+      if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
+        return;
+      BMessenger wantStream;
+      status_t wsStatus = message->FindMessenger("result", &wantStream);
+      if (wsStatus == B_OK && wantStream.IsValid()) {
+        BMessage toSend('HAVE');
+        off_t size;
+        if (node.GetSize(&size) != B_OK)
+          return;
+        toSend.AddString("cypherkey", cypherkey);
+        toSend.AddInt64("size", size);
+        wantStream.SendMessage(&toSend);
+      }
+      BMessage arg0('JSAR');
+      arg0.AddString("0", cypherkey);
+      BMessage args('JSAR');
+      args.AddMessage("0", &arg0);
+      std::vector<BString> name = {"blobs", "has"};
+      this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
+                                BMessenger(), NULL);
     }
   } else {
     BHandler::MessageReceived(message);
