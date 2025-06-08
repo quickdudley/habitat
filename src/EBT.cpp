@@ -285,7 +285,7 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
     BMessage message(B_GET_PROPERTY);
     BMessage specifier(B_INDEX_SPECIFIER);
     specifier.AddInt32("index", (int32)sequence);
-    specifier.AddInt32("count", 256);
+    specifier.AddUInt16("count", 256);
     specifier.AddString("property", "Post");
     message.AddSpecifier(&specifier);
     message.AddSpecifier("ReplicatedFeed", author);
