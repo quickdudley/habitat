@@ -271,7 +271,7 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
     BMessage message(B_GET_PROPERTY);
     BMessage specifier(B_INDEX_SPECIFIER);
     specifier.AddInt32("index", (int32)sequence);
-    specifier.AddUInt16("count", 256);
+    specifier.AddUInt16("count", 16);
     specifier.AddString("property", "Post");
     message.AddSpecifier(&specifier);
     message.AddSpecifier("ReplicatedFeed", author);
@@ -473,24 +473,24 @@ void Link::pushOut(BMessage *message) {
   JSON::number sequence;
   if (message->FindDouble("sequence", &sequence) == B_OK &&
       message->FindString("author", &author) == B_OK) {
-    // Separate variables because we retrieve the number by assigning
-    // to a double*
-    uint64 actualSequence = sequence;
     if (auto state = this->remoteState.find(author);
         state != this->remoteState.end()) {
-      if (state->second.note.sequence + 1 == sequence) {
-        if (auto q = this->outMessages.find(author); q != this->outMessages.end()) {
+      double oldSequence = state->second.note.sequence;
+      auto q = this->outMessages.find(author);
+      if (q != this->outMessages.end() && !q->second.empty())
+        oldSequence = q->second.back().GetDouble("sequence", oldSequence);
+      if (oldSequence + 1 == sequence) {
+        if (q != this->outMessages.end()) {
           q->second.push(*message);
-      	} else {
+        } else {
           this->outMessages[author].push(*message);
           this->outSequence.push(author);
-      	}
-      	if (!this->sending) {
+        }
+        if (!this->sending) {
           this->sending = true;
           this->sendOne();
-      	}
-      	// TODO: Use different numbers for queued and sent
-        state->second.note.sequence++;
+        }
+        // TODO: Use different numbers for queued and sent
       }
     }
   }
@@ -508,25 +508,38 @@ void Link::sendOne() {
     }
     auto author = this->outSequence.front();
     this->outSequence.pop();
-    if (auto state = this->remoteState.find(author); state != this->remoteState.end()) {
+    if (auto state = this->remoteState.find(author);
+        state != this->remoteState.end()) {
       if (!state->second.note.receive) {
-      	this->outMessages.erase(author);
-      	continue;
+        this->outMessages.erase(author);
+        continue;
       }
       auto q = this->outMessages.find(author);
       if (q == this->outMessages.end())
         continue;
-      if (q->second.empty()) {
-      	this->outMessages.erase(q);
-      	continue;
+      bool wasEmpty = true;
+      while (!q->second.empty() &&
+             q->second.front().GetDouble("sequence", 0) !=
+                 state->second.note.sequence + 1) {
+        q->second.pop();
       }
-      this->sender.send(&q->second.front(), true, false, false, BMessenger(this));
-      double sequence;
-      q->second.front().FindDouble("sequence", &sequence);
+      if (q->second.empty()) {
+        this->outMessages.erase(q);
+        if (!wasEmpty) {
+          static_cast<Dispatcher *>(this->Looper())
+              ->checkForMessage(author,
+                                (uint64)state->second.note.sequence + 1);
+        }
+        continue;
+      }
+      this->sender.send(&q->second.front(), true, false, false,
+                        BMessenger(this));
+      state->second.note.sequence++;
       q->second.pop();
       if (q->second.empty()) {
         this->outMessages.erase(q);
-        static_cast<Dispatcher *>(this->Looper())->checkForMessage(author, (uint64)sequence);
+        static_cast<Dispatcher *>(this->Looper())
+            ->checkForMessage(author, (uint64)state->second.note.sequence + 1);
       }
       break;
     }
