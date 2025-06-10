@@ -2,6 +2,7 @@
 #include "Logging.h"
 #include <MessageRunner.h>
 #include <iostream>
+#include <iterator>
 
 namespace ebt {
 
@@ -480,12 +481,10 @@ void Link::pushOut(BMessage *message) {
       if (q != this->outMessages.end() && !q->second.empty())
         oldSequence = q->second.back().GetDouble("sequence", oldSequence);
       if (oldSequence + 1 == sequence) {
-        if (q != this->outMessages.end()) {
+        if (q != this->outMessages.end())
           q->second.push(*message);
-        } else {
+        else
           this->outMessages[author].push(*message);
-          this->outSequence.push(author);
-        }
         if (!this->sending) {
           this->sending = true;
           this->sendOne();
@@ -502,26 +501,25 @@ void Link::sendOne() {
       this->sending = false;
       return;
     }
-    if (this->outSequence.empty()) {
-      for (auto &[k, v] : this->outMessages)
-        outSequence.push(k);
-    }
-    auto author = this->outSequence.front();
-    this->outSequence.pop();
+    size_t index =
+        std::uniform_int_distribution<size_t>(0, this->outMessages.size() - 1)(
+            static_cast<Dispatcher *>(this->Looper())->rng);
+    auto q = index > this->outMessages.size() / 2
+        ? std::prev(this->outMessages.end(), this->outMessages.size() - index)
+        : std::next(this->outMessages.begin(), index);
+    const BString &author = q->first;
     if (auto state = this->remoteState.find(author);
         state != this->remoteState.end()) {
       if (!state->second.note.receive) {
-        this->outMessages.erase(author);
+        this->outMessages.erase(q);
         continue;
       }
-      auto q = this->outMessages.find(author);
-      if (q == this->outMessages.end())
-        continue;
       bool wasEmpty = true;
       while (!q->second.empty() &&
              q->second.front().GetDouble("sequence", 0) !=
                  state->second.note.sequence + 1) {
         q->second.pop();
+        wasEmpty = false;
       }
       if (q->second.empty()) {
         this->outMessages.erase(q);
@@ -542,6 +540,8 @@ void Link::sendOne() {
             ->checkForMessage(author, (uint64)state->second.note.sequence + 1);
       }
       break;
+    } else {
+      this->outMessages.erase(q);
     }
   }
 }

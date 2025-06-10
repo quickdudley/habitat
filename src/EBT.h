@@ -5,6 +5,7 @@
 #include "Post.h"
 #include <map>
 #include <queue>
+#include <random>
 #include <set>
 
 namespace ebt {
@@ -56,10 +57,9 @@ private:
   std::map<BString, LinkLocalState> ourState;
   std::queue<BString> sendSequence;
   std::map<BString, int64> lastSent;
-  std::queue<BString> outSequence;
   std::map<BString, std::queue<BMessage>> outMessages;
   bool waiting;
-  bool sending;
+  bool sending = false;
   friend class Dispatcher;
 };
 
@@ -82,6 +82,7 @@ private:
   bool polyLink();
   std::map<BString, LocalState> ourState;
   SSBDatabase *db;
+  std::minstd_rand rng;
   bool buildingNotes = false;
   bool clogged = false;
   friend class Link;
