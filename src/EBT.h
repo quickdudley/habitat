@@ -49,12 +49,17 @@ private:
   void tick(const BString &author);
   void stopWaiting();
   BMessenger *outbound();
+  void pushOut(BMessage *message);
+  void sendOne();
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
   std::map<BString, LinkLocalState> ourState;
   std::queue<BString> sendSequence;
   std::map<BString, int64> lastSent;
+  std::queue<BString> outSequence;
+  std::map<BString, std::queue<BMessage>> outMessages;
   bool waiting;
+  bool sending;
   friend class Dispatcher;
 };
 

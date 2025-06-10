@@ -9,7 +9,7 @@ default: $(TARGET)
 LOC_INCLUDES = -I. -I../..
 INCLUDES = $(LOC_INCLUDES)
 
-CFLAGS = -gdwarf-3 -Wall
+CFLAGS = -g -Wall
 
 define SRCS_LIST_TO_OBJS
 	$(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(foreach file, $(SRCS), \

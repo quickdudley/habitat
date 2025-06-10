@@ -174,31 +174,17 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   }
   {
     BMessage result;
-    std::map<BString, uint64> sent;
     for (int32 i = 0; msg->FindMessage("result", i, &result) == B_OK; i++) {
       BString author;
       JSON::number sequence;
       if (result.FindDouble("sequence", &sequence) == B_OK &&
           result.FindString("author", &author) == B_OK) {
-        // Separate variables because we retrieve the number by assigning
-        // to a double*
-        uint64 actualSequence = sequence;
         for (int i = this->CountHandlers() - 1; i >= 0; i--) {
-          if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-            if (auto state = link->remoteState.find(author);
-                state != link->remoteState.end()) {
-              if (state->second.note.sequence + 1 == sequence) {
-                link->sender.send(&result, true, false, false);
-                state->second.note.sequence++;
-                sent[author] = actualSequence;
-              }
-            }
-          }
+          if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link)
+            link->pushOut(&result);
         }
       }
     }
-    for (auto &[author, sequence] : sent)
-      this->checkForMessage(author, sequence + 1);
   }
 }
 
@@ -360,8 +346,10 @@ Link::Link(muxrpc::Sender sender, bool waiting)
     waiting(waiting) {}
 
 void Link::MessageReceived(BMessage *message) {
-  BMessage content;
-  if (message->FindMessage("content", &content) == B_OK) {
+  if (message->what == 'SENT') {
+    this->sendOne();
+  } else if (BMessage content;
+             message->FindMessage("content", &content) == B_OK) {
     BString author;
     if (content.FindString("author", &author) == B_OK) {
       this->stopWaiting();
@@ -479,6 +467,71 @@ void Link::loadState() {
 }
 
 BMessenger *Link::outbound() { return this->sender.outbound(); }
+
+void Link::pushOut(BMessage *message) {
+  BString author;
+  JSON::number sequence;
+  if (message->FindDouble("sequence", &sequence) == B_OK &&
+      message->FindString("author", &author) == B_OK) {
+    // Separate variables because we retrieve the number by assigning
+    // to a double*
+    uint64 actualSequence = sequence;
+    if (auto state = this->remoteState.find(author);
+        state != this->remoteState.end()) {
+      if (state->second.note.sequence + 1 == sequence) {
+        if (auto q = this->outMessages.find(author); q != this->outMessages.end()) {
+          q->second.push(*message);
+      	} else {
+          this->outMessages[author].push(*message);
+          this->outSequence.push(author);
+      	}
+      	if (!this->sending) {
+          this->sending = true;
+          this->sendOne();
+      	}
+      	// TODO: Use different numbers for queued and sent
+        state->second.note.sequence++;
+      }
+    }
+  }
+}
+
+void Link::sendOne() {
+  while (true) {
+    if (this->outMessages.empty()) {
+      this->sending = false;
+      return;
+    }
+    if (this->outSequence.empty()) {
+      for (auto &[k, v] : this->outMessages)
+        outSequence.push(k);
+    }
+    auto author = this->outSequence.front();
+    this->outSequence.pop();
+    if (auto state = this->remoteState.find(author); state != this->remoteState.end()) {
+      if (!state->second.note.receive) {
+      	this->outMessages.erase(author);
+      	continue;
+      }
+      auto q = this->outMessages.find(author);
+      if (q == this->outMessages.end())
+        continue;
+      if (q->second.empty()) {
+      	this->outMessages.erase(q);
+      	continue;
+      }
+      this->sender.send(&q->second.front(), true, false, false, BMessenger(this));
+      double sequence;
+      q->second.front().FindDouble("sequence", &sequence);
+      q->second.pop();
+      if (q->second.empty()) {
+        this->outMessages.erase(q);
+        static_cast<Dispatcher *>(this->Looper())->checkForMessage(author, (uint64)sequence);
+      }
+      break;
+    }
+  }
+}
 
 void Dispatcher::startNotesTimer(bigtime_t delay) {
   if (this->buildingNotes == false) {
