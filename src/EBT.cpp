@@ -507,7 +507,7 @@ void Link::sendOne() {
     auto q = index > this->outMessages.size() / 2
         ? std::prev(this->outMessages.end(), this->outMessages.size() - index)
         : std::next(this->outMessages.begin(), index);
-    const BString &author = q->first;
+    const BString author = q->first;
     if (auto state = this->remoteState.find(author);
         state != this->remoteState.end()) {
       if (!state->second.note.receive) {
