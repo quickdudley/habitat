@@ -215,9 +215,11 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
 void QueryHandler::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_PULSE: {
+  	if (this->mainDone)
+  	  break;
     int i;
     for (i = 0;
-         i < 128 && !this->mainDone && sqlite3_step(this->query) == SQLITE_ROW;
+         i < 128 && sqlite3_step(this->query) == SQLITE_ROW;
          i++) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
@@ -263,6 +265,7 @@ void QueryHandler::MessageReceived(BMessage *message) {
     if (this->target.IsValid())
       break;
   case B_QUIT_REQUESTED:
+  case 'STOP':
   canceled: {
     BLooper *looper = this->Looper();
     looper->Lock();
