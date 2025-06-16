@@ -80,31 +80,60 @@ status_t timestamps_clause(BString &clause,
   auto boundaries = timeBoundaries(specifier);
   if (boundaries.empty())
     return B_NAME_NOT_FOUND;
-  clause = "(";
-  BString delimiter;
-  BString subclause;
+  std::vector<std::vector<BString>> sections;
+  int state = 0;
   for (auto &[btype, boundary] : boundaries) {
-    clause << delimiter;
-    if (btype == TimeThreshold::LATEST) {
-      if (subclause == "") {
-        clause << "timestamp <= ?";
-      } else {
-        clause << "(";
-        clause << subclause;
-        clause << " AND timestamp <= ?)";
-        subclause = "";
-      }
-    } else {
-      subclause = "timestamp >= ?";
-    }
-    terms.push_back(boundary);
-    delimiter = " OR ";
+  	BString subclause(btype == TimeThreshold::LATEST ?
+  	  "timestamp <= ?" :
+  	  "timestamp >= ?"
+  	);
+  	switch (state) {
+  	case 0:
+  	  sections.push_back(std::vector<BString>());
+  	  sections.back().push_back(std::move(subclause));
+  	  terms.push_back(boundary);
+  	  if (btype == TimeThreshold::EARLIEST)
+  	    state = 1;
+  	  else
+  	    state = 2;
+  	  break;
+  	case 1:
+  	  if (btype == TimeThreshold::LATEST) {
+  	  	sections.back().push_back(std::move(subclause));
+  	  	terms.push_back(boundary);
+  	  	state = 2;
+  	  }
+  	  break;
+  	case 2:
+  	  if (btype == TimeThreshold::EARLIEST) {
+  	  	sections.push_back(std::vector<BString>());
+  	  	sections.back().push_back(std::move(subclause));
+  	  	terms.push_back(boundary);
+  	  	state = 1;
+  	  } else {
+  	  	terms.back() = boundary;
+  	  }
+  	  break;
+  	}
   }
-  if (subclause != "") {
-    clause << delimiter;
-    clause << subclause;
+  clause = sections.size() > 1 ? "(" : "";
+  BString d1;
+  for (auto &outer : sections) {
+  	BString d2;
+  	clause << d1;
+  	d1 = " OR ";
+  	if (outer.size() > 1)
+  	  clause << '(';
+  	for (auto &inner : outer) {
+  	  clause << d2;
+  	  d2 = " AND ";
+  	  clause << inner;
+  	}
+  	if (outer.size() > 1)
+  	  clause << ')';
   }
-  clause << ")";
+  if (sections.size() > 1)
+    clause << ')';
   return B_OK;
 }
 
