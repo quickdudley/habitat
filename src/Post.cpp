@@ -22,6 +22,9 @@
 TODO: Add something to periodically recompute `context` column
 */
 
+#define FEED_DB static_cast<SSBDatabase *>(this->Looper())->database
+#define FEED_WDB static_cast<SSBDatabase *>(this->Looper())->writedb
+
 static inline status_t eitherNumber(int64 *result, const BMessage *source,
                                     const char *name) {
   if (source->FindInt64(name, result) == B_OK) {
@@ -83,54 +86,52 @@ status_t timestamps_clause(BString &clause,
   std::vector<std::vector<BString>> sections;
   int state = 0;
   for (auto &[btype, boundary] : boundaries) {
-  	BString subclause(btype == TimeThreshold::LATEST ?
-  	  "timestamp <= ?" :
-  	  "timestamp >= ?"
-  	);
-  	switch (state) {
-  	case 0:
-  	  sections.push_back(std::vector<BString>());
-  	  sections.back().push_back(std::move(subclause));
-  	  terms.push_back(boundary);
-  	  if (btype == TimeThreshold::EARLIEST)
-  	    state = 1;
-  	  else
-  	    state = 2;
-  	  break;
-  	case 1:
-  	  if (btype == TimeThreshold::LATEST) {
-  	  	sections.back().push_back(std::move(subclause));
-  	  	terms.push_back(boundary);
-  	  	state = 2;
-  	  }
-  	  break;
-  	case 2:
-  	  if (btype == TimeThreshold::EARLIEST) {
-  	  	sections.push_back(std::vector<BString>());
-  	  	sections.back().push_back(std::move(subclause));
-  	  	terms.push_back(boundary);
-  	  	state = 1;
-  	  } else {
-  	  	terms.back() = boundary;
-  	  }
-  	  break;
-  	}
+    BString subclause(btype == TimeThreshold::LATEST ? "timestamp <= ?"
+                                                     : "timestamp >= ?");
+    switch (state) {
+    case 0:
+      sections.push_back(std::vector<BString>());
+      sections.back().push_back(std::move(subclause));
+      terms.push_back(boundary);
+      if (btype == TimeThreshold::EARLIEST)
+        state = 1;
+      else
+        state = 2;
+      break;
+    case 1:
+      if (btype == TimeThreshold::LATEST) {
+        sections.back().push_back(std::move(subclause));
+        terms.push_back(boundary);
+        state = 2;
+      }
+      break;
+    case 2:
+      if (btype == TimeThreshold::EARLIEST) {
+        sections.push_back(std::vector<BString>());
+        sections.back().push_back(std::move(subclause));
+        terms.push_back(boundary);
+        state = 1;
+      } else {
+        terms.back() = boundary;
+      }
+      break;
+    }
   }
   clause = sections.size() > 1 ? "(" : "";
   BString d1;
   for (auto &outer : sections) {
-  	BString d2;
-  	clause << d1;
-  	d1 = " OR ";
-  	if (outer.size() > 1)
-  	  clause << '(';
-  	for (auto &inner : outer) {
-  	  clause << d2;
-  	  d2 = " AND ";
-  	  clause << inner;
-  	}
-  	if (outer.size() > 1)
-  	  clause << ')';
+    BString d2;
+    clause << d1;
+    d1 = " OR ";
+    if (outer.size() > 1)
+      clause << '(';
+    for (auto &inner : outer) {
+      clause << d2;
+      d2 = " AND ";
+      clause << inner;
+    }
+    if (outer.size() > 1)
+      clause << ')';
   }
   if (sections.size() > 1)
     clause << ')';
@@ -244,12 +245,10 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
 void QueryHandler::MessageReceived(BMessage *message) {
   switch (message->what) {
   case B_PULSE: {
-  	if (this->mainDone)
-  	  break;
+    if (this->mainDone)
+      break;
     int i;
-    for (i = 0;
-         i < 128 && sqlite3_step(this->query) == SQLITE_ROW;
-         i++) {
+    for (i = 0; i < 128 && sqlite3_step(this->query) == SQLITE_ROW; i++) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
           B_OK) {
@@ -422,13 +421,14 @@ void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
   BLooper::DispatchMessage(message, handler);
 }
 
-SSBDatabase::SSBDatabase(sqlite3 *database)
+SSBDatabase::SSBDatabase(sqlite3 *database, sqlite3 *writedb)
     :
     BLooper("SSB message database", 8192, 512),
-    database(database) {
+    database(database),
+    writedb(writedb) {
   if (runningDB == NULL)
     runningDB = this;
-  sqlite3_prepare_v2(database,
+  sqlite3_prepare_v2(writedb,
                      "SELECT rowid, body FROM unprocessed "
                      "ORDER BY rowid LIMIT 1",
                      -1, &this->backlog, NULL);
@@ -447,6 +447,7 @@ SSBDatabase::SSBDatabase(sqlite3 *database)
 SSBDatabase::~SSBDatabase() {
   sqlite3_finalize(this->backlog);
   sqlite3_close_v2(this->database);
+  sqlite3_close_v2(this->writedb);
   if (runningDB == this)
     runningDB = NULL;
 }
@@ -580,7 +581,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
             (error = SSBFeed::parseAuthor(key, formatted)) == B_OK) {
           SSBFeed *feed;
           if (this->findFeed(feed, formatted) != B_OK) {
-            feed = new SSBFeed(this->database, key);
+            feed = new SSBFeed(key);
             this->AddHandler(feed);
             this->feeds.insert({formatted, feed});
             feed->load();
@@ -664,7 +665,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           error = B_OK;
           if (bool value; data.FindBool("processed", &value) == B_OK) {
             sqlite3_stmt *update;
-            sqlite3_prepare_v2(this->database,
+            sqlite3_prepare_v2(this->writedb,
                                "UPDATE messages "
                                "SET processed = ? "
                                "WHERE cypherkey = ?",
@@ -689,7 +690,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     sqlite3_stmt *insert;
-    sqlite3_prepare_v2(this->database,
+    sqlite3_prepare_v2(this->writedb,
                        "INSERT INTO unprocessed (body) VALUES (?)", -1, &insert,
                        NULL);
     ssize_t flatSize = msg->FlattenedSize();
@@ -731,6 +732,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
     }
+    sqlite3_exec(this->writedb, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     if (sqlite3_step(this->backlog) == SQLITE_ROW) {
       BMessage post;
       BString author;
@@ -748,12 +750,13 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       }
       sqlite3_stmt *del;
-      sqlite3_prepare_v2(this->database,
+      sqlite3_prepare_v2(this->writedb,
                          "DELETE FROM unprocessed WHERE rowid = ?", -1, &del,
                          NULL);
       sqlite3_bind_int64(del, 1, sqlite3_column_int64(this->backlog, 0));
       sqlite3_step(del);
       sqlite3_finalize(del);
+
       if (this->backlogCount) {
         --this->backlogCount;
         this->notifyBacklog();
@@ -771,6 +774,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       }
     }
     sqlite3_reset(this->backlog);
+    sqlite3_exec(this->writedb, "END TRANSACTION;", NULL, NULL, NULL);
   } else {
     return BLooper::MessageReceived(msg);
   }
@@ -847,7 +851,7 @@ void SSBDatabase::loadFeeds() {
     SSBFeed *feed;
     if (this->findFeed(feed, cypherkey) != B_OK &&
         SSBFeed::parseAuthor(key, cypherkey) == B_OK) {
-      feed = new SSBFeed(this->database, key);
+      feed = new SSBFeed(key);
       this->AddHandler(feed);
       this->feeds.insert({cypherkey, feed});
       feed->load();
@@ -856,15 +860,7 @@ void SSBDatabase::loadFeeds() {
   sqlite3_finalize(query);
 }
 
-bool post_private_::FeedBuildComparator::operator()(const FeedShuntEntry &l,
-                                                    const FeedShuntEntry &r) {
-  return l.sequence > r.sequence;
-}
-
-SSBFeed::SSBFeed(sqlite3 *database,
-                 unsigned char key[crypto_sign_PUBLICKEYBYTES])
-    :
-    database(database) {
+SSBFeed::SSBFeed(unsigned char key[crypto_sign_PUBLICKEYBYTES]) {
   memcpy(this->pubkey, key, crypto_sign_PUBLICKEYBYTES);
 }
 
@@ -873,15 +869,15 @@ status_t SSBFeed::load() {
   BString key = this->cypherkey();
   {
     sqlite3_stmt *reg;
-    sqlite3_prepare_v2(this->database, "INSERT INTO feeds(author) VALUES(?)",
-                       -1, &reg, NULL);
+    sqlite3_prepare_v2(FEED_WDB, "INSERT INTO feeds(author) VALUES(?)", -1,
+                       &reg, NULL);
     sqlite3_bind_text(reg, 1, key.String(), key.Length(), SQLITE_STATIC);
     sqlite3_step(reg);
     sqlite3_finalize(reg);
   }
   sqlite3_stmt *query;
   sqlite3_prepare_v2(
-      this->database,
+      FEED_DB,
       "SELECT sequence, cypherkey FROM messages WHERE author = ?"
       " AND sequence = (SELECT max(m.sequence) FROM messages AS m"
       " WHERE m.author = messages.author)",
@@ -906,11 +902,6 @@ status_t SSBFeed::load() {
   sqlite3_finalize(query);
   this->notifyChanges();
   return error;
-}
-
-bool SSBFeed::flushQueue() {
-  // TODO: Check whether or not this is still necessary.
-  return false;
 }
 
 SSBFeed::~SSBFeed() {}
@@ -996,16 +987,15 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
         sqlite3_stmt *deleter;
-        sqlite3_prepare_v2(this->database,
-                           "DELETE FROM messages WHERE author = ?", -1,
-                           &deleter, NULL);
+        sqlite3_prepare_v2(FEED_WDB, "DELETE FROM messages WHERE author = ?",
+                           -1, &deleter, NULL);
         BString key = this->cypherkey();
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);
         sqlite3_step(deleter);
         sqlite3_finalize(deleter);
-        sqlite3_prepare_v2(this->database, "DELETE FROM feeds WHERE author = ?",
-                           -1, &deleter, NULL);
+        sqlite3_prepare_v2(FEED_WDB, "DELETE FROM feeds WHERE author = ?", -1,
+                           &deleter, NULL);
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);
         sqlite3_step(deleter);
@@ -1090,11 +1080,6 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         idSize != crypto_hash_sha256_BYTES) {
       return;
     }
-    if (this->flushQueue() &&
-        (sequence > this->lastSequence || !this->pending.empty())) {
-      this->lastSequence = sequence;
-      memcpy(this->lastHash, id, crypto_hash_sha256_BYTES);
-    }
     this->notifyChanges();
   } else if (BString author; msg->FindString("author", &author) == B_OK &&
              author == this->cypherkey()) {
@@ -1109,9 +1094,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->save(msg);
     } else if (saveStatus == B_LAST_BUFFER_ERROR) {
       sqlite3_stmt *rollback;
-      sqlite3_prepare_v2(this->database,
-                         "DELETE FROM messages WHERE author = ?", -1, &rollback,
-                         NULL);
+      sqlite3_prepare_v2(FEED_WDB, "DELETE FROM messages WHERE author = ?", -1,
+                         &rollback, NULL);
       BString key = this->cypherkey();
       sqlite3_bind_text(rollback, 1, key.String(), key.Length(), SQLITE_STATIC);
       sqlite3_step(rollback);
@@ -1151,7 +1135,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
 status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
   sqlite3_stmt *fetch;
   sqlite3_prepare_v2(
-      this->database,
+      FEED_WDB,
       "SELECT cypherkey, body FROM messages WHERE author = ? AND sequence = ?",
       -1, &fetch, NULL);
   BString cypherkey = this->cypherkey();
@@ -1170,7 +1154,7 @@ status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
 status_t SSBFeed::getSegment(BMessage *reply, uint64 sequence, uint16 count) {
   sqlite3_stmt *fetch;
   sqlite3_prepare_v2(
-      this->database,
+      FEED_WDB,
       "SELECT body FROM messages WHERE author = ? AND sequence >= ? "
       "ORDER BY sequence LIMIT ?",
       -1, &fetch, NULL);
@@ -1295,7 +1279,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   }
   sqlite3_stmt *insert;
   sqlite3_prepare_v2(
-      this->database,
+      FEED_WDB,
       "INSERT INTO messages"
       "(cypherkey, author, sequence, timestamp, type, context, body) "
       "VALUES(?, ?, ?, ?, ?, ?, ?)",
@@ -1356,9 +1340,9 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   return B_OK;
 }
 
-OwnFeed::OwnFeed(sqlite3 *database, Ed25519Secret *secret)
+OwnFeed::OwnFeed(Ed25519Secret *secret)
     :
-    SSBFeed(database, secret->pubkey) {
+    SSBFeed(secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 

@@ -190,8 +190,9 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new SSBDatabase(database);
-  this->ownFeed = new OwnFeed(database, this->myId.get());
+  this->databaseLooper =
+      new SSBDatabase(database, migrateToSqlite(*this->settings));
+  this->ownFeed = new OwnFeed(this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->databaseLooper->loadFeeds();
