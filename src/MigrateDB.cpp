@@ -35,11 +35,12 @@ status_t prepareDatabase(sqlite3 *database) {
                NULL, NULL, &error);
   if (sqlite3_exec(
           database,
-          "CREATE INDEX IF NOT EXISTS typectx ON messages (type, context)",
+          "CREATE INDEX IF NOT EXISTS ctxtype ON messages (context, type)",
           NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
+  sqlite3_exec(database, "DROP INDEX typectx", NULL, NULL, NULL);
   if (sqlite3_exec(database,
                    "CREATE INDEX IF NOT EXISTS proqueue ON messages (type) "
                    "WHERE processed = 0",
@@ -54,12 +55,14 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
-  if (sqlite3_exec(database,
-                   "CREATE INDEX IF NOT EXISTS msgtime ON messages (timestamp)",
-                   NULL, NULL, &error) != SQLITE_OK) {
+  if (sqlite3_exec(
+          database,
+          "CREATE INDEX IF NOT EXISTS typetime ON messages (type, timestamp)",
+          NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
+  sqlite3_exec(database, "DROP INDEX msgtime", NULL, NULL, NULL);
   if (sqlite3_exec(database,
                    "CREATE TABLE IF NOT EXISTS unprocessed(body BLOB)", NULL,
                    NULL, &error) != SQLITE_OK) {

@@ -149,18 +149,6 @@ Habitat::Habitat(void)
     } else {
       throw status;
     }
-    database = migrateToSqlite(*this->settings);
-    // Create contacts directory
-    status = this->settings->CreateDirectory("contacts", &contactsDir);
-    if (status == B_FILE_EXISTS) {
-      BEntry entry;
-      status = this->settings->FindEntry("contacts", &entry, true);
-      if (status != B_OK)
-        throw status;
-      contactsDir = BDirectory(&entry);
-    } else if (status != B_OK) {
-      throw status;
-    }
     // Create indices
     ensureIndices(settings_path.Path());
     // Load secret if it exists
@@ -190,13 +178,17 @@ Habitat::Habitat(void)
     }
   }
   // Create main feed looper
-  this->databaseLooper = new SSBDatabase(database);
-  this->ownFeed = new OwnFeed(database, this->myId.get());
+  {
+    auto &settings = *this->settings;
+    this->databaseLooper =
+        new SSBDatabase([settings]() { return migrateToSqlite(settings); });
+  }
+  this->ownFeed = new OwnFeed(this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->databaseLooper->loadFeeds();
-  this->RegisterLooper(databaseLooper);
-  this->contactStore = new ContactStore(database);
+  this->RegisterLooper(this->databaseLooper);
+  this->contactStore = new ContactStore(this->databaseLooper->database);
   this->databaseLooper->AddHandler(this->contactStore);
   // Open main window
   this->mainWindow = new MainWindow(this->databaseLooper);

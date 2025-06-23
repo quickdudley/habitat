@@ -6,23 +6,12 @@
 #include <Looper.h>
 #include <PropertyInfo.h>
 #include <Volume.h>
+#include <functional>
 #include <map>
-#include <queue>
 #include <sqlite3.h>
 #include <vector>
 
 BString messageCypherkey(unsigned char hash[crypto_hash_sha256_BYTES]);
-
-namespace post_private_ {
-struct FeedShuntEntry {
-  uint64 sequence;
-  entry_ref ref;
-};
-
-struct FeedBuildComparator {
-  bool operator()(const FeedShuntEntry &l, const FeedShuntEntry &r);
-};
-} // namespace post_private_
 
 class QueryBacked : public BHandler {
 public:
@@ -42,7 +31,7 @@ extern property_info databaseProperties[];
 
 class SSBDatabase : public BLooper {
 public:
-  SSBDatabase(sqlite3 *database);
+  SSBDatabase(std::function<sqlite3 *()> dbOpen);
   ~SSBDatabase() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
@@ -59,11 +48,16 @@ public:
 
 private:
   friend class SSBFeed;
-  friend class QueryHandler;
+  friend class QueryBacked;
   bool runCheck(BMessage *msg);
+
+public:
   sqlite3 *database;
-  sqlite3_stmt *backlog;
+
+private:
+  std::function<sqlite3 *()> dbOpen;
   std::map<BString, SSBFeed *> feeds;
+  sqlite3_stmt *backlog;
   uint64 backlogCount;
   int checkpointCount = 0;
   bool pulseRunning = false;
@@ -73,7 +67,7 @@ private:
 
 class SSBFeed : public BHandler {
 public:
-  SSBFeed(sqlite3 *database, unsigned char key[crypto_sign_PUBLICKEYBYTES]);
+  SSBFeed(unsigned char key[crypto_sign_PUBLICKEYBYTES]);
   ~SSBFeed();
   BString cypherkey();
   BString previousLink();
@@ -94,12 +88,6 @@ public:
 
 protected:
   status_t save(BMessage *message, BMessage *result = NULL);
-  bool flushQueue();
-  sqlite3 *database;
-  std::priority_queue<post_private_::FeedShuntEntry,
-                      std::vector<post_private_::FeedShuntEntry>,
-                      post_private_::FeedBuildComparator>
-      pending;
   unsigned char pubkey[crypto_sign_PUBLICKEYBYTES];
   int64 lastSequence = 0;
   unsigned char lastHash[crypto_hash_sha256_BYTES];
@@ -110,7 +98,7 @@ protected:
 
 class OwnFeed : public SSBFeed {
 public:
-  OwnFeed(sqlite3 *database, Ed25519Secret *secret);
+  OwnFeed(Ed25519Secret *secret);
   status_t GetSupportedSuites(BMessage *data);
   void MessageReceived(BMessage *msg);
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
