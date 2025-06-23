@@ -50,8 +50,8 @@ ssize_t Tunnel::Read(void *buffer, size_t size) {
 ssize_t Tunnel::Write(const void *buffer, size_t size) {
   size = std::min(size, (size_t)65535);
   status_t err;
-  if ((err = this->sender.send((unsigned char *)buffer, (uint32)size, true,
-                               false, false)) == B_OK) {
+  if ((err = this->sender.sendBlocking((unsigned char *)buffer, (uint32)size,
+                                       true, false, false)) == B_OK) {
     return size;
   } else {
     return err;

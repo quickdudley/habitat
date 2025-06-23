@@ -59,6 +59,23 @@ SenderHandler::~SenderHandler() {}
       wrapper.AddUInt32("sequence", sequence);                                 \
     }                                                                          \
     return this->inner.SendMessage(&wrapper, whenDone);                        \
+  }                                                                            \
+  status_t Sender::sendBlocking(type content, bool stream, bool error,         \
+                                bool inOrder) {                                \
+    BMessage wrapper('SEND');                                                  \
+    wrapper.msgMethod("content", content);                                     \
+    wrapper.AddBool("stream", stream);                                         \
+    wrapper.AddBool("end", error);                                             \
+    BMessage reply;                                                            \
+    if (inOrder) {                                                             \
+      status_t result;                                                         \
+      if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)        \
+        return result;                                                         \
+      uint32 sequence = this->sequence++;                                      \
+      release_sem(this->sequenceSemaphore);                                    \
+      wrapper.AddUInt32("sequence", sequence);                                 \
+    }                                                                          \
+    return this->inner.SendMessage(&wrapper, &reply);                          \
   }
 
 SEND_FUNCTION(bool, AddBool)
@@ -85,6 +102,24 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
     wrapper.AddUInt32("sequence", sequence);
   }
   return this->inner.SendMessage(&wrapper, whenDone);
+}
+
+status_t Sender::sendBlocking(unsigned char *content, uint32 length,
+                              bool stream, bool error, bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddData("content", B_RAW_TYPE, content, length, false);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    uint32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddUInt32("sequence", sequence);
+  }
+  BMessage reply;
+  return this->inner.SendMessage(&wrapper, &reply);
 }
 
 BMessenger *Sender::outbound() { return &this->inner; }

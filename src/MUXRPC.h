@@ -86,6 +86,16 @@ public:
                 BMessenger whenDone = BMessenger());
   status_t send(unsigned char *content, uint32 length, bool stream, bool error,
                 bool inOrder = true, BMessenger whenDone = BMessenger());
+  status_t sendBlocking(bool content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(double content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(BMessage *content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(BString &content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(unsigned char *content, uint32 length, bool stream,
+                        bool error, bool inOrder = true);
   BMessenger *outbound();
 
 private:
