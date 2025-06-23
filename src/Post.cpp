@@ -246,8 +246,10 @@ void QueryHandler::MessageReceived(BMessage *message) {
   case B_PULSE: {
     if (this->mainDone)
       break;
-    int i;
-    for (i = 0; i < 128 && sqlite3_step(this->query) == SQLITE_ROW; i++) {
+    bool unfinished;
+    for (int i = 0;
+         i < 128 && (unfinished = sqlite3_step(this->query) == SQLITE_ROW);
+         i++) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
           B_OK) {
@@ -259,9 +261,12 @@ void QueryHandler::MessageReceived(BMessage *message) {
           goto canceled;
       }
     }
-    if (i == 0) {
+    if (!unfinished) {
       if (this->target.IsValid()) {
+        auto handle = sqlite3_db_handle(this->query);
         sqlite3_finalize(this->query);
+        if (handle != FEED_DB)
+          sqlite3_close(handle);
         this->query = NULL;
         this->target.SendMessage('DONE');
         this->mainDone = true;
@@ -294,6 +299,13 @@ void QueryHandler::MessageReceived(BMessage *message) {
   case B_QUIT_REQUESTED:
   case 'STOP':
   canceled: {
+    if (this->query) {
+      auto handle = sqlite3_db_handle(this->query);
+      sqlite3_finalize(this->query);
+      if (handle != FEED_DB)
+        sqlite3_close(handle);
+      this->query = NULL;
+    }
     BLooper *looper = this->Looper();
     looper->Lock();
     looper->RemoveHandler(this);
@@ -420,7 +432,7 @@ void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
   BLooper::DispatchMessage(message, handler);
 }
 
-SSBDatabase::SSBDatabase(std::function<sqlite3*()> dbOpen)
+SSBDatabase::SSBDatabase(std::function<sqlite3 *()> dbOpen)
     :
     BLooper("SSB message database", 8192, 512),
     database(dbOpen()),
@@ -637,7 +649,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         QueryHandler *qh;
         bool live;
         if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-          qh = new QueryHandler(this->database, target, specifier);
+          qh = new QueryHandler(this->dbOpen(), target, specifier);
           live = true;
         } else {
           qh = new QueryHandler(this->database, BMessenger(), specifier);
@@ -867,8 +879,8 @@ status_t SSBFeed::load() {
   BString key = this->cypherkey();
   {
     sqlite3_stmt *reg;
-    sqlite3_prepare_v2(FEED_DB, "INSERT INTO feeds(author) VALUES(?)", -1,
-                       &reg, NULL);
+    sqlite3_prepare_v2(FEED_DB, "INSERT INTO feeds(author) VALUES(?)", -1, &reg,
+                       NULL);
     sqlite3_bind_text(reg, 1, key.String(), key.Length(), SQLITE_STATIC);
     sqlite3_step(reg);
     sqlite3_finalize(reg);
@@ -985,8 +997,8 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
         sqlite3_stmt *deleter;
-        sqlite3_prepare_v2(FEED_DB, "DELETE FROM messages WHERE author = ?",
-                           -1, &deleter, NULL);
+        sqlite3_prepare_v2(FEED_DB, "DELETE FROM messages WHERE author = ?", -1,
+                           &deleter, NULL);
         BString key = this->cypherkey();
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);

@@ -31,7 +31,7 @@ extern property_info databaseProperties[];
 
 class SSBDatabase : public BLooper {
 public:
-  SSBDatabase(std::function<sqlite3*()> dbOpen);
+  SSBDatabase(std::function<sqlite3 *()> dbOpen);
   ~SSBDatabase() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
@@ -48,10 +48,14 @@ public:
 
 private:
   friend class SSBFeed;
-  friend class QueryHandler;
+  friend class QueryBacked;
   bool runCheck(BMessage *msg);
+
+public:
   sqlite3 *database;
-  std::function<sqlite3*()> dbOpen;
+
+private:
+  std::function<sqlite3 *()> dbOpen;
   std::map<BString, SSBFeed *> feeds;
   sqlite3_stmt *backlog;
   uint64 backlogCount;

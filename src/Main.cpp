@@ -179,16 +179,16 @@ Habitat::Habitat(void)
   }
   // Create main feed looper
   {
-  	auto &settings = *this->settings;
-  this->databaseLooper =
-      new SSBDatabase([settings]() {return migrateToSqlite(settings);});
+    auto &settings = *this->settings;
+    this->databaseLooper =
+        new SSBDatabase([settings]() { return migrateToSqlite(settings); });
   }
   this->ownFeed = new OwnFeed(this->myId.get());
   this->databaseLooper->AddHandler(this->ownFeed);
   this->ownFeed->load();
   this->databaseLooper->loadFeeds();
-  this->RegisterLooper(databaseLooper);
-  this->contactStore = new ContactStore(database);
+  this->RegisterLooper(this->databaseLooper);
+  this->contactStore = new ContactStore(this->databaseLooper->database);
   this->databaseLooper->AddHandler(this->contactStore);
   // Open main window
   this->mainWindow = new MainWindow(this->databaseLooper);
