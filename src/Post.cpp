@@ -23,7 +23,6 @@ TODO: Add something to periodically recompute `context` column
 */
 
 #define FEED_DB static_cast<SSBDatabase *>(this->Looper())->database
-#define FEED_WDB static_cast<SSBDatabase *>(this->Looper())->writedb
 
 static inline status_t eitherNumber(int64 *result, const BMessage *source,
                                     const char *name) {
@@ -421,14 +420,14 @@ void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
   BLooper::DispatchMessage(message, handler);
 }
 
-SSBDatabase::SSBDatabase(sqlite3 *database, sqlite3 *writedb)
+SSBDatabase::SSBDatabase(std::function<sqlite3*()> dbOpen)
     :
     BLooper("SSB message database", 8192, 512),
-    database(database),
-    writedb(writedb) {
+    database(dbOpen()),
+    dbOpen(std::move(dbOpen)) {
   if (runningDB == NULL)
     runningDB = this;
-  sqlite3_prepare_v2(writedb,
+  sqlite3_prepare_v2(database,
                      "SELECT rowid, body FROM unprocessed "
                      "ORDER BY rowid LIMIT 1",
                      -1, &this->backlog, NULL);
@@ -447,7 +446,6 @@ SSBDatabase::SSBDatabase(sqlite3 *database, sqlite3 *writedb)
 SSBDatabase::~SSBDatabase() {
   sqlite3_finalize(this->backlog);
   sqlite3_close_v2(this->database);
-  sqlite3_close_v2(this->writedb);
   if (runningDB == this)
     runningDB = NULL;
 }
@@ -665,7 +663,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           error = B_OK;
           if (bool value; data.FindBool("processed", &value) == B_OK) {
             sqlite3_stmt *update;
-            sqlite3_prepare_v2(this->writedb,
+            sqlite3_prepare_v2(this->database,
                                "UPDATE messages "
                                "SET processed = ? "
                                "WHERE cypherkey = ?",
@@ -690,7 +688,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     return;
   } else if (BString author; msg->FindString("author", &author) == B_OK) {
     sqlite3_stmt *insert;
-    sqlite3_prepare_v2(this->writedb,
+    sqlite3_prepare_v2(this->database,
                        "INSERT INTO unprocessed (body) VALUES (?)", -1, &insert,
                        NULL);
     ssize_t flatSize = msg->FlattenedSize();
@@ -732,7 +730,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
     }
-    sqlite3_exec(this->writedb, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+    sqlite3_exec(this->database, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     if (sqlite3_step(this->backlog) == SQLITE_ROW) {
       BMessage post;
       BString author;
@@ -750,7 +748,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         }
       }
       sqlite3_stmt *del;
-      sqlite3_prepare_v2(this->writedb,
+      sqlite3_prepare_v2(this->database,
                          "DELETE FROM unprocessed WHERE rowid = ?", -1, &del,
                          NULL);
       sqlite3_bind_int64(del, 1, sqlite3_column_int64(this->backlog, 0));
@@ -774,7 +772,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
       }
     }
     sqlite3_reset(this->backlog);
-    sqlite3_exec(this->writedb, "END TRANSACTION;", NULL, NULL, NULL);
+    sqlite3_exec(this->database, "END TRANSACTION;", NULL, NULL, NULL);
   } else {
     return BLooper::MessageReceived(msg);
   }
@@ -869,7 +867,7 @@ status_t SSBFeed::load() {
   BString key = this->cypherkey();
   {
     sqlite3_stmt *reg;
-    sqlite3_prepare_v2(FEED_WDB, "INSERT INTO feeds(author) VALUES(?)", -1,
+    sqlite3_prepare_v2(FEED_DB, "INSERT INTO feeds(author) VALUES(?)", -1,
                        &reg, NULL);
     sqlite3_bind_text(reg, 1, key.String(), key.Length(), SQLITE_STATIC);
     sqlite3_step(reg);
@@ -987,14 +985,14 @@ void SSBFeed::MessageReceived(BMessage *msg) {
         B_OK) {
       if (msg->what == B_DELETE_PROPERTY) {
         sqlite3_stmt *deleter;
-        sqlite3_prepare_v2(FEED_WDB, "DELETE FROM messages WHERE author = ?",
+        sqlite3_prepare_v2(FEED_DB, "DELETE FROM messages WHERE author = ?",
                            -1, &deleter, NULL);
         BString key = this->cypherkey();
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);
         sqlite3_step(deleter);
         sqlite3_finalize(deleter);
-        sqlite3_prepare_v2(FEED_WDB, "DELETE FROM feeds WHERE author = ?", -1,
+        sqlite3_prepare_v2(FEED_DB, "DELETE FROM feeds WHERE author = ?", -1,
                            &deleter, NULL);
         sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
                           SQLITE_TRANSIENT);
@@ -1094,7 +1092,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
       this->save(msg);
     } else if (saveStatus == B_LAST_BUFFER_ERROR) {
       sqlite3_stmt *rollback;
-      sqlite3_prepare_v2(FEED_WDB, "DELETE FROM messages WHERE author = ?", -1,
+      sqlite3_prepare_v2(FEED_DB, "DELETE FROM messages WHERE author = ?", -1,
                          &rollback, NULL);
       BString key = this->cypherkey();
       sqlite3_bind_text(rollback, 1, key.String(), key.Length(), SQLITE_STATIC);
@@ -1135,7 +1133,7 @@ void SSBFeed::MessageReceived(BMessage *msg) {
 status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
   sqlite3_stmt *fetch;
   sqlite3_prepare_v2(
-      FEED_WDB,
+      FEED_DB,
       "SELECT cypherkey, body FROM messages WHERE author = ? AND sequence = ?",
       -1, &fetch, NULL);
   BString cypherkey = this->cypherkey();
@@ -1154,7 +1152,7 @@ status_t SSBFeed::findPost(BString *id, BMessage *post, uint64 sequence) {
 status_t SSBFeed::getSegment(BMessage *reply, uint64 sequence, uint16 count) {
   sqlite3_stmt *fetch;
   sqlite3_prepare_v2(
-      FEED_WDB,
+      FEED_DB,
       "SELECT body FROM messages WHERE author = ? AND sequence >= ? "
       "ORDER BY sequence LIMIT ?",
       -1, &fetch, NULL);
@@ -1279,7 +1277,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   }
   sqlite3_stmt *insert;
   sqlite3_prepare_v2(
-      FEED_WDB,
+      FEED_DB,
       "INSERT INTO messages"
       "(cypherkey, author, sequence, timestamp, type, context, body) "
       "VALUES(?, ?, ?, ?, ?, ?, ?)",

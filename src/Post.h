@@ -6,6 +6,7 @@
 #include <Looper.h>
 #include <PropertyInfo.h>
 #include <Volume.h>
+#include <functional>
 #include <map>
 #include <sqlite3.h>
 #include <vector>
@@ -30,7 +31,7 @@ extern property_info databaseProperties[];
 
 class SSBDatabase : public BLooper {
 public:
-  SSBDatabase(sqlite3 *database, sqlite3 *writeDB);
+  SSBDatabase(std::function<sqlite3*()> dbOpen);
   ~SSBDatabase() override;
   status_t GetSupportedSuites(BMessage *data) override;
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *specifier,
@@ -50,7 +51,7 @@ private:
   friend class QueryHandler;
   bool runCheck(BMessage *msg);
   sqlite3 *database;
-  sqlite3 *writedb;
+  std::function<sqlite3*()> dbOpen;
   std::map<BString, SSBFeed *> feeds;
   sqlite3_stmt *backlog;
   uint64 backlogCount;
