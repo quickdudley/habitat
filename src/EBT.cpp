@@ -388,8 +388,9 @@ void Link::MessageReceived(BMessage *message) {
               if (inserted.first->second.note.receive) {
                 auto q = this->outMessages.find(attrname);
                 if (q != this->outMessages.end()) {
-                  while (q->second.front().GetDouble("sequence", 0.0) !=
-                         inserted.first->second.note.sequence + 1) {
+                  while (!q->second.empty() &&
+                         q->second.front().GetDouble("sequence", 0.0) !=
+                             inserted.first->second.note.sequence + 1) {
                     q->second.pop();
                   }
                   if (q->second.empty()) {
