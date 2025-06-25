@@ -131,7 +131,6 @@ Habitat::Habitat(void)
             defaultTimeZone.ID().String()));
   }
   BDirectory contactsDir;
-  sqlite3 *database;
   {
     // Create settings directory
     BPath settings_path;
