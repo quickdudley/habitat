@@ -58,6 +58,7 @@ LIB_SRCS = \
 	 src/Invite.cpp \
 	 src/JSON.cpp \
 	 src/Logging.cpp \
+	 src/Markdown.cpp \
 
 TESTABLE_SRCS = \
 	 src/Base64.cpp \
@@ -67,6 +68,7 @@ TESTABLE_SRCS = \
 	 src/Invite.cpp \
 	 src/JSON.cpp \
 	 src/Logging.cpp \
+	 src/Markdown.cpp \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
 	 src/Secret.cpp \
@@ -476,4 +478,8 @@ $(TEST_DIR)/failures.h: tests/failures.json
 	xxd -i tests/failures.json "$@"
 generated/test/ValidationDatasetSpec.o : $(TEST_DIR)/ssb_validation_dataset.h
 $(TEST_DIR)/PreviousFailuresSpec.o : $(TEST_DIR)/failures.h
-
+$(TEST_DIR)/markdown_spec.json:
+	curl -o "$@" https://spec.commonmark.org/0.31.2/spec.json
+$(TEST_DIR)/markdown_spec.h : $(TEST_DIR)/markdown_spec.json
+	xxd -i $(TEST_DIR)/markdown_spec.json "$@"
+generated/test/MarkdownSpec.o : $(TEST_DIR)/markdown_spec.h
