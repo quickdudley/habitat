@@ -15,6 +15,7 @@
 #include <LocaleRoster.h>
 #include <MenuItem.h>
 #include <PropertyInfo.h>
+#include <Screen.h>
 #include <TimeZone.h>
 #include <cstring>
 #include <iostream>
@@ -749,9 +750,18 @@ void Habitat::Quit() {
 
 BDirectory &Habitat::settingsDir() { return *this->settings; }
 
+static BRect initialFrame() {
+  auto ss = BScreen().Frame();
+  if (ss.right > 512)
+    ss.right = 512;
+  ss.top = 25;
+  ss.InsetBy(5, 5);
+  return ss;
+}
+
 MainWindow::MainWindow(SSBDatabase *db)
     :
-    BWindow(BRect(100, 100, 520, 400), "Habitat", B_DOCUMENT_WINDOW,
+    BWindow(initialFrame(), "Habitat", B_DOCUMENT_WINDOW,
             B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
   BRect mbarRect(this->Bounds());
   mbarRect.bottom = 20;
