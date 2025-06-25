@@ -5,6 +5,7 @@
 #include "Post.h"
 #include <map>
 #include <queue>
+#include <random>
 #include <set>
 
 namespace ebt {
@@ -49,12 +50,16 @@ private:
   void tick(const BString &author);
   void stopWaiting();
   BMessenger *outbound();
+  void pushOut(BMessage *message);
+  void sendOne();
   muxrpc::Sender sender;
   std::map<BString, RemoteState> remoteState;
   std::map<BString, LinkLocalState> ourState;
   std::queue<BString> sendSequence;
   std::map<BString, int64> lastSent;
+  std::map<BString, std::queue<BMessage>> outMessages;
   bool waiting;
+  bool sending = false;
   friend class Dispatcher;
 };
 
@@ -77,6 +82,7 @@ private:
   bool polyLink();
   std::map<BString, LocalState> ourState;
   SSBDatabase *db;
+  std::minstd_rand rng;
   bool buildingNotes = false;
   bool clogged = false;
   friend class Link;

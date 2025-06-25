@@ -2,6 +2,7 @@
 #include "Logging.h"
 #include <MessageRunner.h>
 #include <iostream>
+#include <iterator>
 
 namespace ebt {
 
@@ -174,31 +175,17 @@ void Dispatcher::MessageReceived(BMessage *msg) {
   }
   {
     BMessage result;
-    std::map<BString, uint64> sent;
     for (int32 i = 0; msg->FindMessage("result", i, &result) == B_OK; i++) {
       BString author;
       JSON::number sequence;
       if (result.FindDouble("sequence", &sequence) == B_OK &&
           result.FindString("author", &author) == B_OK) {
-        // Separate variables because we retrieve the number by assigning
-        // to a double*
-        uint64 actualSequence = sequence;
         for (int i = this->CountHandlers() - 1; i >= 0; i--) {
-          if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link) {
-            if (auto state = link->remoteState.find(author);
-                state != link->remoteState.end()) {
-              if (state->second.note.sequence + 1 == sequence) {
-                link->sender.send(&result, true, false, false);
-                state->second.note.sequence++;
-                sent[author] = actualSequence;
-              }
-            }
-          }
+          if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link)
+            link->pushOut(&result);
         }
       }
     }
-    for (auto &[author, sequence] : sent)
-      this->checkForMessage(author, sequence + 1);
   }
 }
 
@@ -285,7 +272,7 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
     BMessage message(B_GET_PROPERTY);
     BMessage specifier(B_INDEX_SPECIFIER);
     specifier.AddInt32("index", (int32)sequence);
-    specifier.AddUInt16("count", 256);
+    specifier.AddUInt16("count", 16);
     specifier.AddString("property", "Post");
     message.AddSpecifier(&specifier);
     message.AddSpecifier("ReplicatedFeed", author);
@@ -360,8 +347,10 @@ Link::Link(muxrpc::Sender sender, bool waiting)
     waiting(waiting) {}
 
 void Link::MessageReceived(BMessage *message) {
-  BMessage content;
-  if (message->FindMessage("content", &content) == B_OK) {
+  if (message->what == 'SENT') {
+    this->sendOne();
+  } else if (BMessage content;
+             message->FindMessage("content", &content) == B_OK) {
     BString author;
     if (content.FindString("author", &author) == B_OK) {
       this->stopWaiting();
@@ -397,9 +386,24 @@ void Link::MessageReceived(BMessage *message) {
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
             if (this->ourState.find(attrname) != this->ourState.end()) {
               if (inserted.first->second.note.receive) {
-                dispatcher->checkForMessage(
-                    inserted.first->first,
-                    inserted.first->second.note.sequence + 1);
+                auto q = this->outMessages.find(attrname);
+                if (q != this->outMessages.end()) {
+                  while (q->second.front().GetDouble("sequence", 0.0) !=
+                         inserted.first->second.note.sequence + 1) {
+                    q->second.pop();
+                  }
+                  if (q->second.empty()) {
+                    this->outMessages.erase(q);
+                    q = this->outMessages.end();
+                  }
+                }
+                if (q == this->outMessages.end()) {
+                  dispatcher->checkForMessage(
+                      inserted.first->first,
+                      inserted.first->second.note.sequence + 1);
+                }
+              } else {
+                this->outMessages.erase(attrname);
               }
               this->tick(attrname);
             } else {
@@ -479,6 +483,83 @@ void Link::loadState() {
 }
 
 BMessenger *Link::outbound() { return this->sender.outbound(); }
+
+void Link::pushOut(BMessage *message) {
+  BString author;
+  JSON::number sequence;
+  if (message->FindDouble("sequence", &sequence) == B_OK &&
+      message->FindString("author", &author) == B_OK) {
+    if (auto state = this->remoteState.find(author);
+        state != this->remoteState.end()) {
+      double oldSequence = state->second.note.sequence;
+      auto q = this->outMessages.find(author);
+      if (q != this->outMessages.end() && !q->second.empty())
+        oldSequence = q->second.back().GetDouble("sequence", oldSequence);
+      if (oldSequence + 1 == sequence) {
+        if (q != this->outMessages.end())
+          q->second.push(*message);
+        else
+          this->outMessages[author].push(*message);
+        if (!this->sending) {
+          this->sending = true;
+          this->sendOne();
+        }
+        // TODO: Use different numbers for queued and sent
+      }
+    }
+  }
+}
+
+void Link::sendOne() {
+  while (true) {
+    if (this->outMessages.empty()) {
+      this->sending = false;
+      return;
+    }
+    size_t index =
+        std::uniform_int_distribution<size_t>(0, this->outMessages.size() - 1)(
+            static_cast<Dispatcher *>(this->Looper())->rng);
+    auto q = index > this->outMessages.size() / 2
+        ? std::prev(this->outMessages.end(), this->outMessages.size() - index)
+        : std::next(this->outMessages.begin(), index);
+    const BString author = q->first;
+    if (auto state = this->remoteState.find(author);
+        state != this->remoteState.end()) {
+      if (!state->second.note.receive) {
+        this->outMessages.erase(q);
+        continue;
+      }
+      bool wasEmpty = true;
+      while (!q->second.empty() &&
+             q->second.front().GetDouble("sequence", 0) !=
+                 state->second.note.sequence + 1) {
+        q->second.pop();
+        wasEmpty = false;
+      }
+      if (q->second.empty()) {
+        this->outMessages.erase(q);
+        if (!wasEmpty) {
+          static_cast<Dispatcher *>(this->Looper())
+              ->checkForMessage(author,
+                                (uint64)state->second.note.sequence + 1);
+        }
+        continue;
+      }
+      this->sender.send(&q->second.front(), true, false, false,
+                        BMessenger(this));
+      state->second.note.sequence++;
+      q->second.pop();
+      if (q->second.empty()) {
+        this->outMessages.erase(q);
+        static_cast<Dispatcher *>(this->Looper())
+            ->checkForMessage(author, (uint64)state->second.note.sequence + 1);
+      }
+      break;
+    } else {
+      this->outMessages.erase(q);
+    }
+  }
+}
 
 void Dispatcher::startNotesTimer(bigtime_t delay) {
   if (this->buildingNotes == false) {

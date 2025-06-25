@@ -69,20 +69,33 @@ class Connection;
 // For putting messages into a priority queue
 class MessageOrder {
 public:
-  bool operator()(BMessage &a, BMessage &b);
+  bool operator()(BMessage *&a, BMessage *&b);
 };
 
 class Sender {
 public:
   Sender(BMessenger inner);
   ~Sender();
-  status_t send(bool content, bool stream, bool error, bool inOrder = true);
-  status_t send(double content, bool stream, bool error, bool inOrder = true);
-  status_t send(BMessage *content, bool stream, bool error,
-                bool inOrder = true);
-  status_t send(BString &content, bool stream, bool error, bool inOrder = true);
+  status_t send(bool content, bool stream, bool error, bool inOrder = true,
+                BMessenger whenDone = BMessenger());
+  status_t send(double content, bool stream, bool error, bool inOrder = true,
+                BMessenger whenDone = BMessenger());
+  status_t send(BMessage *content, bool stream, bool error, bool inOrder = true,
+                BMessenger whenDone = BMessenger());
+  status_t send(BString &content, bool stream, bool error, bool inOrder = true,
+                BMessenger whenDone = BMessenger());
   status_t send(unsigned char *content, uint32 length, bool stream, bool error,
-                bool inOrder = true);
+                bool inOrder = true, BMessenger whenDone = BMessenger());
+  status_t sendBlocking(bool content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(double content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(BMessage *content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(BString &content, bool stream, bool error,
+                        bool inOrder = true);
+  status_t sendBlocking(unsigned char *content, uint32 length, bool stream,
+                        bool error, bool inOrder = true);
   BMessenger *outbound();
 
 private:
@@ -99,8 +112,9 @@ public:
 private:
   SenderHandler(Connection *conn, int32 requestNumber);
   BDataIO *output();
-  void actuallySend(const BMessage *wrapper);
-  std::priority_queue<BMessage, std::vector<BMessage>, MessageOrder> outOfOrder;
+  void actuallySend(BMessage *wrapper);
+  std::priority_queue<BMessage *, std::vector<BMessage *>, MessageOrder>
+      outOfOrder;
   int32 requestNumber;
   uint32 sentSequence = 0;
   bool canceled = false;
@@ -147,7 +161,7 @@ private:
   BString serverName; // TODO: Check that this is still used.
   bool stoppedRecv = false;
   friend BDataIO *SenderHandler::output();
-  friend void SenderHandler::actuallySend(const BMessage *wrapper);
+  friend void SenderHandler::actuallySend(BMessage *wrapper);
   static int32 pullThreadFunction(void *data);
 };
 

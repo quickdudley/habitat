@@ -44,7 +44,8 @@ Sender::~Sender() { delete_sem(this->sequenceSemaphore); }
 SenderHandler::~SenderHandler() {}
 
 #define SEND_FUNCTION(type, msgMethod)                                         \
-  status_t Sender::send(type content, bool stream, bool error, bool inOrder) { \
+  status_t Sender::send(type content, bool stream, bool error, bool inOrder,   \
+                        BMessenger whenDone) {                                 \
     BMessage wrapper('SEND');                                                  \
     wrapper.msgMethod("content", content);                                     \
     wrapper.AddBool("stream", stream);                                         \
@@ -57,7 +58,24 @@ SenderHandler::~SenderHandler() {}
       release_sem(this->sequenceSemaphore);                                    \
       wrapper.AddUInt32("sequence", sequence);                                 \
     }                                                                          \
-    return this->inner.SendMessage(&wrapper);                                  \
+    return this->inner.SendMessage(&wrapper, whenDone);                        \
+  }                                                                            \
+  status_t Sender::sendBlocking(type content, bool stream, bool error,         \
+                                bool inOrder) {                                \
+    BMessage wrapper('SEND');                                                  \
+    wrapper.msgMethod("content", content);                                     \
+    wrapper.AddBool("stream", stream);                                         \
+    wrapper.AddBool("end", error);                                             \
+    BMessage reply;                                                            \
+    if (inOrder) {                                                             \
+      status_t result;                                                         \
+      if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)        \
+        return result;                                                         \
+      uint32 sequence = this->sequence++;                                      \
+      release_sem(this->sequenceSemaphore);                                    \
+      wrapper.AddUInt32("sequence", sequence);                                 \
+    }                                                                          \
+    return this->inner.SendMessage(&wrapper, &reply);                          \
   }
 
 SEND_FUNCTION(bool, AddBool)
@@ -70,7 +88,7 @@ SEND_FUNCTION(BString &, AddString)
 #undef SEND_FUNCTION
 
 status_t Sender::send(unsigned char *content, uint32 length, bool stream,
-                      bool error, bool inOrder) {
+                      bool error, bool inOrder, BMessenger whenDone) {
   BMessage wrapper('SEND');
   wrapper.AddData("content", B_RAW_TYPE, content, length, false);
   wrapper.AddBool("stream", stream);
@@ -83,7 +101,25 @@ status_t Sender::send(unsigned char *content, uint32 length, bool stream,
     release_sem(this->sequenceSemaphore);
     wrapper.AddUInt32("sequence", sequence);
   }
-  return this->inner.SendMessage(&wrapper);
+  return this->inner.SendMessage(&wrapper, whenDone);
+}
+
+status_t Sender::sendBlocking(unsigned char *content, uint32 length,
+                              bool stream, bool error, bool inOrder) {
+  BMessage wrapper('SEND');
+  wrapper.AddData("content", B_RAW_TYPE, content, length, false);
+  wrapper.AddBool("stream", stream);
+  wrapper.AddBool("end", error);
+  if (inOrder) {
+    status_t result;
+    if ((result = acquire_sem(this->sequenceSemaphore)) < B_NO_ERROR)
+      return result;
+    uint32 sequence = this->sequence++;
+    release_sem(this->sequenceSemaphore);
+    wrapper.AddUInt32("sequence", sequence);
+  }
+  BMessage reply;
+  return this->inner.SendMessage(&wrapper, &reply);
 }
 
 BMessenger *Sender::outbound() { return &this->inner; }
@@ -101,16 +137,17 @@ void SenderHandler::MessageReceived(BMessage *msg) {
         this->actuallySend(msg);
         finished = finished || msg->GetBool("end", false);
         while (!this->outOfOrder.empty() &&
-               (sequence = this->outOfOrder.top().GetUInt32("sequence", 0)) <=
+               (sequence = this->outOfOrder.top()->GetUInt32("sequence", 0)) <=
                    nextSequence) {
           this->sentSequence = sequence;
           nextSequence = sequence + 1;
-          this->actuallySend(&this->outOfOrder.top());
-          finished = finished || this->outOfOrder.top().GetBool("end", false);
+          this->actuallySend(this->outOfOrder.top());
+          finished = finished || this->outOfOrder.top()->GetBool("end", false);
+          delete this->outOfOrder.top();
           this->outOfOrder.pop();
         }
       } else {
-        this->outOfOrder.push(*msg);
+        this->outOfOrder.push(this->Looper()->DetachCurrentMessage());
       }
     } else {
       this->actuallySend(msg);
@@ -130,7 +167,7 @@ void SenderHandler::MessageReceived(BMessage *msg) {
   }
 }
 
-void SenderHandler::actuallySend(const BMessage *wrapper) {
+void SenderHandler::actuallySend(BMessage *wrapper) {
   Header header;
   if (this->canceled) {
     header.setBodyType(BodyType::JSON);
@@ -243,12 +280,12 @@ void SenderHandler::actuallySend(const BMessage *wrapper) {
       BLooper *looper = this->Looper();
       if (looper->Lock())
         looper->Quit();
+    } else {
+      if (wrapper->ReturnAddress().IsValid())
+        wrapper->SendReply('SENT');
     }
     return;
   }
-  // TODO: Reply to the message if it's waiting
-  // (Useful when we want to match something's send rate to the rate we can
-  // send)
 }
 
 namespace {
@@ -944,11 +981,11 @@ status_t Header::writeToBuffer(unsigned char *buffer) {
   return B_OK;
 }
 
-bool MessageOrder::operator()(BMessage &a, BMessage &b) {
+bool MessageOrder::operator()(BMessage *&a, BMessage *&b) {
   uint32 aseq, bseq;
-  if (a.FindUInt32("sequence", &aseq) != B_OK)
+  if (a->FindUInt32("sequence", &aseq) != B_OK)
     aseq = 0;
-  if (b.FindUInt32("sequence", &bseq) != B_OK)
+  if (b->FindUInt32("sequence", &bseq) != B_OK)
     bseq = 0;
   return aseq > bseq;
 }
