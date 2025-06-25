@@ -386,9 +386,24 @@ void Link::MessageReceived(BMessage *message) {
             Dispatcher *dispatcher = dynamic_cast<Dispatcher *>(this->Looper());
             if (this->ourState.find(attrname) != this->ourState.end()) {
               if (inserted.first->second.note.receive) {
-                dispatcher->checkForMessage(
-                    inserted.first->first,
-                    inserted.first->second.note.sequence + 1);
+                auto q = this->outMessages.find(attrname);
+                if (q != this->outMessages.end()) {
+                  while (q->second.front().GetDouble("sequence", 0.0) !=
+                         inserted.first->second.note.sequence + 1) {
+                    q->second.pop();
+                  }
+                  if (q->second.empty()) {
+                    this->outMessages.erase(q);
+                    q = this->outMessages.end();
+                  }
+                }
+                if (q == this->outMessages.end()) {
+                  dispatcher->checkForMessage(
+                      inserted.first->first,
+                      inserted.first->second.note.sequence + 1);
+                }
+              } else {
+                this->outMessages.erase(attrname);
               }
               this->tick(attrname);
             } else {
