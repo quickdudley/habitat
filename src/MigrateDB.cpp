@@ -57,6 +57,13 @@ status_t prepareDatabase(sqlite3 *database) {
   }
   if (sqlite3_exec(
           database,
+          "CREATE INDEX IF NOT EXISTS authortype ON messages (author, type)",
+          NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(
+          database,
           "CREATE INDEX IF NOT EXISTS typetime ON messages (type, timestamp)",
           NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
