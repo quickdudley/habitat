@@ -242,6 +242,8 @@ QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
     dregs(specifier.GetBool("dregs", false)) {}
 
 void QueryHandler::MessageReceived(BMessage *message) {
+  if (!this->target.IsValid())
+    goto canceled;
   switch (message->what) {
   case B_PULSE: {
     if (this->mainDone)
