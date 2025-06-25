@@ -12,6 +12,7 @@
 #include <Directory.h>
 #include <MenuBar.h>
 #include <Path.h>
+#include <ScrollView.h>
 #include <StatusBar.h>
 #include <Window.h>
 #include <functional>
@@ -28,6 +29,7 @@ public:
 private:
   BMenuBar *menuBar;
   BStatusBar *statusBar;
+  BScrollView *contents;
 };
 
 class Habitat;

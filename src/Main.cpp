@@ -12,6 +12,7 @@
 #include <Catalog.h>
 #include <File.h>
 #include <FindDirectory.h>
+#include <GroupLayout.h>
 #include <LocaleRoster.h>
 #include <MenuItem.h>
 #include <PropertyInfo.h>
@@ -762,20 +763,18 @@ MainWindow::MainWindow(SSBDatabase *db)
     :
     BWindow(initialFrame(), "Habitat", B_DOCUMENT_WINDOW,
             B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
-  BRect mbarRect(this->Bounds());
-  mbarRect.bottom = 20;
-  this->menuBar = new BMenuBar(mbarRect, "menubar");
+  this->menuBar = new BMenuBar("menubar");
   BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
   appMenu->AddItem(
       new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
   this->menuBar->AddItem(appMenu);
-  this->AddChild(this->menuBar);
-  BRect statusRect(this->Bounds());
-  statusRect.top = statusRect.bottom - 20;
-  // TODO: Find a better way to do this than BStatusBar
-  this->statusBar = new BStatusBar(statusRect, "");
-  this->AddChild(this->statusBar);
-  db->StartWatching(this, 'BKLG');
+  auto mainLayout = new BGroupLayout(B_VERTICAL, 0);
+  this->SetLayout(mainLayout);
+  mainLayout->AddView(this->menuBar);
+  this->contents = new BScrollView(NULL, NULL, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false ,true);
+  mainLayout->AddView(this->contents);
+  this->statusBar = new BStatusBar("");
+  mainLayout->AddView(this->statusBar);
 }
 
 void MainWindow::MessageReceived(BMessage *message) {
