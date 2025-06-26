@@ -145,3 +145,5 @@ notProp:
     BWindow::MessageReceived(message);
   }
 }
+
+#undef B_TRANSLATION_CONTEXT

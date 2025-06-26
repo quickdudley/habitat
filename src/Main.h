@@ -1,7 +1,6 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#include "Blob.h"
 #include "ContactStore.h"
 #include "EBT.h"
 #include "Lan.h"

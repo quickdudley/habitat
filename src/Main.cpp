@@ -7,17 +7,11 @@
 #include "MigrateDB.h"
 #include "Room.h"
 #include "SelectContacts.h"
-#include <ByteOrder.h>
 #include <Catalog.h>
-#include <File.h>
 #include <FindDirectory.h>
-#include <LocaleRoster.h>
 #include <PropertyInfo.h>
 #include <cstring>
 #include <iostream>
-#include <signal.h>
-#include <sodium.h>
-#include <string>
 
 #define HABITAT_AUTO_CONNECTIONS 10
 #define B_TRANSLATION_CONTEXT "MainWindow"
