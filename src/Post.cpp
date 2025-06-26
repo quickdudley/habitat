@@ -155,6 +155,7 @@ private:
 
 public:
   bool dregs;
+  bool includeKey = false;
 };
 
 static int string_term(BString &clause,
@@ -255,10 +256,15 @@ void QueryHandler::MessageReceived(BMessage *message) {
       BMessage post;
       if (post.Unflatten((const char *)sqlite3_column_blob(this->query, 2)) ==
           B_OK) {
-        if (this->target.IsValid())
+        if (this->target.IsValid()) {
+          if (this->includeKey) {
+            post.AddString("cypherkey",
+                           (const char *)sqlite3_column_text(this->query, 0));
+          }
           this->target.SendMessage(&post);
-        else
+        } else {
           goto canceled;
+        }
         if (this->limit > 0 && --this->limit == 0)
           goto canceled;
       }
@@ -281,10 +287,12 @@ void QueryHandler::MessageReceived(BMessage *message) {
   } break;
   case 'CHCK':
     if (BMessage post; message->FindMessage("post", &post) == B_OK) {
-      if (this->target.IsValid())
-        this->target.SendMessage(&post);
-      else
-        goto canceled;
+      if (this->includeKey) {
+        BString key;
+        message->FindString("key", &key);
+        post.AddString("cypherkey", key);
+      }
+      this->target.SendMessage(&post);
       if (this->limit > 0 && --this->limit == 0)
         goto canceled;
     }
@@ -653,6 +661,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
           qh = new QueryHandler(this->dbOpen(), target, specifier);
           live = true;
+          qh->includeKey = msg->GetBool("includeKey", false);
         } else {
           qh = new QueryHandler(this->database, BMessenger(), specifier);
           live = false;
@@ -727,8 +736,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     BMessage post;
     BString msgID;
     BString context;
-    if (msg->FindMessage("post", &post) == B_OK &&
-        post.FindString("key", &msgID)) {
+    if (msg->FindMessage("post", &post) == B_OK) {
       if (msg->FindString("context", &context) != B_OK)
         context = "";
       for (int i = 0; i < this->CountHandlers(); i++) {
@@ -1340,6 +1348,7 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
   {
     BMessage notif('CHCK');
     notif.AddMessage("post", message);
+    notif.AddString("key", cypherkey);
     notif.AddString("context", context);
     BMessenger(this->Looper()).SendMessage(&notif);
   }
