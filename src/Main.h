@@ -4,35 +4,18 @@
 #include "Blob.h"
 #include "ContactStore.h"
 #include "EBT.h"
-#include "FeedView.h"
 #include "Lan.h"
 #include "Listener.h"
+#include "MainWindow.h"
 #include "Post.h"
 #include "Secret.h"
 #include <Application.h>
 #include <Directory.h>
-#include <MenuBar.h>
 #include <Path.h>
-#include <ScrollView.h>
-#include <StatusBar.h>
-#include <Window.h>
 #include <functional>
 #include <memory>
 #include <random>
 #include <set>
-#include <unicode/timezone.h>
-
-class MainWindow : public BWindow {
-public:
-  MainWindow(SSBDatabase *db);
-  void MessageReceived(BMessage *message) override;
-
-private:
-  BMenuBar *menuBar;
-  BStatusBar *statusBar;
-  BScrollView *contents;
-  FeedView *feed;
-};
 
 class Habitat;
 
@@ -92,7 +75,6 @@ private:
   muxrpc::MethodSuite serverMethods;
   muxrpc::MethodSuite clientMethods;
   std::unique_ptr<BDirectory> settings;
-  std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
   std::unique_ptr<SSBListener> ipListener;
   std::unique_ptr<BHandler> lanBroadcaster;
   std::shared_ptr<Ed25519Secret> myId;

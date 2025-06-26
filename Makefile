@@ -42,6 +42,7 @@ APP_SRCS = \
 	 src/Lan.cpp \
 	 src/Listener.cpp \
 	 src/Main.cpp \
+	 src/MainWindow.cpp \
 	 src/MigrateDB.cpp \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \

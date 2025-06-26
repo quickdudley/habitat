@@ -7,17 +7,12 @@
 #include "MigrateDB.h"
 #include "Room.h"
 #include "SelectContacts.h"
-#include "SettingsWindow.h"
 #include <ByteOrder.h>
 #include <Catalog.h>
 #include <File.h>
 #include <FindDirectory.h>
-#include <GroupLayout.h>
 #include <LocaleRoster.h>
-#include <MenuItem.h>
 #include <PropertyInfo.h>
-#include <Screen.h>
-#include <TimeZone.h>
 #include <cstring>
 #include <iostream>
 #include <signal.h>
@@ -123,14 +118,7 @@ Habitat::Habitat(void)
     this->rng.seed(hwrng());
   }
   this->AddHandler(new Logger());
-  // Set timezone
-  {
-    BTimeZone defaultTimeZone;
-    BLocaleRoster::Default()->GetDefaultTimeZone(&defaultTimeZone);
-    this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(
-        U_ICU_NAMESPACE::TimeZone::createTimeZone(
-            defaultTimeZone.ID().String()));
-  }
+
   BDirectory contactsDir;
   {
     // Create settings directory
@@ -276,27 +264,6 @@ void Habitat::MessageReceived(BMessage *msg) {
   BPropertyInfo propertyInfo(habitatProperties);
   propertyInfo.FindMatch(msg, index, &specifier, what, property, &match);
   switch (match) {
-  case kTimeZone:
-    if (msg->what == B_SET_PROPERTY) {
-      BString tz;
-      if (msg->FindString("data", &tz) == B_OK) {
-        U_ICU_NAMESPACE::TimeZone *utz =
-            U_ICU_NAMESPACE::TimeZone::createTimeZone(
-                U_ICU_NAMESPACE::UnicodeString::fromUTF8(tz.String()));
-        if (utz) {
-          this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(utz);
-          error = B_OK;
-        }
-      }
-    } else if (msg->what == B_GET_PROPERTY) {
-      U_ICU_NAMESPACE::UnicodeString tzid;
-      this->tz->getID(tzid);
-      std::string tzidb;
-      tzid.toUTF8String(tzidb);
-      reply.AddString("result", tzidb.c_str());
-      error = B_OK;
-    }
-    break;
   case kCypherkey: // Cypherkey
     reply.AddString("result", this->myId->getCypherkey());
     error = B_OK;
@@ -749,57 +716,6 @@ void Habitat::Quit() {
 }
 
 BDirectory &Habitat::settingsDir() { return *this->settings; }
-
-static BRect initialFrame() {
-  auto ss = BScreen().Frame();
-  if (ss.right > 512)
-    ss.right = 512;
-  ss.top = 25;
-  ss.InsetBy(5, 5);
-  return ss;
-}
-
-MainWindow::MainWindow(SSBDatabase *db)
-    :
-    BWindow(initialFrame(), "Habitat", B_DOCUMENT_WINDOW,
-            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
-  this->menuBar = new BMenuBar("menubar");
-  BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
-  appMenu->AddItem(
-      new BMenuItem(B_TRANSLATE("Settings"), new BMessage('PRFS')));
-  this->menuBar->AddItem(appMenu);
-  auto mainLayout = new BGroupLayout(B_VERTICAL, 0);
-  this->SetLayout(mainLayout);
-  mainLayout->AddView(this->menuBar);
-  this->feed = new FeedView("", B_WILL_DRAW | B_SUPPORTS_LAYOUT);
-  this->contents = new BScrollView(NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false ,true);
-  mainLayout->AddView(this->contents);
-  this->statusBar = new BStatusBar("");
-  mainLayout->AddView(this->statusBar);
-}
-
-void MainWindow::MessageReceived(BMessage *message) {
-  switch (message->what) {
-  case 'PRFS': {
-    SettingsWindow *window = new SettingsWindow();
-    window->Show();
-  } break;
-  case B_OBSERVER_NOTICE_CHANGE:
-    if (uint64 backlog; message->FindUInt64("backlog", &backlog) == B_OK) {
-      // TODO:
-      //   Refactor to allow for multiple details
-      //   Hide when the number is 0
-      BString numstring;
-      numstring << backlog;
-      BString status = BString(B_TRANSLATE("{} unindexed messages"))
-                           .Replace("{}", numstring, 1);
-      this->statusBar->SetText(status);
-    }
-    break;
-  default:
-    BWindow::MessageReceived(message);
-  }
-}
 
 ServerRecord::ServerRecord() {}
 
