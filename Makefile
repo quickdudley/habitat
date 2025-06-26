@@ -44,7 +44,6 @@ APP_SRCS = \
 	 src/Main.cpp \
 	 src/MigrateDB.cpp \
 	 src/MUXRPC.cpp \
-	 src/Plugin.cpp \
 	 src/Post.cpp \
 	 src/Room.cpp \
 	 src/Secret.cpp \
@@ -55,10 +54,12 @@ APP_SRCS = \
 
 LIB_SRCS = \
 	 src/ContactGraph.cpp \
+	 src/FeedView.cpp \
 	 src/Invite.cpp \
 	 src/JSON.cpp \
 	 src/Logging.cpp \
 	 src/Markdown.cpp \
+	 src/Plugin.cpp \
 
 TESTABLE_SRCS = \
 	 src/Base64.cpp \

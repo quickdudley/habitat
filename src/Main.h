@@ -4,6 +4,7 @@
 #include "Blob.h"
 #include "ContactStore.h"
 #include "EBT.h"
+#include "FeedView.h"
 #include "Lan.h"
 #include "Listener.h"
 #include "Post.h"
@@ -30,6 +31,7 @@ private:
   BMenuBar *menuBar;
   BStatusBar *statusBar;
   BScrollView *contents;
+  FeedView *feed;
 };
 
 class Habitat;

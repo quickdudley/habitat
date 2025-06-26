@@ -771,7 +771,8 @@ MainWindow::MainWindow(SSBDatabase *db)
   auto mainLayout = new BGroupLayout(B_VERTICAL, 0);
   this->SetLayout(mainLayout);
   mainLayout->AddView(this->menuBar);
-  this->contents = new BScrollView(NULL, NULL, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false ,true);
+  this->feed = new FeedView("", B_WILL_DRAW | B_SUPPORTS_LAYOUT);
+  this->contents = new BScrollView(NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false ,true);
   mainLayout->AddView(this->contents);
   this->statusBar = new BStatusBar("");
   mainLayout->AddView(this->statusBar);
