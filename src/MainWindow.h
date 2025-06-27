@@ -8,6 +8,8 @@
 #include <ScrollView.h>
 #include <StatusBar.h>
 #include <Window.h>
+#include <unicode/calendar.h>
+#include <unicode/gregocal.h>
 #include <unicode/timezone.h>
 
 class MainWindow : public BWindow {
@@ -20,6 +22,7 @@ public:
 
 private:
   std::unique_ptr<U_ICU_NAMESPACE::TimeZone> tz;
+  std::unique_ptr<U_ICU_NAMESPACE::Calendar> calendar;
   BMenuBar *menuBar;
   BStatusBar *statusBar;
   BScrollView *contents;

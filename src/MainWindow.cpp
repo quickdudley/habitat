@@ -30,6 +30,9 @@ MainWindow::MainWindow(SSBDatabase *db)
         U_ICU_NAMESPACE::TimeZone::createTimeZone(
             defaultTimeZone.ID().String()));
   }
+  UErrorCode status = U_ZERO_ERROR;
+  this->calendar = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+      U_ICU_NAMESPACE::Calendar::createInstance(this->tz.get(), status));
   this->menuBar = new BMenuBar("menubar");
   BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
   appMenu->AddItem(
@@ -38,8 +41,23 @@ MainWindow::MainWindow(SSBDatabase *db)
   auto mainLayout = new BGroupLayout(B_VERTICAL, 0);
   this->SetLayout(mainLayout);
   mainLayout->AddView(this->menuBar);
-  BMessage spec;
-  this->feed = new FeedView("", spec, B_WILL_DRAW | B_SUPPORTS_LAYOUT);
+  // TODO: Extract to other method so we can switch date.
+  BMessage spec('CPLX');
+  auto cal =
+      std::unique_ptr<U_ICU_NAMESPACE::Calendar>(this->calendar->clone());
+  cal->set(UCAL_HOUR_OF_DAY, 0);
+  cal->set(UCAL_MINUTE, 0);
+  cal->set(UCAL_SECOND, 0);
+  cal->set(UCAL_MILLISECOND, 0);
+  UDate bod = cal->getTime(status);
+  cal->set(UCAL_HOUR_OF_DAY, 23);
+  cal->set(UCAL_MINUTE, 59);
+  cal->set(UCAL_SECOND, 59);
+  cal->set(UCAL_MILLISECOND, 999);
+  UDate eod = cal->getTime(status);
+  spec.AddInt64("earliest", bod);
+  spec.AddInt64("latest", eod);
+  this->feed = new FeedView(spec);
   this->contents = new BScrollView(
       NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false, true);
   mainLayout->AddView(this->contents);

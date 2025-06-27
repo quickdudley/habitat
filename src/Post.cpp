@@ -671,6 +671,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
           this->Lock();
           this->AddHandler(qh);
           this->Unlock();
+          reply.AddMessenger("result", BMessenger(qh));
           this->ensurePulseRunning();
           error = B_OK;
         } else {
@@ -737,6 +738,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     BString msgID;
     BString context;
     if (msg->FindMessage("post", &post) == B_OK) {
+      msg->FindString("key", &msgID);
       if (msg->FindString("context", &context) != B_OK)
         context = "";
       for (int i = 0; i < this->CountHandlers(); i++) {
