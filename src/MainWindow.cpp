@@ -26,13 +26,13 @@ MainWindow::MainWindow(SSBDatabase *db)
   {
     BTimeZone defaultTimeZone;
     BLocaleRoster::Default()->GetDefaultTimeZone(&defaultTimeZone);
-    this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(
-        U_ICU_NAMESPACE::TimeZone::createTimeZone(
+    this->tz = U_ICU_NAMESPACE::TimeZone::createTimeZone(
+        U_ICU_NAMESPACE::UnicodeString::fromUTF8(
             defaultTimeZone.ID().String()));
   }
   UErrorCode status = U_ZERO_ERROR;
-  this->calendar = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
-      U_ICU_NAMESPACE::Calendar::createInstance(this->tz.get(), status));
+  this->calendar =
+      U_ICU_NAMESPACE::Calendar::createInstance(this->tz->clone(), status);
   this->menuBar = new BMenuBar("menubar");
   BMenu *appMenu = new BMenu(B_TRANSLATE("Application"));
   appMenu->AddItem(
@@ -63,6 +63,11 @@ MainWindow::MainWindow(SSBDatabase *db)
   mainLayout->AddView(this->contents);
   this->statusBar = new BStatusBar("");
   mainLayout->AddView(this->statusBar);
+}
+
+MainWindow::~MainWindow() {
+  delete this->calendar;
+  delete this->tz;
 }
 
 enum {
@@ -121,7 +126,9 @@ void MainWindow::MessageReceived(BMessage *message) {
               U_ICU_NAMESPACE::TimeZone::createTimeZone(
                   U_ICU_NAMESPACE::UnicodeString::fromUTF8(tz.String()));
           if (utz) {
-            this->tz = std::unique_ptr<U_ICU_NAMESPACE::TimeZone>(utz);
+            this->calendar->setTimeZone(*utz);
+            delete this->tz;
+            this->tz = utz;
             error = B_OK;
           }
         }
