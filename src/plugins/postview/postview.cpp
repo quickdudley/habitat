@@ -12,6 +12,9 @@ class PostDisplay : public BView {
 public:
   PostDisplay(std::vector<std::unique_ptr<markdown::BlockNode>> body,
               const BString &author, const BString &key, int64 timestamp);
+  bool HasHeightForWidth() override;
+  void GetHeightForWidth(float width, float *min, float *max,
+                         float *preferred) override;
 
 private:
   std::vector<std::unique_ptr<markdown::BlockNode>> body;
@@ -29,6 +32,11 @@ PostDisplay::PostDisplay(std::vector<std::unique_ptr<markdown::BlockNode>> body,
     author(author),
     key(key),
     timestamp(timestamp) {}
+
+bool PostDisplay::HasHeightForWidth() { return true; }
+
+void PostDisplay::GetHeightForWidth(float width, float *min, float *max,
+                                    float *preferred) {}
 
 BView *mkDisplay(BMessage *message) {
   BMessage content;

@@ -1,8 +1,10 @@
 #ifndef MARKDOWN_H
 #define MARKDOWN_H
+#include <Font.h>
 #include <String.h>
 #include <memory>
 #include <ostream>
+#include <utility>
 #include <vector>
 
 namespace markdown {
@@ -12,6 +14,7 @@ public:
   virtual bool operator==(const BlockNode &other) const;
   bool operator!=(const BlockNode &other) const { return !(*this == other); }
   virtual BString toString() const;
+  virtual float heightForWidth(float width) = 0;
 };
 
 std::vector<std::unique_ptr<BlockNode>> parse(const BString &text);
@@ -23,6 +26,11 @@ public:
   virtual bool operator==(const SpanNode &other) const;
   bool operator!=(const SpanNode &other) const { return !(*this == other); }
   virtual BString toString() const;
+  virtual BFont getFont() const = 0;
+  virtual const BString &getText() const = 0;
+  virtual std::vector<std::pair<BString, bool>> getTokens() const = 0;
+  virtual void measureToken(const BString &token, float &width,
+                            float &height) const = 0;
 };
 std::ostream &operator<<(std::ostream &os, SpanNode const &value);
 
@@ -31,6 +39,7 @@ public:
   ParagraphNode(std::vector<std::unique_ptr<SpanNode>> contents);
   bool operator==(const BlockNode &other) const override;
   BString toString() const override;
+  float heightForWidth(float width);
 
 private:
   std::vector<std::unique_ptr<SpanNode>> contents;
@@ -41,6 +50,11 @@ public:
   TextNode(const BString &contents);
   bool operator==(const SpanNode &other) const override;
   BString toString() const override;
+  BFont getFont() const override;
+  const BString &getText() const override;
+  std::vector<std::pair<BString, bool>> getTokens() const override;
+  void measureToken(const BString &token, float &width,
+                    float &height) const override;
 
 private:
   BString contents;
