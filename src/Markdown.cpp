@@ -121,7 +121,7 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
   float descent = 0;
   float leading = 0;
   float x = 0;
-  std::vector<std::pair<BString, BFont>> line;
+  std::vector<std::pair<BString, SpanNode*>> line;
   for (auto &span : this->contents) {
     for (auto [tok, ws] : span->getTokens()) {
       auto metrics = span->measureToken(tok);
@@ -129,11 +129,10 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
       if (x > frame.Width()) {
         float px = frame.left;
         float py = frame.top + previous + ascent;
-        for (auto &[pt, font] : line) {
+        // TODO: Refactor to allow for clickable links.
+        for (auto &[pt, ps] : line) {
           view->MovePenTo(px, py);
-          view->SetFont(&font);
-          view->DrawString(pt.String());
-          px += font.StringWidth(pt);
+          px += ps->drawToken(pt, view);
         }
         line.clear();
         previous += ascent + descent + leading;
@@ -143,7 +142,7 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
         x2 = ws ? 0 : metrics.width;
       }
       if (x2 != 0)
-        line.push_back({tok, span->getFont()});
+        line.push_back({tok, span.get()});
       if (metrics.ascent > ascent)
         ascent = metrics.ascent;
       if (metrics.descent > descent)
@@ -156,11 +155,9 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
   {
     float px = frame.left;
     float py = frame.top + previous + ascent;
-    for (auto &[pt, font] : line) {
+    for (auto &[pt, ps] : line) {
       view->MovePenTo(px, py);
-      view->SetFont(&font);
-      view->DrawString(pt.String());
-      px += font.StringWidth(pt);
+      px += ps->drawToken(pt, view);
     }
   }
   frame.top += previous + ascent + descent;
@@ -229,4 +226,17 @@ SpanMetrics TextNode::measureToken(const BString &token) const {
 }
 
 BFont TextNode::getFont() const { return be_plain_font; }
+
+float TextNode::drawToken(const BString &token, BView *view) const {
+  BFont originalFont;
+  BFont ourFont = this->getFont();
+  rgb_color originalColor = view->HighColor();
+  view->GetFont(&originalFont);
+  view->SetFont(&ourFont);
+  view->SetHighColor(ui_color(B_DOCUMENT_TEXT_COLOR));
+  view->DrawString(token.String());
+  view->SetFont(&originalFont);
+  view->SetHighColor(originalColor);
+  return ourFont.StringWidth(token.String());
+}
 } // namespace markdown

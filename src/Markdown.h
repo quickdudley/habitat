@@ -39,6 +39,7 @@ public:
   virtual const BString &getText() const = 0;
   virtual std::vector<std::pair<BString, bool>> getTokens() const = 0;
   virtual SpanMetrics measureToken(const BString &token) const = 0;
+  virtual float drawToken(const BString &token, BView *view) const = 0;
 };
 std::ostream &operator<<(std::ostream &os, SpanNode const &value);
 
@@ -63,6 +64,7 @@ public:
   const BString &getText() const override;
   std::vector<std::pair<BString, bool>> getTokens() const override;
   SpanMetrics measureToken(const BString &token) const override;
+  float drawToken(const BString &token, BView *view) const;
 
 private:
   BString contents;
