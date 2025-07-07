@@ -86,7 +86,34 @@ bool ParagraphNode::operator==(const BlockNode &other) const {
   return true;
 }
 
-float ParagraphNode::heightForWidth(float width) { return 1; }
+float ParagraphNode::heightForWidth(float width) {
+  float previous = 0;
+  float ascent = 0;
+  float descent = 0;
+  float leading = 0;
+  float x = 0;
+  for (auto &span : this->contents) {
+    for (auto [tok, ws] : span->getTokens()) {
+      auto metrics = span->measureToken(tok);
+      float x2 = x + metrics.width;
+      if (x > width) {
+        previous += ascent + descent + leading;
+        ascent = 0;
+        descent = 0;
+        leading = 0;
+        x2 = ws ? 0 : metrics.width;
+      }
+      if (metrics.ascent > ascent)
+        ascent = metrics.ascent;
+      if (metrics.descent > descent)
+        descent = metrics.descent;
+      if (metrics.leading > leading)
+        leading = metrics.leading;
+      x = x2;
+    }
+  }
+  return previous + ascent + descent;
+}
 
 TextNode::TextNode(const BString &contents)
     :
@@ -142,8 +169,13 @@ std::vector<std::pair<BString, bool>> TextNode::getTokens() const {
   return tokens;
 }
 
-void TextNode::measureToken(const BString &token, float &width,
-                            float &height) const {
-  // TODO: implement this
+SpanMetrics TextNode::measureToken(const BString &token) const {
+  BFont font = this->getFont();
+  float width = font.StringWidth(token.String());
+  font_height h;
+  font.GetHeight(&h);
+  return {width, h.ascent, h.descent, h.leading};
 }
+
+BFont TextNode::getFont() const { return be_plain_font; }
 } // namespace markdown

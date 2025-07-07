@@ -20,6 +20,13 @@ public:
 std::vector<std::unique_ptr<BlockNode>> parse(const BString &text);
 std::ostream &operator<<(std::ostream &os, BlockNode const &value);
 
+struct SpanMetrics {
+  float width;
+  float ascent;
+  float descent;
+  float leading;
+};
+
 class SpanNode {
 public:
   virtual ~SpanNode() {}
@@ -29,8 +36,7 @@ public:
   virtual BFont getFont() const = 0;
   virtual const BString &getText() const = 0;
   virtual std::vector<std::pair<BString, bool>> getTokens() const = 0;
-  virtual void measureToken(const BString &token, float &width,
-                            float &height) const = 0;
+  virtual SpanMetrics measureToken(const BString &token) const = 0;
 };
 std::ostream &operator<<(std::ostream &os, SpanNode const &value);
 
@@ -53,8 +59,7 @@ public:
   BFont getFont() const override;
   const BString &getText() const override;
   std::vector<std::pair<BString, bool>> getTokens() const override;
-  void measureToken(const BString &token, float &width,
-                    float &height) const override;
+  SpanMetrics measureToken(const BString &token) const override;
 
 private:
   BString contents;
