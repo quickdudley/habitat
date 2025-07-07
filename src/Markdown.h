@@ -2,6 +2,7 @@
 #define MARKDOWN_H
 #include <Font.h>
 #include <String.h>
+#include <View.h>
 #include <memory>
 #include <ostream>
 #include <utility>
@@ -15,6 +16,7 @@ public:
   bool operator!=(const BlockNode &other) const { return !(*this == other); }
   virtual BString toString() const;
   virtual float heightForWidth(float width) = 0;
+  virtual void draw(BView *view, BRect &frame) const = 0;
 };
 
 std::vector<std::unique_ptr<BlockNode>> parse(const BString &text);
@@ -46,6 +48,7 @@ public:
   bool operator==(const BlockNode &other) const override;
   BString toString() const override;
   float heightForWidth(float width);
+  void draw(BView *view, BRect &frame) const override;
 
 private:
   std::vector<std::unique_ptr<SpanNode>> contents;

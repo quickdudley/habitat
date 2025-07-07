@@ -115,6 +115,57 @@ float ParagraphNode::heightForWidth(float width) {
   return previous + ascent + descent;
 }
 
+void ParagraphNode::draw(BView *view, BRect &frame) const {
+  float previous = 0;
+  float ascent = 0;
+  float descent = 0;
+  float leading = 0;
+  float x = 0;
+  std::vector<std::pair<BString, BFont>> line;
+  for (auto &span : this->contents) {
+    for (auto [tok, ws] : span->getTokens()) {
+      auto metrics = span->measureToken(tok);
+      float x2 = x + metrics.width;
+      if (x > frame.Width()) {
+        float px = frame.left;
+        float py = frame.top + previous + ascent;
+        for (auto &[pt, font] : line) {
+          view->MovePenTo(px, py);
+          view->SetFont(&font);
+          view->DrawString(pt.String());
+          px += font.StringWidth(pt);
+        }
+        line.clear();
+        previous += ascent + descent + leading;
+        ascent = 0;
+        descent = 0;
+        leading = 0;
+        x2 = ws ? 0 : metrics.width;
+      }
+      if (x2 != 0)
+        line.push_back({tok, span->getFont()});
+      if (metrics.ascent > ascent)
+        ascent = metrics.ascent;
+      if (metrics.descent > descent)
+        descent = metrics.descent;
+      if (metrics.leading > leading)
+        leading = metrics.leading;
+      x = x2;
+    }
+  }
+  {
+    float px = frame.left;
+    float py = frame.top + previous + ascent;
+    for (auto &[pt, font] : line) {
+      view->MovePenTo(px, py);
+      view->SetFont(&font);
+      view->DrawString(pt.String());
+      px += font.StringWidth(pt);
+    }
+  }
+  frame.top += previous + ascent + descent;
+}
+
 TextNode::TextNode(const BString &contents)
     :
     contents(contents) {}
