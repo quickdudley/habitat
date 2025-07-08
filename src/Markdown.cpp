@@ -289,7 +289,10 @@ void MarkdownView::GetHeightForWidth(float width, float *min, float *max,
     total += block->heightForWidth(width);
     spacing = interblock;
   }
-  *min = total;
-  *max = total;
-  *preferred = total;
+  if (min)
+    *min = total;
+  if (max)
+    *max = total;
+  if (preferred)
+    *preferred = total;
 }

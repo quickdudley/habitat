@@ -53,7 +53,7 @@ void FeedView::MessageReceived(BMessage *message) {
       if (auto vc = messageTypes().find(msgType); vc != messageTypes().end()) {
         if (auto v = vc->second(message); v != NULL) {
           // TODO: Sort the messages
-          this->GroupLayout()->AddView(v);
+          this->GroupLayout()->AddView(v, 1.0f);
         }
       }
     }
