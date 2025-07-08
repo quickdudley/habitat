@@ -121,7 +121,7 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
   float descent = 0;
   float leading = 0;
   float x = 0;
-  std::vector<std::pair<BString, SpanNode*>> line;
+  std::vector<std::pair<BString, SpanNode *>> line;
   for (auto &span : this->contents) {
     for (auto [tok, ws] : span->getTokens()) {
       auto metrics = span->measureToken(tok);
@@ -240,3 +240,56 @@ float TextNode::drawToken(const BString &token, BView *view) const {
   return ourFont.StringWidth(token.String());
 }
 } // namespace markdown
+
+MarkdownView::MarkdownView(
+    std::vector<std::unique_ptr<markdown::BlockNode>> &&contents)
+    :
+    BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+    contents(std::move(contents)) {}
+
+MarkdownView::MarkdownView(const BString &raw)
+    :
+    MarkdownView(markdown::parse(raw)) {}
+
+void MarkdownView::AttachedToWindow() {
+  this->AdoptParentColors();
+  this->SetLowColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
+}
+
+void MarkdownView::Draw(BRect updateRect) {
+  this->BeginLayer(0xFF);
+  BRect remaining = this->Bounds();
+  float interblock;
+  {
+    font_height fh;
+    BFont().GetHeight(&fh);
+    interblock = fh.ascent + fh.descent + fh.leading;
+  }
+  for (auto &block : this->contents) {
+    block->draw(this, remaining);
+    remaining.top += interblock;
+  }
+  this->EndLayer();
+}
+
+bool MarkdownView::HasHeightForWidth() { return true; }
+
+void MarkdownView::GetHeightForWidth(float width, float *min, float *max,
+                                     float *preferred) {
+  float spacing = 0;
+  float total = 0;
+  float interblock;
+  {
+    font_height fh;
+    BFont().GetHeight(&fh);
+    interblock = fh.ascent + fh.descent + fh.leading;
+  }
+  for (auto &block : this->contents) {
+    total += spacing;
+    total += block->heightForWidth(width);
+    spacing = interblock;
+  }
+  *min = total;
+  *max = total;
+  *preferred = total;
+}

@@ -1,6 +1,9 @@
 #include "Markdown.h"
+#include <DateTimeFormat.h>
+#include <GroupLayout.h>
 #include <Layout.h>
-#include <View.h>
+#include <LayoutBuilder.h>
+#include <StringView.h>
 #include <functional>
 #include <map>
 #include <utility>
@@ -10,33 +13,81 @@ extern "C" const char *pluginName() { return "post-view"; }
 namespace {
 class PostDisplay : public BView {
 public:
-  PostDisplay(std::vector<std::unique_ptr<markdown::BlockNode>> body,
-              const BString &author, const BString &key, int64 timestamp);
-  bool HasHeightForWidth() override;
+  PostDisplay(const BString &body, const BString &author, const BString &key,
+              int64 timestamp);
+  ~PostDisplay();
   void GetHeightForWidth(float width, float *min, float *max,
                          float *preferred) override;
+  bool HasHeightForWidth() override;
 
 private:
-  std::vector<std::unique_ptr<markdown::BlockNode>> body;
-  BString author;
-  BString key;
+  BStringView *authorLabel;
+  BStringView *authorValue;
+  BStringView *dateLabel;
+  BStringView *dateValue;
+  MarkdownView *body;
   int64 timestamp;
 };
 
-PostDisplay::PostDisplay(std::vector<std::unique_ptr<markdown::BlockNode>> body,
-                         const BString &author, const BString &key,
-                         int64 timestamp)
+BString formatTimestamp(int64 timestamp) {
+  BDateTimeFormat formatter;
+  time_t seconds = timestamp / 1000;
+  if (BString result; formatter.Format(result, seconds, B_LONG_DATE_FORMAT,
+                                       B_MEDIUM_TIME_FORMAT) == B_OK) {
+    return result;
+  }
+  return "Error";
+}
+
+PostDisplay::PostDisplay(const BString &body, const BString &author,
+                         const BString &key, int64 timestamp)
     :
     BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW),
-    body(std::move(body)),
-    author(author),
-    key(key),
-    timestamp(timestamp) {}
+    // TODO: Localize labels
+    authorLabel(new BStringView("authorLabel", "Author:")),
+    authorValue(new BStringView("authorValue", author)),
+    dateLabel(new BStringView("dateLabel", "Date:")),
+    dateValue(new BStringView("dateValue", formatTimestamp(timestamp))),
+    body(new MarkdownView(body)),
+    timestamp(timestamp) {
+  BFont labelFont;
+  this->GetFont(&labelFont);
+  labelFont.SetFace(B_BOLD_FACE);
+  this->authorLabel->SetFont(&labelFont);
+  this->dateLabel->SetFont(&labelFont);
+  BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+      .SetInsets(B_USE_DEFAULT_SPACING)
+      .AddGrid(B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING)
+      .Add(this->authorLabel, 0, 0)
+      .Add(this->authorValue, 1, 0)
+      .Add(this->dateLabel, 0, 1)
+      .Add(this->dateValue, 1, 1)
+      .End()
+      .AddGlue()
+      .Add(this->body, 1.0f)
+      .End();
+}
 
-bool PostDisplay::HasHeightForWidth() { return true; }
+PostDisplay::~PostDisplay() {}
 
 void PostDisplay::GetHeightForWidth(float width, float *min, float *max,
-                                    float *preferred) {}
+                                    float *preferred) {
+  if (auto layout = static_cast<BTwoDimensionalLayout *>(this->GetLayout());
+      layout) {
+    layout->GetHeightForWidth(width, min, max, preferred);
+  } else {
+    BView::GetHeightForWidth(width, min, max, preferred);
+  }
+}
+
+bool PostDisplay::HasHeightForWidth() {
+  if (auto layout = static_cast<BTwoDimensionalLayout *>(this->GetLayout());
+      layout) {
+    return layout->HasHeightForWidth();
+  } else {
+    return BView::HasHeightForWidth();
+  }
+}
 
 BView *mkDisplay(BMessage *message) {
   BMessage content;
@@ -49,11 +100,10 @@ BView *mkDisplay(BMessage *message) {
   BString key;
   message->FindString("cypherkey", &key);
   BString text;
-  content.FindString("text", &key);
+  content.FindString("text", &text);
   double timestamp;
   message->FindDouble("timestamp", &timestamp);
-  auto result =
-      new PostDisplay(markdown::parse(text), author, key, (int64)timestamp);
+  auto result = new PostDisplay(text, author, key, (int64)timestamp);
   // TODO: root, branch, etc
   return result;
 }

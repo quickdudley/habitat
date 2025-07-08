@@ -14,12 +14,10 @@ TEST_CASE("Example 219", "[markdown]") {
   REQUIRE(parsed.size() >= 1);
   std::vector<std::unique_ptr<markdown::SpanNode>> spans;
   spans.push_back(std::make_unique<markdown::TextNode>("aaa"));
-  REQUIRE(*parsed[0] ==
-          markdown::ParagraphNode(std::move(spans)));
+  REQUIRE(*parsed[0] == markdown::ParagraphNode(std::move(spans)));
   REQUIRE(parsed.size() == 2);
   spans.push_back(std::make_unique<markdown::TextNode>("bbb"));
-  REQUIRE(*parsed[1] ==
-          markdown::ParagraphNode(std::move(spans)));
+  REQUIRE(*parsed[1] == markdown::ParagraphNode(std::move(spans)));
 }
 
 namespace {

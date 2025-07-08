@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+class MarkdownView;
+
 namespace markdown {
 class BlockNode {
 public:
@@ -71,4 +73,17 @@ private:
 };
 } // namespace markdown
 
+class MarkdownView : public BView {
+public:
+  MarkdownView(std::vector<std::unique_ptr<markdown::BlockNode>> &&contents);
+  MarkdownView(const BString &raw);
+  void AttachedToWindow() override;
+  void Draw(BRect updateRect) override;
+  bool HasHeightForWidth() override;
+  void GetHeightForWidth(float width, float *min, float *max,
+                         float *preferred) override;
+
+private:
+  std::vector<std::unique_ptr<markdown::BlockNode>> contents;
+};
 #endif
