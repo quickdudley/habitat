@@ -245,7 +245,11 @@ MarkdownView::MarkdownView(
     std::vector<std::unique_ptr<markdown::BlockNode>> &&contents)
     :
     BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
-    contents(std::move(contents)) {}
+    contents(std::move(contents)) {
+  this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
+  this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+}
 
 MarkdownView::MarkdownView(const BString &raw)
     :

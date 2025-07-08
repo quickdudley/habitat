@@ -50,6 +50,9 @@ PostDisplay::PostDisplay(const BString &body, const BString &author,
     dateValue(new BStringView("dateValue", formatTimestamp(timestamp))),
     body(new MarkdownView(body)),
     timestamp(timestamp) {
+  this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
+  this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   BFont labelFont;
   this->GetFont(&labelFont);
   labelFont.SetFace(B_BOLD_FACE);
