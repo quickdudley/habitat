@@ -96,7 +96,7 @@ float ParagraphNode::heightForWidth(float width) {
     for (auto [tok, ws] : span->getTokens()) {
       auto metrics = span->measureToken(tok);
       float x2 = x + metrics.width;
-      if (x > width) {
+      if (x2 > width) {
         previous += ascent + descent + leading;
         ascent = 0;
         descent = 0;
@@ -126,7 +126,7 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
     for (auto [tok, ws] : span->getTokens()) {
       auto metrics = span->measureToken(tok);
       float x2 = x + metrics.width;
-      if (x > frame.Width()) {
+      if (x2 > frame.Width()) {
         float px = frame.left;
         float py = frame.top + previous + ascent;
         // TODO: Refactor to allow for clickable links.

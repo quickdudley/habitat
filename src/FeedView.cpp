@@ -25,6 +25,9 @@ FeedView::FeedView(const BMessage &specifier)
     :
     BGroupView(B_VERTICAL) {
   this->setSpecifier(specifier);
+  this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
+  this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 }
 
 FeedView::~FeedView() {
@@ -72,4 +75,23 @@ status_t FeedView::setSpecifier(const BMessage &specifier) {
   this->specifier.SetString("property", "Post");
   // TODO: Return error if the specifier is not understood,
   return B_OK;
+}
+
+void FeedView::GetHeightForWidth(float width, float *min, float *max,
+                                 float *preferred) {
+  if (auto layout = static_cast<BTwoDimensionalLayout *>(this->GetLayout());
+      layout) {
+    layout->GetHeightForWidth(width, min, max, preferred);
+  } else {
+    BView::GetHeightForWidth(width, min, max, preferred);
+  }
+}
+
+bool FeedView::HasHeightForWidth() {
+  if (auto layout = static_cast<BTwoDimensionalLayout *>(this->GetLayout());
+      layout) {
+    return layout->HasHeightForWidth();
+  } else {
+    return BView::HasHeightForWidth();
+  }
 }
