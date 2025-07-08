@@ -12,9 +12,12 @@ public:
   void AttachedToWindow() override;
   void MessageReceived(BMessage *message) override;
   status_t setSpecifier(const BMessage &specifier);
+  void FrameResized(float newWidth, float newHeight) override;
   bool HasHeightForWidth() override;
   void GetHeightForWidth(float width, float *min, float *max,
                          float *preferred) override;
+  void GetPreferredSize(float *width, float *height) override;
+  void updateScroll();
 
 private:
   void setQuery();

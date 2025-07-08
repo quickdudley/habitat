@@ -59,7 +59,7 @@ PostDisplay::PostDisplay(const BString &body, const BString &author,
   this->authorLabel->SetFont(&labelFont);
   this->dateLabel->SetFont(&labelFont);
   BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-      .SetInsets(B_USE_DEFAULT_SPACING)
+      .SetInsets(15.0)
       .AddGrid(B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING)
       .Add(this->authorLabel, 0, 0)
       .Add(this->authorValue, 1, 0)

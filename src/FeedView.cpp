@@ -1,5 +1,7 @@
 #include "FeedView.h"
+#include "Logging.h"
 #include "Plugin.h"
+#include <ScrollView.h>
 #include <functional>
 
 namespace {
@@ -25,9 +27,6 @@ FeedView::FeedView(const BMessage &specifier)
     :
     BGroupView(B_VERTICAL) {
   this->setSpecifier(specifier);
-  this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
-  this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
-  this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 }
 
 FeedView::~FeedView() {
@@ -57,6 +56,9 @@ void FeedView::MessageReceived(BMessage *message) {
         if (auto v = vc->second(message); v != NULL) {
           // TODO: Sort the messages
           this->GroupLayout()->AddView(v, 1.0f);
+          if (this->Parent())
+            this->Parent()->InvalidateLayout();
+          this->updateScroll();
         }
       }
     }
@@ -93,5 +95,38 @@ bool FeedView::HasHeightForWidth() {
     return layout->HasHeightForWidth();
   } else {
     return BView::HasHeightForWidth();
+  }
+}
+
+void FeedView::GetPreferredSize(float *width, float *height) {
+  if (width)
+    *width = B_SIZE_UNLIMITED;
+  if (height)
+    *height = B_SIZE_UNSET;
+}
+
+void FeedView::FrameResized(float newWidth, float newHeight) {
+  BGroupView::FrameResized(newWidth, newHeight);
+  this->updateScroll();
+}
+
+void FeedView::updateScroll() {
+  auto sv = dynamic_cast<BScrollView *>(this->Parent());
+  if (!sv)
+    return;
+  auto scrollBar = sv->ScrollBar(B_VERTICAL);
+  if (!scrollBar)
+    return;
+  float viewHeight;
+  BRect bounds = this->Bounds();
+  this->GetHeightForWidth(bounds.Width(), NULL, NULL, &viewHeight);
+  float windowHeight = bounds.Height();
+  if (viewHeight > windowHeight) {
+    scrollBar->SetRange(0, viewHeight - windowHeight);
+    scrollBar->SetSteps(20, windowHeight * 0.8f);
+    scrollBar->SetProportion(windowHeight / viewHeight);
+  } else {
+    scrollBar->SetRange(0, 0);
+    scrollBar->SetProportion(1.0f);
   }
 }
