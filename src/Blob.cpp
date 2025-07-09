@@ -198,8 +198,10 @@ public:
   void MessageReceived(BMessage *message) override;
 
 private:
+  void checkWantStream();
   muxrpc::Connection *connection;
   Wanted *registry;
+  BMessenger wantStream;
 };
 
 class WantSource : public BHandler {
@@ -224,6 +226,7 @@ WantSource::WantSource(BMessenger sender, Wanted *registry)
 
 void WantSink::MessageReceived(BMessage *message) {
   if (message->what == 'JSOB' || message->what == 'MXRP') {
+  	this->checkWantStream();
     int32 index = 0;
     char *attrName;
     type_code attrType;
@@ -257,6 +260,7 @@ void WantSink::MessageReceived(BMessage *message) {
       return;
     }
   } else if (message->what == B_QUERY_UPDATE) {
+  	this->checkWantStream();
     if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
       entry_ref ref;
       ref.device = message->GetInt32("device", B_ERROR);
@@ -270,46 +274,40 @@ void WantSink::MessageReceived(BMessage *message) {
         BString cypherkey;
         if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
           return;
-        BMessage getMessenger(B_GET_PROPERTY);
-        getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
-        BMessenger(this->connection).SendMessage(&getMessenger, this);
+        if (this->wantStream.IsValid()) {
+          BMessage toSend('HAVE');
+          off_t size;
+          if (node.GetSize(&size) != B_OK)
+            return;
+          toSend.AddString("cypherkey", cypherkey);
+          toSend.AddInt64("size", size);
+          wantStream.SendMessage(&toSend);
+        }
+        BMessage arg0('JSAR');
+        arg0.AddString("0", cypherkey);
+        BMessage args('JSAR');
+        args.AddMessage("0", &arg0);
+        std::vector<BString> name = {"blobs", "has"};
+        this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
+                                  BMessenger(), NULL);
       }
     }
   } else if (message->IsReply()) {
-    const BMessage *previous = message->Previous();
-    entry_ref ref;
-    ref.device = previous->GetInt32("device", B_ERROR);
-    ref.directory = previous->GetInt64("directory", B_ERROR);
-    BString name;
-    if (message->FindString("name", &name) == B_OK)
-      ref.set_name(name.String());
-    BEntry entry(&ref);
-    if (entry.InitCheck() == B_OK && entry.Exists()) {
-      BNode node(&ref);
-      BString cypherkey;
-      if (node.ReadAttrString("HABITAT:cypherkey", &cypherkey) != B_OK)
-        return;
-      BMessenger wantStream;
-      status_t wsStatus = message->FindMessenger("result", &wantStream);
-      if (wsStatus == B_OK && wantStream.IsValid()) {
-        BMessage toSend('HAVE');
-        off_t size;
-        if (node.GetSize(&size) != B_OK)
-          return;
-        toSend.AddString("cypherkey", cypherkey);
-        toSend.AddInt64("size", size);
-        wantStream.SendMessage(&toSend);
-      }
-      BMessage arg0('JSAR');
-      arg0.AddString("0", cypherkey);
-      BMessage args('JSAR');
-      args.AddMessage("0", &arg0);
-      std::vector<BString> name = {"blobs", "has"};
-      this->connection->request(name, muxrpc::RequestType::ASYNC, &args,
-                                BMessenger(), NULL);
-    }
+  	BMessenger result;
+  	if (message->FindMessenger("result",&result) == B_OK)
+  	  this->wantStream = result;
   } else {
+  	this->checkWantStream();
     BHandler::MessageReceived(message);
+  }
+}
+
+void WantSink::checkWantStream() {
+  if (!this->wantStream.IsValid()) {
+  	          BMessage getMessenger(B_GET_PROPERTY);
+          getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
+          BMessage msgReply;
+          BMessenger(this->connection).SendMessage(&getMessenger, BMessenger(this));
   }
 }
 

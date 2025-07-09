@@ -513,7 +513,7 @@ void Connection::MessageReceived(BMessage *message) {
   reply.AddInt32("error", error);
   if (error != B_OK)
     reply.AddString("message", strerror(error));
-  if (message->IsSourceWaiting())
+  if (message->ReturnAddress().IsValid())
     message->SendReply(&reply);
 }
 
