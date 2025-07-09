@@ -60,6 +60,10 @@ MainWindow::MainWindow(SSBDatabase *db)
   this->feed = new FeedView(spec);
   this->contents = new BScrollView(
       NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false, true);
+  this->contents->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+  this->contents->SetExplicitPreferredSize(
+      BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+  this->contents->SetExplicitMinSize(BSize(50.0f, 50.0f));
   mainLayout->AddView(this->contents);
   this->statusBar = new BStatusBar("");
   mainLayout->AddView(this->statusBar);

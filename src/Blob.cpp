@@ -226,7 +226,7 @@ WantSource::WantSource(BMessenger sender, Wanted *registry)
 
 void WantSink::MessageReceived(BMessage *message) {
   if (message->what == 'JSOB' || message->what == 'MXRP') {
-  	this->checkWantStream();
+    this->checkWantStream();
     int32 index = 0;
     char *attrName;
     type_code attrType;
@@ -260,7 +260,7 @@ void WantSink::MessageReceived(BMessage *message) {
       return;
     }
   } else if (message->what == B_QUERY_UPDATE) {
-  	this->checkWantStream();
+    this->checkWantStream();
     if (message->GetInt32("opcode", B_ERROR) == B_ENTRY_CREATED) {
       entry_ref ref;
       ref.device = message->GetInt32("device", B_ERROR);
@@ -293,21 +293,21 @@ void WantSink::MessageReceived(BMessage *message) {
       }
     }
   } else if (message->IsReply()) {
-  	BMessenger result;
-  	if (message->FindMessenger("result",&result) == B_OK)
-  	  this->wantStream = result;
+    BMessenger result;
+    if (message->FindMessenger("result", &result) == B_OK)
+      this->wantStream = result;
   } else {
-  	this->checkWantStream();
+    this->checkWantStream();
     BHandler::MessageReceived(message);
   }
 }
 
 void WantSink::checkWantStream() {
   if (!this->wantStream.IsValid()) {
-  	          BMessage getMessenger(B_GET_PROPERTY);
-          getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
-          BMessage msgReply;
-          BMessenger(this->connection).SendMessage(&getMessenger, BMessenger(this));
+    BMessage getMessenger(B_GET_PROPERTY);
+    getMessenger.AddSpecifier("CrossTalk", "WantedBlob");
+    BMessage msgReply;
+    BMessenger(this->connection).SendMessage(&getMessenger, BMessenger(this));
   }
 }
 
