@@ -27,15 +27,19 @@ FeedView::FeedView(const BMessage &specifier)
     :
     BGroupView(B_VERTICAL) {
   this->setSpecifier(specifier);
+  this->glue = BSpaceLayoutItem::CreateGlue();
 }
 
 FeedView::~FeedView() {
   if (this->doneMessenger.IsValid())
     this->doneMessenger.SendMessage('STOP');
+  if (this->glue)
+    delete this->glue;
 }
 
 void FeedView::AttachedToWindow() {
   BGroupView::AttachedToWindow();
+  this->GroupLayout()->AddItem(this->glue);
   if (!messageTypes().empty()) {
     BMessage rq(B_GET_PROPERTY);
     rq.AddSpecifier(&this->specifier);
@@ -58,9 +62,11 @@ void FeedView::MessageReceived(BMessage *message) {
       if (auto vc = messageTypes().find(msgType); vc != messageTypes().end()) {
         if (auto v = vc->second(message); v != NULL) {
           // TODO: Sort the messages
-          this->GroupLayout()->AddView(v, 1.0f);
+          this->glue->RemoveSelf();
+          this->GroupLayout()->AddView(v, 0.0f);
           if (this->Parent())
             this->Parent()->InvalidateLayout();
+          this->GroupLayout()->AddItem(this->glue);
           this->updateScroll();
         }
       }

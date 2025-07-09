@@ -66,7 +66,6 @@ PostDisplay::PostDisplay(const BString &body, const BString &author,
       .Add(this->dateLabel, 0, 1)
       .Add(this->dateValue, 1, 1)
       .End()
-      .AddGlue()
       .Add(this->body)
       .End();
 }

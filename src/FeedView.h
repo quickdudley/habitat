@@ -3,6 +3,7 @@
 
 #include <GroupView.h>
 #include <Messenger.h>
+#include <SpaceLayoutItem.h>
 #include <map>
 
 class FeedView : public BGroupView {
@@ -27,6 +28,7 @@ private:
   BMessage specifier;
   BMessenger doneMessenger;
   BRect lastKnownFrame;
+  BSpaceLayoutItem *glue;
 };
 
 #endif
