@@ -46,7 +46,10 @@ void FeedView::AttachedToWindow() {
 }
 
 void FeedView::MessageReceived(BMessage *message) {
-  if (BMessenger result; message->FindMessenger("result", &result) == B_OK) {
+  if (message->what == 'USRC') {
+    this->updateScroll();
+  } else if (BMessenger result;
+             message->FindMessenger("result", &result) == B_OK) {
     this->doneMessenger = result;
   } else if (BMessage content;
              message->FindMessage("content", &content) == B_OK ||
@@ -105,9 +108,13 @@ void FeedView::GetPreferredSize(float *width, float *height) {
     *height = B_SIZE_UNSET;
 }
 
-void FeedView::FrameResized(float newWidth, float newHeight) {
-  BGroupView::FrameResized(newWidth, newHeight);
-  this->updateScroll();
+void FeedView::DoLayout() {
+  BRect frame = this->Frame();
+  BGroupView::DoLayout();
+  if (frame != this->lastKnownFrame) {
+    this->lastKnownFrame = frame;
+    BMessenger(this).SendMessage('USRC');
+  }
 }
 
 void FeedView::updateScroll() {
