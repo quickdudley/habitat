@@ -33,8 +33,6 @@ FeedView::FeedView(const BMessage &specifier)
 FeedView::~FeedView() {
   if (this->doneMessenger.IsValid())
     this->doneMessenger.SendMessage('STOP');
-  if (this->glue)
-    delete this->glue;
 }
 
 void FeedView::AttachedToWindow() {
