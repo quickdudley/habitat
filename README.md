@@ -7,7 +7,7 @@ A Secure Scuttlebutt client for Haiku.
 ## Installing Dependencies
 
 - Libsodium: `pkgman install devel:libsodium`
-- ICU: `pkgman install icu66_devel`
+- ICU: `pkgman install icu74_devel`
 - Sqlite: `pkgman install sqlite_devel`
 
 ## Building
