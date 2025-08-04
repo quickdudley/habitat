@@ -38,13 +38,7 @@ FeedView::~FeedView() {
 void FeedView::AttachedToWindow() {
   BGroupView::AttachedToWindow();
   this->GroupLayout()->AddItem(this->glue);
-  if (!messageTypes().empty()) {
-    BMessage rq(B_GET_PROPERTY);
-    rq.AddSpecifier(&this->specifier);
-    rq.AddMessenger("target", BMessenger(this));
-    rq.AddBool("includeKey", true);
-    BMessenger("application/x-vnd.habitat").SendMessage(&rq, BMessenger(this));
-  }
+  this->sendQuery();
 }
 
 void FeedView::MessageReceived(BMessage *message) {
@@ -53,6 +47,14 @@ void FeedView::MessageReceived(BMessage *message) {
   } else if (BMessenger result;
              message->FindMessenger("result", &result) == B_OK) {
     this->doneMessenger = result;
+    int32 i;
+    while (i < this->CountChildren()) {
+      BView *c = this->ChildAt(i);
+      if (c != this && this->RemoveChild(c))
+        delete c;
+      else
+        i++;
+    }
   } else if (BMessage content;
              message->FindMessage("content", &content) == B_OK ||
              message->FindMessage("cleartext", &content) == B_OK) {
@@ -75,6 +77,8 @@ void FeedView::MessageReceived(BMessage *message) {
 }
 
 status_t FeedView::setSpecifier(const BMessage &specifier) {
+  if (specifier.what != B_NAME_SPECIFIER && specifier.what != 'CPLX')
+    return B_BAD_VALUE;
   this->specifier = specifier;
   if (BString dummy; this->specifier.what == 'CPLX' &&
       this->specifier.FindString("type", &dummy) == B_NAME_NOT_FOUND) {
@@ -82,7 +86,7 @@ status_t FeedView::setSpecifier(const BMessage &specifier) {
       this->specifier.AddString("type", typeName);
   }
   this->specifier.SetString("property", "Post");
-  // TODO: Return error if the specifier is not understood,
+  this->sendQuery();
   return B_OK;
 }
 
@@ -139,5 +143,21 @@ void FeedView::updateScroll() {
   } else {
     scrollBar->SetRange(0, 0);
     scrollBar->SetProportion(1.0f);
+  }
+}
+
+void FeedView::sendQuery() {
+  if (this->Window()) {
+    if (this->doneMessenger.IsValid()) {
+      this->doneMessenger.SendMessage('STOP');
+      if (!messageTypes().empty()) {
+        BMessage rq(B_GET_PROPERTY);
+        rq.AddSpecifier(&this->specifier);
+        rq.AddMessenger("target", BMessenger(this));
+        rq.AddBool("includeKey", true);
+        BMessenger("application/x-vnd.habitat")
+            .SendMessage(&rq, BMessenger(this));
+      }
+    }
   }
 }

@@ -18,13 +18,13 @@ public:
                          float *preferred) override;
   void GetPreferredSize(float *width, float *height) override;
   void updateScroll();
-  ;
 
 protected:
   void DoLayout() override;
 
 private:
   void setQuery();
+  void sendQuery();
   BMessage specifier;
   BMessenger doneMessenger;
   BRect lastKnownFrame;
