@@ -148,16 +148,15 @@ void FeedView::updateScroll() {
 
 void FeedView::sendQuery() {
   if (this->Window()) {
-    if (this->doneMessenger.IsValid()) {
+    if (this->doneMessenger.IsValid())
       this->doneMessenger.SendMessage('STOP');
-      if (!messageTypes().empty()) {
-        BMessage rq(B_GET_PROPERTY);
-        rq.AddSpecifier(&this->specifier);
-        rq.AddMessenger("target", BMessenger(this));
-        rq.AddBool("includeKey", true);
-        BMessenger("application/x-vnd.habitat")
-            .SendMessage(&rq, BMessenger(this));
-      }
+    if (!messageTypes().empty()) {
+      BMessage rq(B_GET_PROPERTY);
+      rq.AddSpecifier(&this->specifier);
+      rq.AddMessenger("target", BMessenger(this));
+      rq.AddBool("includeKey", true);
+      BMessenger("application/x-vnd.habitat")
+          .SendMessage(&rq, BMessenger(this));
     }
   }
 }
