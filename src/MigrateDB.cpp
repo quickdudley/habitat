@@ -69,7 +69,13 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
-  sqlite3_exec(database, "DROP INDEX msgtime", NULL, NULL, NULL);
+  if (sqlite3_exec(
+          database,
+          "CREATE INDEX IF NOT EXISTS msgtime ON messages (timestamp)",
+          NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
   if (sqlite3_exec(database,
                    "CREATE TABLE IF NOT EXISTS unprocessed(body BLOB)", NULL,
                    NULL, &error) != SQLITE_OK) {
