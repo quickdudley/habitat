@@ -29,6 +29,7 @@ private:
   BMessenger doneMessenger;
   BRect lastKnownFrame;
   BSpaceLayoutItem *glue;
+  bool accepting = false;
 };
 
 #endif

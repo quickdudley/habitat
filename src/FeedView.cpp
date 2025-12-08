@@ -55,9 +55,10 @@ void FeedView::MessageReceived(BMessage *message) {
       else
         i++;
     }
-  } else if (BMessage content;
-             message->FindMessage("content", &content) == B_OK ||
-             message->FindMessage("cleartext", &content) == B_OK) {
+    this->accepting = true;
+  } else if (BMessage content; this->accepting &&
+             (message->FindMessage("content", &content) == B_OK ||
+              message->FindMessage("cleartext", &content) == B_OK)) {
     if (BString msgType; content.FindString("type", &msgType) == B_OK) {
       if (auto vc = messageTypes().find(msgType); vc != messageTypes().end()) {
         if (auto v = vc->second(message); v != NULL) {
@@ -148,6 +149,7 @@ void FeedView::updateScroll() {
 
 void FeedView::sendQuery() {
   if (this->Window()) {
+    this->accepting = false;
     if (this->doneMessenger.IsValid())
       this->doneMessenger.SendMessage('STOP');
     if (!messageTypes().empty()) {
