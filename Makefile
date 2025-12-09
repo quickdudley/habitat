@@ -46,6 +46,7 @@ APP_SRCS = \
 	 src/MigrateDB.cpp \
 	 src/MUXRPC.cpp \
 	 src/Post.cpp \
+	 src/ProfileStore.cpp \
 	 src/Room.cpp \
 	 src/Secret.cpp \
 	 src/SelectContacts.cpp \
