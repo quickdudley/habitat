@@ -69,10 +69,9 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
-  if (sqlite3_exec(
-          database,
-          "CREATE INDEX IF NOT EXISTS msgtime ON messages (timestamp)",
-          NULL, NULL, &error) != SQLITE_OK) {
+  if (sqlite3_exec(database,
+                   "CREATE INDEX IF NOT EXISTS msgtime ON messages (timestamp)",
+                   NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
@@ -110,6 +109,24 @@ status_t prepareDatabase(sqlite3 *database) {
   if (sqlite3_exec(database,
                    "CREATE UNIQUE INDEX IF NOT EXISTS "
                    "colink ON contacts(author, contact, property)",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE TABLE IF NOT EXISTS profiles("
+                   "author TEXT NOT NULL, "
+                   "property TEXT NOT NULL, "
+                   "sequence INTEGER NOT NULL, "
+                   "type INTEGER NOT NULL, "
+                   "value TEXT)",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
+  if (sqlite3_exec(database,
+                   "CREATE UNIQUE INDEX IF NOT EXISTS "
+                   "uprop ON profiles(author, property)",
                    NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;
