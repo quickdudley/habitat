@@ -1044,6 +1044,12 @@ void SSBFeed::MessageReceived(BMessage *msg) {
                           SQLITE_TRANSIENT);
         sqlite3_step(deleter);
         sqlite3_finalize(deleter);
+        sqlite3_prepare_v2(FEED_DB, "DELETE FROM profiles WHERE author = ?", -1,
+                           &deleter, NULL);
+        sqlite3_bind_text(deleter, 1, key.String(), key.Length(),
+                          SQLITE_TRANSIENT);
+        sqlite3_step(deleter);
+        sqlite3_finalize(deleter);
         reply = B_OK;
         auto looper = this->Looper();
         BMessage notif(B_OBSERVER_NOTICE_CHANGE);
@@ -1263,7 +1269,7 @@ status_t SSBFeed::parseAuthor(unsigned char out[crypto_sign_PUBLICKEYBYTES],
 
 namespace {
 // TODO: Use something more flexible
-const char *contextAttrs[] = {"link", "fork", "root", "project", "repo"};
+const char *contextAttrs[] = {"link", "root", "fork", "project", "repo"};
 
 status_t contextLink(BString *out, BString &type, BMessage *message) {
   for (int i = -1; i < (int)(sizeof(contextAttrs) / sizeof(char *)); i++) {
