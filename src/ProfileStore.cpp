@@ -59,8 +59,9 @@ void ProfileStore::MessageReceived(BMessage *message) {
       	sqlite3_exec(this->database, "BEGIN TRANSACTION;", NULL, NULL, NULL);
         sqlite3_prepare_v2(this->database,
                            "SELECT author FROM profiles "
-                           "WHERE type = ?"
-                           "AND property LIKE 'name'",
+                           "WHERE type = ? "
+                           "AND property = 'name' "
+                           "AND value LIKE ?",
                            -1, &qry, NULL);
         sqlite3_bind_int64(qry, 1, B_STRING_TYPE);
         BString segment("%");
@@ -78,6 +79,7 @@ void ProfileStore::MessageReceived(BMessage *message) {
         "WHERE author = ?", -1, &qry, NULL);
       for (const BString &author : authors) {
       	BMessage result('JSOB');
+      	result.AddString("about", author);
       	sqlite3_bind_text(qry, 1, author.String(), author.Length(), SQLITE_STATIC);
       	while (sqlite3_step(qry) == SQLITE_ROW) {
       	  result.AddData(reinterpret_cast<const char*>(sqlite3_column_text(qry, 0)),
