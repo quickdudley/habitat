@@ -218,7 +218,7 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
   }
   if (profileInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
-    BMessenger(this->databaseLooper).SendMessage(msg);
+    BMessenger(this->profileStore).SendMessage(msg);
     return NULL;
   }
   return BApplication::ResolveSpecifier(msg, index, specifier, what, property);
