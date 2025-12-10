@@ -2,6 +2,7 @@
 #define PROFILE_STORE_H
 
 #include <Handler.h>
+#include <PropertyInfo.h>
 #include <sqlite3.h>
 
 class ProfileStore : public BHandler {
@@ -15,5 +16,7 @@ public:
 private:
   sqlite3 *database;
 };
+
+extern property_info profileProperties[];
 
 #endif // PROFILE_STORE_H

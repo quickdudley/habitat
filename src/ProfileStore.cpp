@@ -1,6 +1,6 @@
+#include "Connection.h"
 #include "ProfileStore.h"
 #include <Messenger.h>
-#include <PropertyInfo.h>
 #include <String.h>
 #include <cstring>
 #include <set>
@@ -11,7 +11,7 @@ ProfileStore::ProfileStore(sqlite3 *database)
 
 enum { kProfile };
 
-static property_info properties[] = {{"Profile",
+property_info profileProperties[] = {{"Profile",
                                       {B_GET_PROPERTY, 0},
                                       {B_NAME_SPECIFIER, 0},
                                       "Profile details",
@@ -21,7 +21,7 @@ static property_info properties[] = {{"Profile",
 
 status_t ProfileStore::GetSupportedSuites(BMessage *data) {
   data->AddString("suites", "suite/x-vnd.habitat+profilestore");
-  BPropertyInfo propertyInfo(properties);
+  BPropertyInfo propertyInfo(profileProperties);
   data->AddFlat("messages", &propertyInfo);
   return BHandler::GetSupportedSuites(data);
 }
@@ -45,10 +45,53 @@ void ProfileStore::MessageReceived(BMessage *message) {
         B_OK) {
       return BHandler::MessageReceived(message);
     }
-    BPropertyInfo propertyInfo(properties);
+    BPropertyInfo propertyInfo(profileProperties);
     propertyInfo.FindMatch(message, index, &specifier, what, property, &match);
     switch (match) {
     case kProfile: {
+      BString name = specifier.GetString("name");
+      std::set<BString> authors;
+      bool direct = validateCypherkey(name);
+      sqlite3_stmt *qry;
+      if (direct) {
+      	authors.emplace(name);
+      } else {
+      	sqlite3_exec(this->database, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+        sqlite3_prepare_v2(this->database,
+                           "SELECT author FROM profiles "
+                           "WHERE type = ?"
+                           "AND property LIKE 'name'",
+                           -1, &qry, NULL);
+        sqlite3_bind_int64(qry, 1, B_STRING_TYPE);
+        BString segment("%");
+        segment.Append(name);
+        segment.Append("%");
+        sqlite3_bind_text(qry, 2, segment.String(), segment.Length(), SQLITE_STATIC);
+        while (sqlite3_step(qry) == SQLITE_ROW) {
+        	authors.emplace(reinterpret_cast<const char*>(sqlite3_column_text(qry, 0)));
+        }
+        sqlite3_finalize(qry);
+      }
+      // TODO: persist isFixedSize
+      sqlite3_prepare_v2(this->database,
+        "SELECT property, type, value, fixedsize FROM profiles "
+        "WHERE author = ?", -1, &qry, NULL);
+      for (const BString &author : authors) {
+      	BMessage result('JSOB');
+      	sqlite3_bind_text(qry, 1, author.String(), author.Length(), SQLITE_STATIC);
+      	while (sqlite3_step(qry) == SQLITE_ROW) {
+      	  result.AddData(reinterpret_cast<const char*>(sqlite3_column_text(qry, 0)),
+      	    sqlite3_column_int(qry,1),
+      	    sqlite3_column_blob(qry,2),
+      	    sqlite3_column_bytes(qry,2),
+      	    sqlite3_column_int(qry,3));
+      	}
+      	sqlite3_reset(qry);
+      	reply.AddMessage("result", &result);
+      }
+      sqlite3_finalize(qry);
+      if (!direct)
+        sqlite3_exec(this->database, "END TRANSACTION;", NULL, NULL, NULL);
     } break;
     default:
       return BHandler::MessageReceived(message);
@@ -58,6 +101,16 @@ void ProfileStore::MessageReceived(BMessage *message) {
     if (message->ReturnAddress().IsValid())
       message->SendReply(&reply);
     return;
+  } else if (message->what == 'INIT') {
+  	BMessage rq(B_GET_PROPERTY);
+  	BMessage specifier('CPLX');
+  	specifier.AddString("property", "Post");
+  	specifier.AddString("type", "about");
+  	specifier.AddBool("dregs", true);
+  	specifier.AddString("specialCase", "selfReferent");
+  	rq.AddSpecifier(&specifier);
+  	rq.AddMessenger("target", BMessenger(this));
+  	BMessenger("application/x-vnd.habitat").SendMessage(&rq);
   } else if (BString author; message->FindString("author", &author) == B_OK) {
     if (BMessage content; message->FindMessage("content", &content) == B_OK ||
         message->FindMessage("cleartext", &content) == B_OK) {
@@ -87,7 +140,7 @@ void ProfileStore::MessageReceived(BMessage *message) {
                           SQLITE_STATIC);
         while (content.GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) ==
                B_OK) {
-          if (std::strcmp(attrname, "about") == 0) {
+          if (std::strcmp(attrname, "about") == 0 || std::strcmp(attrname, "type") == 0) {
             index++;
             continue;
           }
@@ -112,8 +165,8 @@ void ProfileStore::MessageReceived(BMessage *message) {
         sqlite3_stmt *qry;
         sqlite3_prepare_v2(
             this->database,
-            "INSERT INTO profiles(author, property, sequence, type, value) "
-            "VALUES(?, ?, ?, ?, ?)",
+            "INSERT INTO profiles(author, property, sequence, type, value, fixedsize) "
+            "VALUES(?, ?, ?, ?, ?, ?)",
             -1, &qry, NULL);
         sqlite3_bind_text(qry, 1, author.String(), author.Length(),
                           SQLITE_STATIC);
@@ -129,6 +182,7 @@ void ProfileStore::MessageReceived(BMessage *message) {
             ssize_t numBytes;
             content.FindData(attr.String(), typeFound, &data, &numBytes);
             sqlite3_bind_blob(qry, 5, data, numBytes, SQLITE_STATIC);
+            sqlite3_bind_int(qry, 6, fixedSize);
             if (sqlite3_step(qry) != SQLITE_DONE)
               successful = false;
             sqlite3_reset(qry);

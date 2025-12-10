@@ -119,7 +119,8 @@ status_t prepareDatabase(sqlite3 *database) {
                    "property TEXT NOT NULL, "
                    "sequence INTEGER NOT NULL, "
                    "type INTEGER NOT NULL, "
-                   "value BLOB)",
+                   "value BLOB, "
+                   "fixedsize INTEGER NOT NULL DEFAULT 1)",
                    NULL, NULL, &error) != SQLITE_OK) {
     std::cerr << error << std::endl;
     return B_ERROR;

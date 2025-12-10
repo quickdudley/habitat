@@ -188,6 +188,10 @@ status_t Habitat::GetSupportedSuites(BMessage *data) {
     BPropertyInfo propertyInfo(databaseProperties);
     data->AddFlat("messages", &propertyInfo);
   }
+    {
+    BPropertyInfo propertyInfo(profileProperties);
+    data->AddFlat("messages", &propertyInfo);
+  }
   return BApplication::GetSupportedSuites(data);
 }
 
@@ -196,6 +200,7 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
                                     const char *property) {
   BPropertyInfo databaseInfo(databaseProperties);
   BPropertyInfo propertyInfo(habitatProperties);
+  BPropertyInfo profileInfo(profileProperties);
   uint32 match;
   if (propertyInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
@@ -207,6 +212,11 @@ BHandler *Habitat::ResolveSpecifier(BMessage *msg, int32 index,
     }
   }
   if (databaseInfo.FindMatch(msg, index, specifier, what, property, &match) >=
+      0) {
+    BMessenger(this->databaseLooper).SendMessage(msg);
+    return NULL;
+  }
+  if (profileInfo.FindMatch(msg, index, specifier, what, property, &match) >=
       0) {
     BMessenger(this->databaseLooper).SendMessage(msg);
     return NULL;
@@ -605,6 +615,7 @@ void Habitat::ReadyToRun() {
     getter.AddSpecifier("Contact");
     BMessenger(this->contactStore).SendMessage(&getter, BMessenger(graph));
   }
+  // TODO: Move this into a method on `ContactGraph`
   {
     BMessage rq(B_GET_PROPERTY);
     BMessage specifier('CPLX');
@@ -617,6 +628,11 @@ void Habitat::ReadyToRun() {
     rq.AddMessenger("target", BMessenger(graph));
     BMessageRunner::StartSending(this->databaseLooper, &rq, 500000, 1);
   }
+  this->profileStore = new ProfileStore(this->databaseLooper->database);
+  this->databaseLooper->Lock();
+  this->databaseLooper->AddHandler(this->profileStore);
+  this->databaseLooper->Unlock();
+  BMessenger(this->profileStore).SendMessage('INIT');
   this->checkServerStatus();
 }
 

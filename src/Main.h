@@ -7,6 +7,7 @@
 #include "Listener.h"
 #include "MainWindow.h"
 #include "Post.h"
+#include "ProfileStore.h"
 #include "Secret.h"
 #include <Application.h>
 #include <Directory.h>
@@ -68,6 +69,7 @@ private:
   BLooper *worker;
   SSBDatabase *databaseLooper;
   ContactStore *contactStore;
+  ProfileStore *profileStore;
   OwnFeed *ownFeed;
   ebt::Dispatcher *ebt;
   blob::Wanted *wantedBlobs;
