@@ -219,6 +219,18 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
     separator = " AND ";
     query.Append("processed = 0");
   }
+  {
+    BString specialCase;
+    for (int i = 0;
+         specifier.FindString("specialCase", i, &specialCase) == B_OK;
+         i++) {
+      if (specialCase == "selfReferent") {
+        query.Append(separator);
+        separator = " AND ";
+        query.Append("author = context");
+      }
+    }
+  }
   sqlite3_stmt *result;
   sqlite3_prepare_v2(db, query.String(), query.Length(), &result, NULL);
   int i = 1;
@@ -374,6 +386,16 @@ bool QueryHandler::queryMatch(const BString &cypherkey, const BString &context,
     if (context == specValue) {
       match = true;
       break;
+    }
+  }
+  {
+    BString specialCase;
+    for (int i = 0;
+         this->specifier.FindString("specialCase", i, &specialCase) == B_OK;
+         i++) {
+      // Change if we introduce checks that put anything else into msgValue
+      if (specialCase == "selfReferent" && context != msgValue)
+        return false;
     }
   }
   if (!match)
