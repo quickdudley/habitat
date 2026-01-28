@@ -32,50 +32,52 @@ APP_MIME_SIG = application/x-vnd.habitat
 #same name(source.c or source.cpp) are included from different directories.
 #Also note that spaces in folder names do not work well with this Makefile.
 APP_SRCS = \
-	 src/Base64.cpp \
-	 src/BJSON.cpp \
-	 src/Blob.cpp \
-	 src/Connection.cpp \
-	 src/ContactStore.cpp \
-	 src/EBT.cpp \
-	 src/Indices.cpp \
-	 src/Lan.cpp \
-	 src/Listener.cpp \
-	 src/Main.cpp \
-	 src/MainWindow.cpp \
-	 src/MigrateDB.cpp \
-	 src/MUXRPC.cpp \
-	 src/Post.cpp \
-	 src/ProfileStore.cpp \
-	 src/Room.cpp \
-	 src/Secret.cpp \
-	 src/SelectContacts.cpp \
-	 src/SettingsWindow.cpp \
-	 src/SignJSON.cpp \
-	 src/Tunnel.cpp \
+	 src/Base64.cpp  \
+	 src/BJSON.cpp  \
+	 src/Blob.cpp  \
+	 src/Connection.cpp  \
+	 src/ContactStore.cpp  \
+	 src/EBT.cpp  \
+	 src/Indices.cpp  \
+	 src/Lan.cpp  \
+	 src/Listener.cpp  \
+	 src/Main.cpp  \
+	 src/MainWindow.cpp  \
+	 src/MigrateDB.cpp  \
+	 src/MUXRPC.cpp  \
+	 src/Post.cpp  \
+	 src/ProfileStore.cpp  \
+	 src/Room.cpp  \
+	 src/Secret.cpp  \
+	 src/SelectContacts.cpp  \
+	 src/SettingsWindow.cpp  \
+	 src/SignJSON.cpp  \
+	 src/Tunnel.cpp  \
 
 LIB_SRCS = \
-	 src/ContactGraph.cpp \
-	 src/FeedView.cpp \
-	 src/Invite.cpp \
-	 src/JSON.cpp \
-	 src/Logging.cpp \
-	 src/Markdown.cpp \
-	 src/Plugin.cpp \
+	 src/ContactGraph.cpp  \
+	 src/FeedView.cpp  \
+	 src/Invite.cpp  \
+	 src/JSON.cpp  \
+	 src/Logging.cpp  \
+	 src/Markdown.cpp  \
+	 src/MessageHeader.cpp  \
+	 src/Plugin.cpp  \
 
 TESTABLE_SRCS = \
-	 src/Base64.cpp \
-	 src/BJSON.cpp \
-	 src/Connection.cpp \
-	 src/EBT.cpp \
-	 src/Invite.cpp \
-	 src/JSON.cpp \
-	 src/Logging.cpp \
-	 src/Markdown.cpp \
-	 src/MUXRPC.cpp \
-	 src/Post.cpp \
-	 src/Secret.cpp \
-	 src/SignJSON.cpp
+	 src/Base64.cpp  \
+	 src/BJSON.cpp  \
+	 src/Connection.cpp  \
+	 src/EBT.cpp  \
+	 src/Invite.cpp  \
+	 src/JSON.cpp  \
+	 src/Logging.cpp  \
+	 src/Markdown.cpp  \
+	 src/MUXRPC.cpp  \
+	 src/Post.cpp  \
+	 src/Secret.cpp  \
+	 src/SignJSON.cpp  \
+
 
 TEST_SRCS = \
 	 $(wildcard  \
@@ -92,6 +94,9 @@ RDEFS = \
 RSRCS = \
 
 # End Pe/Eddie support.
+# @<-src@
+#%}
+
 # @<-src@
 #%}
 

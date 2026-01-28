@@ -78,6 +78,7 @@ void ProfileStore::MessageReceived(BMessage *message) {
         "SELECT property, type, value, fixedsize FROM profiles "
         "WHERE author = ?", -1, &qry, NULL);
       for (const BString &author : authors) {
+      	error = B_OK;
       	BMessage result('JSOB');
       	result.AddString("about", author);
       	sqlite3_bind_text(qry, 1, author.String(), author.Length(), SQLITE_STATIC);
