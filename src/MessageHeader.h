@@ -7,10 +7,13 @@ class MessageHeader : public BView {
 public:
   MessageHeader(const BMessage &message);
   ~MessageHeader();
+  void AttachedToWindow() override;
+  void MessageReceived(BMessage *message) override;
 
 private:
   BStringView *authorLabel;
   BStringView *authorValue;
+  BStringView *authorName;
   BStringView *dateLabel;
   BStringView *dateValue;
 };

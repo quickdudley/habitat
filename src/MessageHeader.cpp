@@ -34,6 +34,7 @@ MessageHeader::MessageHeader(const BMessage &message) : BView("", B_SUPPORTS_LAY
   // TODO: Profile lookup
   this->authorLabel = new BStringView("authorLabel", "Author:");
   this->authorValue = new BStringView("authorValue", author);
+  this->authorName = new BStringView("authorName", "…");
   this->dateLabel = new BStringView("dateLabel", "Date:");
   this->dateValue = new BStringView("dateValue", datetime);
   BFont labelFont;
@@ -42,13 +43,37 @@ MessageHeader::MessageHeader(const BMessage &message) : BView("", B_SUPPORTS_LAY
   this->authorLabel->SetFont(&labelFont);
   this->dateLabel->SetFont(&labelFont);
   BLayoutBuilder::Grid<>(this, B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING)
-      .Add(this->authorLabel, 0, 0)
+      .Add(this->authorLabel, 0, 0, 1, 2)
       .Add(this->authorValue, 1, 0)
-      .Add(this->dateLabel, 0, 1)
-      .Add(this->dateValue, 1, 1)
+      .Add(this->authorName, 1, 1)
+      .Add(this->dateLabel, 0, 2)
+      .Add(this->dateValue, 1, 2)
       .End();
 }
 
 MessageHeader::~MessageHeader() {}
+
+void MessageHeader::AttachedToWindow() {
+  BMessage rq(B_GET_PROPERTY);
+  rq.AddSpecifier("Profile", this->authorValue->Text());
+  BMessenger("application/x-vnd.habitat").SendMessage(&rq, this);
+  BView::AttachedToWindow();
+}
+
+void MessageHeader::MessageReceived(BMessage *message) {
+  if (!message->IsReply())
+    return BView::MessageReceived(message);
+  BMessage result;
+  if (message->FindMessage("result", &result) != B_OK)
+    return BView::MessageReceived(message);
+  BString author;
+  if (result.FindString("about", &author) != B_OK || author != this->authorValue->Text())
+    return BView::MessageReceived(message);
+  BString name;
+  if (result.FindString("name", &name) == B_OK)
+    this->authorName->SetText(name);
+  else
+    this->authorName->SetText("‽");
+}
 
 #undef B_TRANSLATION_CONTEXT
