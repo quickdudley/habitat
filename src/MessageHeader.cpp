@@ -2,6 +2,8 @@
 #include <DateTimeFormat.h>
 #include <LayoutBuilder.h>
 #include <MimeType.h>
+#include <cmath>
+#include <translation/TranslationUtils.h>
 
 namespace {
 
@@ -64,18 +66,57 @@ void MessageHeader::AttachedToWindow() {
 void MessageHeader::MessageReceived(BMessage *message) {
   if (!message->IsReply())
     return BView::MessageReceived(message);
-  BMessage result;
-  if (message->FindMessage("result", &result) != B_OK)
+  if (BMessage result; message->FindMessage("result", &result) == B_OK) {
+    BString author;
+    if (result.FindString("about", &author) != B_OK ||
+        author != this->authorValue->Text()) {
+      return BView::MessageReceived(message);
+    }
+    BString name;
+    if (result.FindString("name", &name) == B_OK && name.Length() != 0) {
+      this->authorValue->SetText(name);
+      this->authorValue->SetToolTip(author);
+    }
+    BString imageHash;
+    if (BMessage image; result.FindMessage("image", &image) == B_OK)
+      image.FindString("link", &imageHash);
+    if (imageHash.Length() != 0 ||
+        result.FindString("image", &imageHash) == B_OK) {
+      BMessage rq(B_CREATE_PROPERTY);
+      rq.AddSpecifier("Blob");
+      rq.AddString("cypherkey", imageHash);
+      BMessenger("application/x-vnd.habitat").SendMessage(&rq, this);
+    }
+  } else if (entry_ref result; message->FindRef("result", &result) == B_OK) {
+    BBitmap *unscaled = BTranslationUtils::GetBitmap(&result, NULL);
+    float scale = 1.0;
+    BRect bounds(unscaled->Bounds());
+    {
+      float s = 32.0 / bounds.Width();
+      if (scale > s)
+        scale = s;
+      s = 32.0 / bounds.Height();
+      if (scale > s)
+        scale = s;
+    }
+    auto scaled = std::make_shared<BBitmap>(
+        BRect(0, 0, std::floor(bounds.Width() * scale - 1),
+              std::floor(bounds.Height() * scale - 1)),
+        B_RGBA32, true);
+    auto view =
+        new BView(scaled->Bounds(), "scale", B_FOLLOW_NONE, B_WILL_DRAW);
+    scaled->AddChild(view);
+    scaled->Lock();
+    view->SetDrawingMode(B_OP_ALPHA);
+    view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+    view->DrawBitmap(unscaled, unscaled->Bounds(), scaled->Bounds());
+    view->Sync();
+    scaled->Unlock();
+    scaled->RemoveChild(view);
+    delete view;
+    this->userPicture->setSource(scaled);
+  } else {
     return BView::MessageReceived(message);
-  BString author;
-  if (result.FindString("about", &author) != B_OK ||
-      author != this->authorValue->Text()) {
-    return BView::MessageReceived(message);
-  }
-  BString name;
-  if (result.FindString("name", &name) == B_OK && name.Length() != 0) {
-    this->authorValue->SetText(name);
-    this->authorValue->SetToolTip(author);
   }
 }
 
@@ -90,6 +131,7 @@ void UserPicture::setSource(std::shared_ptr<BBitmap> source) {
   this->source = source;
   auto bounds = source->Bounds();
   this->SetExplicitSize(bounds.Size());
+  this->Invalidate();
 }
 
 void UserPicture::Draw(BRect updateRect) {
