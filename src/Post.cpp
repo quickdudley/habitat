@@ -222,8 +222,7 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
   {
     BString specialCase;
     for (int i = 0;
-         specifier.FindString("specialCase", i, &specialCase) == B_OK;
-         i++) {
+         specifier.FindString("specialCase", i, &specialCase) == B_OK; i++) {
       if (specialCase == "selfReferent") {
         query.Append(separator);
         separator = " AND ";
