@@ -6,7 +6,7 @@
 #include <translation/TranslationUtils.h>
 
 namespace {
-
+// TODO: Make sure this handles daylight savings time.
 BString formatTimestamp(int64 timestamp) {
   BDateTimeFormat formatter;
   time_t seconds = timestamp / 1000;
@@ -28,8 +28,7 @@ std::shared_ptr<BBitmap> makePersonIcon() {
 } // namespace
 
 MessageHeader::MessageHeader(const BMessage &message)
-    :
-    BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW) {
+    : BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW) {
   BString author;
   if (message.FindString("author", &author) != B_OK)
     author = "Error";
@@ -88,6 +87,7 @@ void MessageHeader::MessageReceived(BMessage *message) {
       BMessenger("application/x-vnd.habitat").SendMessage(&rq, this);
     }
   } else if (entry_ref result; message->FindRef("result", &result) == B_OK) {
+    // TODO: Factor out this logic into something reusable.
     BBitmap *unscaled = BTranslationUtils::GetBitmap(&result, NULL);
     float scale = 1.0;
     BRect bounds(unscaled->Bounds());
@@ -121,9 +121,8 @@ void MessageHeader::MessageReceived(BMessage *message) {
 }
 
 UserPicture::UserPicture(std::shared_ptr<BBitmap> source)
-    :
-    BView("User picture",
-          B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_SUPPORTS_LAYOUT) {
+    : BView("User picture",
+            B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_SUPPORTS_LAYOUT) {
   this->setSource(source);
 }
 
@@ -134,6 +133,7 @@ void UserPicture::setSource(std::shared_ptr<BBitmap> source) {
   this->Invalidate();
 }
 
+// TODO: Handle animated gifs.
 void UserPicture::Draw(BRect updateRect) {
   if (this->source != NULL) {
     this->SetDrawingMode(B_OP_ALPHA);
