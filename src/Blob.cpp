@@ -11,15 +11,13 @@
 namespace blob {
 
 Wanted::Wanted(BDirectory dir)
-    :
-    dir(dir) {
+    : dir(dir) {
   this->dir.GetVolume(&this->volume);
 }
 
 Get::Get(BLooper *looper, BVolume volume)
-    :
-    looper(looper),
-    volume(volume) {
+    : looper(looper),
+      volume(volume) {
   this->name = {"blobs", "get"};
   this->expectedType = muxrpc::RequestType::SOURCE;
 }
@@ -36,9 +34,8 @@ private:
 };
 
 GetSender::GetSender(std::unique_ptr<BDataIO> source, BMessenger sink)
-    :
-    source(std::move(source)),
-    sink(sink) {}
+    : source(std::move(source)),
+      sink(sink) {}
 
 void GetSender::MessageReceived(BMessage *message) {
   unsigned char chunk[65536];
@@ -67,8 +64,7 @@ private:
 };
 
 Reopen::Reopen(entry_ref *ref)
-    :
-    ref(*ref) {}
+    : ref(*ref) {}
 
 ssize_t Reopen::Read(void *buffer, size_t size) {
   BFile file(&this->ref, B_READ_ONLY);
@@ -128,8 +124,7 @@ failed: {
 }
 
 CreateWants::CreateWants(Wanted *wanted)
-    :
-    wanted(wanted) {
+    : wanted(wanted) {
   this->name = {"blobs", "createWants"};
   this->expectedType = muxrpc::RequestType::SOURCE;
 }
@@ -215,14 +210,12 @@ private:
 };
 
 WantSink::WantSink(muxrpc::Connection *connection, Wanted *registry)
-    :
-    connection(connection),
-    registry(registry) {}
+    : connection(connection),
+      registry(registry) {}
 
 WantSource::WantSource(BMessenger sender, Wanted *registry)
-    :
-    sender(sender),
-    registry(registry) {}
+    : sender(sender),
+      registry(registry) {}
 
 void WantSink::MessageReceived(BMessage *message) {
   if (message->what == 'JSOB' || message->what == 'MXRP') {
@@ -391,10 +384,9 @@ void FetchSink::MessageReceived(BMessage *message) {
       mimic.AddInt64("directory", ref.directory);
       mimic.AddString("name", ref.name);
       this->Looper()->Lock();
-      for (int i = 0; i < this->Looper()->CountHandlers(); i++) {
+      for (int i = 0; i < this->Looper()->CountHandlers(); i++)
         if (auto w = dynamic_cast<Wanted *>(this->Looper()->HandlerAt(i)))
           BMessenger(w).SendMessage(&mimic);
-      }
       this->Looper()->Unlock();
     } else {
       this->entry.Remove();
@@ -597,10 +589,9 @@ status_t Wanted::hashFile(entry_ref *ref) {
   unsigned char buffer[1024];
   crypto_hash_sha256_state state;
   crypto_hash_sha256_init(&state);
-  while ((readBytes = file.Read(buffer, sizeof(buffer))) > 0) {
+  while ((readBytes = file.Read(buffer, sizeof(buffer))) > 0)
     if (crypto_hash_sha256_update(&state, buffer, readBytes) < 0)
       return B_ERROR;
-  }
   if (crypto_hash_sha256_final(&state, buffer) < 0)
     return B_ERROR;
   BString attr("&");
@@ -611,8 +602,7 @@ status_t Wanted::hashFile(entry_ref *ref) {
 }
 
 Has::Has(Wanted *wanted)
-    :
-    wanted(wanted) {
+    : wanted(wanted) {
   this->name = {"blobs", "has"};
   this->expectedType = muxrpc::RequestType::ASYNC;
 }
@@ -629,8 +619,7 @@ void Wanted::registerMethods(muxrpc::MethodSuite &methods) {
   class CallCreateWants : public muxrpc::ConnectionHook {
   public:
     CallCreateWants(Wanted *registry)
-        :
-        registry(registry) {}
+        : registry(registry) {}
     void call(muxrpc::Connection *rpc) { registry->pullWants(rpc); }
 
   private:
@@ -642,8 +631,7 @@ void Wanted::registerMethods(muxrpc::MethodSuite &methods) {
 }
 
 LocalHandler::LocalHandler(BMessage *original)
-    :
-    original(original) {}
+    : original(original) {}
 
 void LocalHandler::MessageReceived(BMessage *message) {
   status_t err = B_OK;

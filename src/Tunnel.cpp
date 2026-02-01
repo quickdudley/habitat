@@ -5,10 +5,9 @@
 namespace rooms2 {
 
 Tunnel::Tunnel(BMessenger sender)
-    :
-    sender(sender),
-    queueLock(create_sem(1, "Room tunnel queue lock")),
-    trackEmpty(create_sem(0, "Room tunnel empty block")) {}
+    : sender(sender),
+      queueLock(create_sem(1, "Room tunnel queue lock")),
+      trackEmpty(create_sem(0, "Room tunnel empty block")) {}
 
 Tunnel::~Tunnel() {
   delete_sem(this->queueLock);
@@ -77,9 +76,8 @@ status_t Tunnel::push(void *buffer, size_t size, bool locked) {
 sem_id Tunnel::getLock() { return this->queueLock; }
 
 TunnelReader::TunnelReader(Tunnel *sink)
-    :
-    sink(sink),
-    queueLock(sink ? sink->getLock() : 0) {}
+    : sink(sink),
+      queueLock(sink ? sink->getLock() : 0) {}
 
 TunnelReader::~TunnelReader() {
   if (acquire_sem(this->queueLock) == B_OK) {

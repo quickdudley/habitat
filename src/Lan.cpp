@@ -30,8 +30,7 @@ generatePayload(BNetworkAddress *addr,
 }
 
 LanBroadcaster::LanBroadcaster(unsigned char pubkey[crypto_sign_PUBLICKEYBYTES])
-    :
-    socket(std::make_unique<BDatagramSocket>()) {
+    : socket(std::make_unique<BDatagramSocket>()) {
   {
     BNetworkAddress local;
     local.SetToWildcard(AF_INET, 0);

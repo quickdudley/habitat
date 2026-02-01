@@ -36,15 +36,13 @@ std::set<BString> ContactSelection::combine() const {
 }
 
 ContactLinkState::ContactLinkState()
-    :
-    following(false),
-    blocking(false),
-    pub(false) {}
+    : following(false),
+      blocking(false),
+      pub(false) {}
 
 ContactGraph::ContactGraph(BMessenger db, BMessenger store)
-    :
-    db(db),
-    store(store) {}
+    : db(db),
+      store(store) {}
 
 void ContactGraph::MessageReceived(BMessage *message) {
   switch (message->what) {

@@ -7,10 +7,9 @@
 SSBListener::SSBListener(std::shared_ptr<Ed25519Secret> myId,
                          BMessenger broadcaster,
                          const muxrpc::MethodSuite &methods)
-    :
-    myId(myId),
-    broadcaster(broadcaster),
-    methods(methods) {}
+    : myId(myId),
+      broadcaster(broadcaster),
+      methods(methods) {}
 
 namespace {
 class PrintReply : public BHandler {

@@ -73,12 +73,11 @@ void AttendantsClient::maybeConnect(std::set<BString> peers) {
   auto connectedList = ConnectedList::instance();
   {
     auto already = connectedList->getConnected();
-    for (auto i = peers.begin(); i != peers.end();) {
+    for (auto i = peers.begin(); i != peers.end();)
       if (already.find(*i) == already.end())
         ++i;
       else
         peers.erase(i);
-    }
   }
   auto conn = static_cast<muxrpc::Connection *>(this->Looper());
   auto portal = conn->cypherkey();

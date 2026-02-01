@@ -16,20 +16,18 @@ bool wasArray(const BMessage *msg) {
   int32 index = 0;
   while (msg->GetInfo(B_ANY_TYPE, index, &attrname, &attrtype) == B_OK) {
     int built = 0;
-    for (int i = 0; attrname[i] != 0; i++) {
+    for (int i = 0; attrname[i] != 0; i++)
       if (attrname[i] >= '0' && attrname[i] <= '9')
         built = built * 10 + (attrname[i] - '0');
       else
         return false;
-    }
     collected.insert(built);
   }
   if (collected.size() == 0)
     return false;
-  for (uint32 i = 0; i < collected.size(); i++) {
+  for (uint32 i = 0; i < collected.size(); i++)
     if (collected.count(i) != 1)
       return false;
-  }
   return true;
 }
 
@@ -187,10 +185,9 @@ private:
 };
 
 BMessageObjectChild::BMessageObjectChild(BMessage *parent, const BString &key)
-    :
-    BMessageObjectDocSink(&target),
-    parent(parent),
-    key(key) {
+    : BMessageObjectDocSink(&target),
+      parent(parent),
+      key(key) {
   this->target.what = 'JSOB';
 }
 
@@ -199,10 +196,9 @@ BMessageObjectChild::~BMessageObjectChild() {
 }
 
 BMessageArrayChild::BMessageArrayChild(BMessage *parent, const BString &key)
-    :
-    BMessageArrayDocSink(&target),
-    parent(parent),
-    key(key) {
+    : BMessageArrayDocSink(&target),
+      parent(parent),
+      key(key) {
   this->target.what = 'JSAR';
 }
 
@@ -211,8 +207,7 @@ BMessageArrayChild::~BMessageArrayChild() {
 }
 
 BMessageDocSink::BMessageDocSink(BMessage *target)
-    :
-    target(target) {}
+    : target(target) {}
 
 std::unique_ptr<NodeSink> BMessageDocSink::addObject(const BString &rawname,
                                                      const BString &name) {
@@ -225,8 +220,7 @@ std::unique_ptr<NodeSink> BMessageDocSink::addArray(const BString &rawname,
 }
 
 BMessageObjectDocSink::BMessageObjectDocSink(BMessage *target)
-    :
-    target(target) {
+    : target(target) {
   target->what = 'JSOB';
 }
 
@@ -266,9 +260,8 @@ BMessageObjectDocSink::addArray(const BString &rawname, const BString &name) {
 }
 
 BMessageArrayDocSink::BMessageArrayDocSink(BMessage *target)
-    :
-    target(target),
-    counter(0) {
+    : target(target),
+      counter(0) {
   target->what = 'JSAR';
 }
 

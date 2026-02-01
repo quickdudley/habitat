@@ -40,8 +40,7 @@ BString Ed25519Secret::getCypherkey() {
 namespace JSON {
 
 SecretNode::SecretNode(Ed25519Secret *target)
-    :
-    target(target) {}
+    : target(target) {}
 
 void SecretNode::addString(const BString &rawname, const BString &name,
                            const BString &raw, const BString &value) {

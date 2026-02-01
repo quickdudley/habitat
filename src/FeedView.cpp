@@ -24,8 +24,7 @@ const std::map<BString, std::function<BView *(BMessage *)>> &messageTypes() {
 }; // namespace
 
 FeedView::FeedView(const BMessage &specifier)
-    :
-    BGroupView(B_VERTICAL) {
+    : BGroupView(B_VERTICAL) {
   this->setSpecifier(specifier);
   this->glue = BSpaceLayoutItem::CreateGlue();
 }

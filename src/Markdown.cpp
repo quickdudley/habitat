@@ -14,8 +14,7 @@ public:
 };
 
 ParseContext::ParseContext(std::vector<std::unique_ptr<BlockNode>> *sink)
-    :
-    sink(sink) {}
+    : sink(sink) {}
 
 bool parseLine(const BString &line, void *arg) {
   auto ctx = (ParseContext *)arg;
@@ -56,8 +55,7 @@ BString BlockNode::toString() const { return "BlockNode"; }
 BString SpanNode::toString() const { return "SpanNode"; }
 
 ParagraphNode::ParagraphNode(std::vector<std::unique_ptr<SpanNode>> contents)
-    :
-    contents(std::move(contents)) {}
+    : contents(std::move(contents)) {}
 
 BString ParagraphNode::toString() const {
   BString result("ParagraphNode {");
@@ -79,10 +77,9 @@ bool ParagraphNode::operator==(const BlockNode &other) const {
     return false;
   auto c1 = this->contents.begin();
   auto c2 = o.contents.begin();
-  for (; c1 != this->contents.end() && c2 != this->contents.end(); c1++, c2++) {
+  for (; c1 != this->contents.end() && c2 != this->contents.end(); c1++, c2++)
     if (**c1 != **c2)
       return false;
-  }
   return true;
 }
 
@@ -164,8 +161,7 @@ void ParagraphNode::draw(BView *view, BRect &frame) const {
 }
 
 TextNode::TextNode(const BString &contents)
-    :
-    contents(contents) {}
+    : contents(contents) {}
 
 bool TextNode::operator==(const SpanNode &other) const {
   if (!SpanNode::operator==(other))
@@ -243,17 +239,15 @@ float TextNode::drawToken(const BString &token, BView *view) const {
 
 MarkdownView::MarkdownView(
     std::vector<std::unique_ptr<markdown::BlockNode>> &&contents)
-    :
-    BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
-    contents(std::move(contents)) {
+    : BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+      contents(std::move(contents)) {
   this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
   this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 }
 
 MarkdownView::MarkdownView(const BString &raw)
-    :
-    MarkdownView(markdown::parse(raw)) {}
+    : MarkdownView(markdown::parse(raw)) {}
 
 void MarkdownView::AttachedToWindow() {
   this->AdoptParentColors();

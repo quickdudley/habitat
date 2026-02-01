@@ -6,8 +6,7 @@
 template <class T> class Updatable {
 public:
   Updatable(const T &value)
-      :
-      value(value) {}
+      : value(value) {}
   const T &peek() const { return value; }
   int64 threshold() const { return weight; }
   void put(const T &value, int64 weight) {

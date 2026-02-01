@@ -5,9 +5,8 @@
 #include <map>
 
 SelectContacts::SelectContacts(const BMessenger &db, const BMessenger &graph)
-    :
-    db(db),
-    graph(graph) {}
+    : db(db),
+      graph(graph) {}
 
 SelectContacts::~SelectContacts() { this->StopWatchingAll(this->graph); }
 

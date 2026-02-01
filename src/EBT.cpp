@@ -21,14 +21,12 @@ int64 encodeNote(Note &note) {
 }
 
 RemoteState::RemoteState(double note)
-    :
-    note(decodeNote(note)),
-    updated(system_time()) {}
+    : note(decodeNote(note)),
+      updated(system_time()) {}
 
 RemoteState::RemoteState(const RemoteState &original)
-    :
-    note(original.note),
-    updated(original.updated) {}
+    : note(original.note),
+      updated(original.updated) {}
 
 static Note compose(const LocalState &state, const LinkLocalState &linkState) {
   return {linkState.replicate, linkState.receive && !state.forked,
@@ -36,9 +34,8 @@ static Note compose(const LocalState &state, const LinkLocalState &linkState) {
 }
 
 Dispatcher::Dispatcher(SSBDatabase *db)
-    :
-    BLooper("EBT"),
-    db(db) {}
+    : BLooper("EBT"),
+      db(db) {}
 
 thread_id Dispatcher::Run() {
   thread_id thread = BLooper::Run();
@@ -180,10 +177,9 @@ void Dispatcher::MessageReceived(BMessage *msg) {
       JSON::number sequence;
       if (result.FindDouble("sequence", &sequence) == B_OK &&
           result.FindString("author", &author) == B_OK) {
-        for (int i = this->CountHandlers() - 1; i >= 0; i--) {
+        for (int i = this->CountHandlers() - 1; i >= 0; i--)
           if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link)
             link->pushOut(&result);
-        }
       }
     }
   }
@@ -247,10 +243,9 @@ void Dispatcher::noticeChange(BMessage *msg) {
           {cypherkey, {(uint64)sequence, (uint64)sequence, forked}});
     }
     if (changed) {
-      for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+      for (int32 i = this->CountHandlers() - 1; i >= 0; i--)
         if (Link *link = dynamic_cast<Link *>(this->HandlerAt(i)); link)
           link->sendSequence.push(cypherkey);
-      }
       this->startNotesTimer(1000);
     }
   } else if (BString cypherkey; msg->GetBool("deleted", false) &&
@@ -282,10 +277,9 @@ void Dispatcher::checkForMessage(const BString &author, uint64 sequence) {
 
 bool Dispatcher::polyLink() {
   int count = 0;
-  for (int32 i = this->CountHandlers(); i >= 0; i--) {
+  for (int32 i = this->CountHandlers(); i >= 0; i--)
     if (dynamic_cast<Link *>(this->HandlerAt(i)) && ++count >= 2)
       return true;
-  }
   return false;
 }
 
@@ -332,8 +326,7 @@ void Dispatcher::sendNotes() {
 }
 
 Begin::Begin(Dispatcher *dispatcher)
-    :
-    dispatcher(dispatcher) {
+    : dispatcher(dispatcher) {
   this->expectedType = muxrpc::RequestType::DUPLEX;
   this->name.push_back("ebt");
   this->name.push_back("replicate");
@@ -342,9 +335,8 @@ Begin::Begin(Dispatcher *dispatcher)
 Begin::~Begin() {}
 
 Link::Link(muxrpc::Sender sender, bool waiting)
-    :
-    sender(sender),
-    waiting(waiting) {}
+    : sender(sender),
+      waiting(waiting) {}
 
 void Link::MessageReceived(BMessage *message) {
   if (message->what == 'SENT') {

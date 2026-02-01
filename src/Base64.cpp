@@ -24,23 +24,21 @@ static inline unsigned char decode1(char point) {
 }
 
 static inline char encode1(unsigned char byte, Variant variant) {
-  if (byte <= 25) {
+  if (byte <= 25)
     return byte + 'A';
-  } else if (byte <= 51) {
+  else if (byte <= 51)
     return byte - 26 + 'a';
-  } else if (byte <= 61) {
+  else if (byte <= 61)
     return byte - 52 + '0';
-  } else if (byte == 62) {
+  else if (byte == 62)
     if (variant == STANDARD)
       return '+';
     else
       return '-';
-  } else {
-    if (variant == STANDARD)
-      return '/';
-    else
-      return '_';
-  }
+  else if (variant == STANDARD)
+    return '/';
+  else
+    return '_';
 }
 
 BString encode(const unsigned char *raw, size_t inlen, Variant variant) {

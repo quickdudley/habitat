@@ -68,8 +68,7 @@ std::unique_ptr<NodeSink> SignObject::addArray(const BString &rawname,
 }
 
 Hash::Hash(unsigned char target[crypto_hash_sha256_BYTES])
-    :
-    target(target) {
+    : target(target) {
   this->inner = std::make_unique<SerializerStart>(&this->body);
 }
 
@@ -143,21 +142,18 @@ private:
 VerifyObjectSignature::VerifyObjectSignature(std::unique_ptr<NodeSink> inner,
                                              unsigned char *author,
                                              unsigned char *signature)
-    :
-    author(author),
-    signature(signature) {
+    : author(author),
+      signature(signature) {
   this->inner = std::move(inner);
 }
 
 VerifySignature::VerifySignature(bool *target)
-    :
-    target(target) {
+    : target(target) {
   this->inner = std::make_unique<SerializerStart>(&this->body);
 }
 
 VerifySignature::VerifySignature(bool *target, const BString &hmac)
-    :
-    VerifySignature::VerifySignature(target) {
+    : VerifySignature::VerifySignature(target) {
   auto hmacBytes = base64::decode(hmac);
   if (hmacBytes.size() == crypto_auth_KEYBYTES) {
     this->useHmac = true;

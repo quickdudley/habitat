@@ -147,10 +147,9 @@ std::unique_ptr<NodeSink> NodeSink::addArray(const BString &rawname,
 
 SerializerStart::SerializerStart(BString *target, int32 indentation,
                                  bool newlines)
-    :
-    target(target),
-    indentation(indentation),
-    newlines(newlines) {}
+    : target(target),
+      indentation(indentation),
+      newlines(newlines) {}
 
 void SerializerStart::addNumber(const BString &rawname, const BString &name,
                                 const BString &raw, number value) {
@@ -237,11 +236,10 @@ std::unique_ptr<NodeSink> SerializerStart::addArray(const BString &rawname,
 
 ObjectSerializer::ObjectSerializer(BString *target, int32 indent,
                                    int32 indentStep, bool newlines)
-    :
-    indent(indent),
-    indentStep(indentStep),
-    nonempty(false),
-    newlines(newlines) {
+    : indent(indent),
+      indentStep(indentStep),
+      nonempty(false),
+      newlines(newlines) {
   this->target = target;
   target->Append("{");
 }
@@ -308,11 +306,10 @@ void ObjectSerializer::property(const BString &rawname) {
 
 ArraySerializer::ArraySerializer(BString *target, int32 indent,
                                  int32 indentStep, bool newlines)
-    :
-    indent(indent),
-    indentStep(indentStep),
-    nonempty(false),
-    newlines(newlines) {
+    : indent(indent),
+      indentStep(indentStep),
+      nonempty(false),
+      newlines(newlines) {
   this->target = target;
   target->Append("[");
 }
@@ -630,29 +627,25 @@ status_t parse(NodeSink *target, const BString &input) {
 }
 
 Parser::Parser(std::unique_ptr<RootSink> target, bool lax)
-    :
-    lax(lax) {
+    : lax(lax) {
   this->target = std::move(target);
   this->stack.push_back(14);
 }
 
 Parser::Parser(RootSink *target, bool lax)
-    :
-    lax(lax) {
+    : lax(lax) {
   this->target = std::unique_ptr<RootSink>(target);
   this->stack.push_back(14);
 }
 
 Parser::Parser(std::unique_ptr<NodeSink> target, bool lax)
-    :
-    lax(lax) {
+    : lax(lax) {
   this->target = std::make_unique<RootSink>(std::move(target));
   this->stack.push_back(14);
 }
 
 Parser::Parser(NodeSink *target, bool lax)
-    :
-    lax(lax) {
+    : lax(lax) {
   this->target = std::make_unique<RootSink>(std::unique_ptr<NodeSink>(target));
   this->stack.push_back(14);
 }

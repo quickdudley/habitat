@@ -26,10 +26,9 @@ private:
 };
 
 PostDisplay::PostDisplay(const BString &body, const BMessage &message)
-    :
-    BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW),
-    header(new MessageHeader(message)),
-    body(new MarkdownView(body)) {
+    : BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW),
+      header(new MessageHeader(message)),
+      body(new MarkdownView(body)) {
   this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
   this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));

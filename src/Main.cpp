@@ -105,8 +105,7 @@ static property_info habitatProperties[] = {
 
 // TODO: Move most of this into ReadyToRun
 Habitat::Habitat(void)
-    :
-    BApplication("application/x-vnd.habitat") {
+    : BApplication("application/x-vnd.habitat") {
   {
     std::random_device hwrng;
     this->rng.seed(hwrng());
@@ -188,7 +187,7 @@ status_t Habitat::GetSupportedSuites(BMessage *data) {
     BPropertyInfo propertyInfo(databaseProperties);
     data->AddFlat("messages", &propertyInfo);
   }
-    {
+  {
     BPropertyInfo propertyInfo(profileProperties);
     data->AddFlat("messages", &propertyInfo);
   }
@@ -442,7 +441,7 @@ int Habitat::initiateConnection(void *message) {
                   BMessage update(B_SET_PROPERTY);
                   update.AddMessage("data", &data);
                   update.AddSpecifier("Server", name);
-                  BMessageRunner::StartSending(BMessenger(be_app), (&update),
+                  BMessageRunner::StartSending(BMessenger(be_app), &update,
                                                1000000, 1);
                 })
               : NULL);
@@ -463,7 +462,7 @@ sendReply:
     BMessage update(B_SET_PROPERTY);
     update.AddMessage("data", &data);
     update.AddSpecifier("Server", name);
-    BMessageRunner::StartSending(BMessenger(be_app), (&update), 15000000, 1);
+    BMessageRunner::StartSending(BMessenger(be_app), &update, 15000000, 1);
   }
   delete msg;
   // TODO: Reap thread ID
@@ -731,23 +730,20 @@ ServerRecord::ServerRecord() {}
 
 ServerRecord::ServerRecord(const BString &transport, const BString &hostname,
                            const BString &cypherkey)
-    :
-    transport(transport),
-    hostname(hostname),
-    cypherkey(cypherkey) {}
+    : transport(transport),
+      hostname(hostname),
+      cypherkey(cypherkey) {}
 
 ServerRecord::ServerRecord(const BString &hostname, const BString &cypherkey)
-    :
-    transport("net"),
-    hostname(hostname),
-    cypherkey(cypherkey) {}
+    : transport("net"),
+      hostname(hostname),
+      cypherkey(cypherkey) {}
 
 ServerRecord::ServerRecord(BMessage *record)
-    :
-    transport(record->GetString("transport", "net")),
-    hostname(record->GetString("hostname", "")),
-    cypherkey(record->GetString("cypherkey", "")),
-    connected(record->GetBool("connected", false)) {}
+    : transport(record->GetString("transport", "net")),
+      hostname(record->GetString("hostname", "")),
+      cypherkey(record->GetString("cypherkey", "")),
+      connected(record->GetBool("connected", false)) {}
 
 bool ServerRecord::isValid() {
   return this->transport == "net" &&
@@ -833,8 +829,7 @@ void ServerRecord::connect() {
 namespace {
 
 TidyLooper::TidyLooper(const char *name)
-    :
-    BLooper(name) {}
+    : BLooper(name) {}
 
 void TidyLooper::Quit() {
   for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {

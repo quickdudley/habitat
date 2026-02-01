@@ -14,25 +14,22 @@ namespace muxrpc {
 
 MethodMatch Method::check(Connection *conn, std::vector<BString> &name,
                           RequestType type) {
-  if (name == this->name) {
+  if (name == this->name)
     if (type == this->expectedType)
       return MethodMatch::MATCH;
     else
       return MethodMatch::WRONG_TYPE;
-  } else {
+  else
     return MethodMatch::NO_MATCH;
-  }
 }
 
 Sender::Sender(BMessenger inner)
-    :
-    inner(inner),
-    sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")),
-    sequence(1) {}
+    : inner(inner),
+      sequenceSemaphore(create_sem(1, "MUXRPC packet ordering")),
+      sequence(1) {}
 
 SenderHandler::SenderHandler(Connection *conn, int32 requestNumber)
-    :
-    requestNumber(requestNumber) {
+    : requestNumber(requestNumber) {
   if (conn->Lock()) {
     conn->AddHandler(this);
     conn->Unlock();
@@ -203,10 +200,9 @@ void SenderHandler::actuallySend(BMessage *wrapper) {
     class ExtractContent : public JSON::SerializerStart {
     public:
       ExtractContent(BString *target, Header *header)
-          :
-          JSON::SerializerStart(target, 0, false),
-          target(target),
-          header(header) {}
+          : JSON::SerializerStart(target, 0, false),
+            target(target),
+            header(header) {}
       void addNumber(const BString &rawname, const BString &name,
                      const BString &raw, JSON::number value) override {
         if (name == "content") {
@@ -323,8 +319,7 @@ private:
 
 Setup::Setup(std::shared_ptr<std::vector<std::shared_ptr<ConnectionHook>>>
                  connectionHooks)
-    :
-    connectionHooks(connectionHooks) {}
+    : connectionHooks(connectionHooks) {}
 
 void Setup::MessageReceived(BMessage *message) {
   auto connection = dynamic_cast<Connection *>(this->Looper());
@@ -339,10 +334,9 @@ void Setup::MessageReceived(BMessage *message) {
 
 Connection::Connection(std::unique_ptr<BDataIO> inner,
                        const MethodSuite &methods, const BString &serverName)
-    :
-    BLooper("MUXRPC sender"),
-    handlers(methods.methods),
-    serverName(serverName) {
+    : BLooper("MUXRPC sender"),
+      handlers(methods.methods),
+      serverName(serverName) {
   this->inner = std::move(inner);
   this->ongoingLock = create_sem(1, "MUXRPC incoming streams lock");
   {
@@ -408,10 +402,9 @@ void Connection::Quit() {
       this->Lock();
   }
   if (this->Lock()) {
-    for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
+    for (int32 i = this->CountHandlers() - 1; i >= 0; i--)
       if (BHandler *handler = this->HandlerAt(i); handler && handler != this)
         delete handler;
-    }
     this->Unlock();
   }
   if (acquire_sem(this->ongoingLock) == B_OK)
@@ -692,17 +685,15 @@ private:
 
 RequestObjectSink::RequestObjectSink(std::vector<BString> *name,
                                      RequestType *requestType, BMessage *args)
-    :
-    name(name),
-    requestType(requestType),
-    args(args) {}
+    : name(name),
+      requestType(requestType),
+      args(args) {}
 
 RequestSink::RequestSink(std::vector<BString> *name, RequestType *requestType,
                          BMessage *args)
-    :
-    name(name),
-    requestType(requestType),
-    args(args) {}
+    : name(name),
+      requestType(requestType),
+      args(args) {}
 
 std::unique_ptr<JSON::NodeSink> RequestSink::addObject(const BString &rawname,
                                                        const BString &name) {
@@ -735,8 +726,7 @@ RequestObjectSink::addArray(const BString &rawname, const BString &name) {
 }
 
 RequestNameSink::RequestNameSink(std::vector<BString> *name)
-    :
-    name(name) {}
+    : name(name) {}
 
 void RequestNameSink::addString(const BString &rawname, const BString &name,
                                 const BString &raw, const BString &value) {
@@ -991,21 +981,19 @@ bool MessageOrder::operator()(BMessage *&a, BMessage *&b) {
 }
 
 MethodSuite::MethodSuite()
-    :
-    methods(std::make_shared<std::vector<std::shared_ptr<Method>>>(
-        std::vector<std::shared_ptr<Method>>())),
-    connectionHooks(
-        std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
-            std::vector<std::shared_ptr<ConnectionHook>>())) {}
+    : methods(std::make_shared<std::vector<std::shared_ptr<Method>>>(
+          std::vector<std::shared_ptr<Method>>())),
+      connectionHooks(
+          std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
+              std::vector<std::shared_ptr<ConnectionHook>>())) {}
 
 MethodSuite::MethodSuite(const MethodSuite &original, bool includeHooks)
-    :
-    methods(original.methods),
-    connectionHooks(
-        includeHooks
-            ? original.connectionHooks
-            : std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
-                  std::vector<std::shared_ptr<ConnectionHook>>())) {}
+    : methods(original.methods),
+      connectionHooks(
+          includeHooks
+              ? original.connectionHooks
+              : std::make_shared<std::vector<std::shared_ptr<ConnectionHook>>>(
+                    std::vector<std::shared_ptr<ConnectionHook>>())) {}
 
 MethodSuite &MethodSuite::operator=(const MethodSuite &original) {
   this->methods = original.methods;

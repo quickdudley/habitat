@@ -20,8 +20,7 @@ TEST_CASE("Correctly parses multiple of 10", "[JSON][parsing][number]") {
   class AExpect : public JSON::NodeSink {
   public:
     AExpect(double *target)
-        :
-        target(target) {}
+        : target(target) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       *(this->target) = value;
@@ -45,8 +44,7 @@ TEST_CASE("Correctly parses decimal with trailing 0",
   class AExpect : public JSON::NodeSink {
   public:
     AExpect(double *target)
-        :
-        target(target) {}
+        : target(target) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       *(this->target) = value;
@@ -69,8 +67,7 @@ TEST_CASE("Correctly parses negative number", "[JSON][parsing][number]") {
   class AExpect : public JSON::NodeSink {
   public:
     AExpect(double *target)
-        :
-        target(target) {}
+        : target(target) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       *(this->target) = value;
@@ -93,8 +90,7 @@ TEST_CASE("Correctly parses suspicious number", "[JSON][parsing][number]") {
   class AExpect : public JSON::NodeSink {
   public:
     AExpect(double *target)
-        :
-        target(target) {}
+        : target(target) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       *(this->target) = value;
@@ -130,9 +126,8 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   class OExpect : public JSON::NodeSink {
   public:
     OExpect(Results *target, int ix)
-        :
-        target(target),
-        ix(ix) {}
+        : target(target),
+          ix(ix) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       this->target->extra = true;
@@ -201,9 +196,8 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   class AExpect : public JSON::NodeSink {
   public:
     AExpect(Results *target)
-        :
-        target(target),
-        ix(0) {}
+        : target(target),
+          ix(0) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       this->target->extra = true;
@@ -236,8 +230,7 @@ TEST_CASE("Correctly parses objects in array document", "[JSON][parsing]") {
   class RootExpect : public JSON::NodeSink {
   public:
     RootExpect(Results *target)
-        :
-        target(target) {}
+        : target(target) {}
     void addNumber(const BString &rawname, const BString &name,
                    const BString &raw, JSON::number value) override {
       this->target->extra = true;

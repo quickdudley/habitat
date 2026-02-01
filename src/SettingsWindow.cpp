@@ -66,9 +66,8 @@ private:
 };
 
 NetworkTab::NetworkTab(BRect contentFrame)
-    :
-    BView(contentFrame, B_TRANSLATE("Network"), B_FOLLOW_ALL_SIDES,
-          B_WILL_DRAW) {
+    : BView(contentFrame, B_TRANSLATE("Network"), B_FOLLOW_ALL_SIDES,
+            B_WILL_DRAW) {
   this->AdoptSystemColors();
 }
 
@@ -216,9 +215,8 @@ void NetworkTab::fillDetails(const BString &netAddress,
 }
 
 ServerEntry::ServerEntry(const BString &netAddress, const BString cypherkey)
-    :
-    netAddress(netAddress),
-    cypherkey(cypherkey) {}
+    : netAddress(netAddress),
+      cypherkey(cypherkey) {}
 
 void ServerEntry::setAddress(const BString &netAddress) {
   this->netAddress = netAddress;
@@ -268,9 +266,8 @@ void ServerEntry::Update(BView *owner, const BFont *font) {
 }
 
 ServerList::ServerList(const char *name, NetworkTab *container)
-    :
-    BListView(name),
-    container(container) {}
+    : BListView(name),
+      container(container) {}
 
 void ServerList::SelectionChanged() {
   if (auto selected =
@@ -293,9 +290,8 @@ static inline BRect ourFrame() {
 }
 
 SettingsWindow::SettingsWindow()
-    :
-    BWindow(ourFrame(), B_TRANSLATE("Habitat Settings"), B_UNTYPED_WINDOW, 0,
-            B_CURRENT_WORKSPACE) {
+    : BWindow(ourFrame(), B_TRANSLATE("Habitat Settings"), B_UNTYPED_WINDOW, 0,
+              B_CURRENT_WORKSPACE) {
   this->tabView = new BTabView(this->Bounds(), "settingsTabView");
   this->AddChild(tabView);
   BRect contentFrame = this->tabView->ContainerView()->Bounds();

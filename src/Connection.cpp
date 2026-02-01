@@ -516,7 +516,7 @@ ssize_t BoxStream::Read(void *buffer, size_t size) {
                   B_SWAP_BENDIAN_TO_HOST) != B_OK) {
       return B_IO_ERROR;
     }
-    size_t bodyLength = (size_t) * ((short *)headerMsg);
+    size_t bodyLength = (size_t)*((short *)headerMsg);
     this->read_buffer =
         std::unique_ptr<unsigned char>(new unsigned char[bodyLength + 16]);
     memcpy(this->read_buffer.get(), headerMsg + 2, 16);
