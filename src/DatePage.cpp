@@ -29,11 +29,11 @@ void RangeSet::set(int64 start, int64 end, bool value) {
   if (value) {
     if (ends[0] != this->inner.end() &&
         contiguous(start, end, ends[0]->first, ends[0]->second)) {
-      start = ends[0]->first;
+      start = std::min(start, ends[0]->first);
     }
     if (ends[1] != this->inner.end() &&
         contiguous(start, end, ends[1]->first, ends[1]->second)) {
-      end = ends[1]->second;
+      end = std::max(end, ends[1]->second);
     }
     q.push_back({start, end});
   } else {
@@ -48,9 +48,9 @@ void RangeSet::set(int64 start, int64 end, bool value) {
   }
   if (ends[1] != this->inner.end())
     ends[1]++;
-  for (auto i = ends[0]; i != ends[1];) {
+  for (auto i = ends[0]; i != ends[1] && i != this->inner.end();) {
     if (contiguous(start, end, i->first, i->second))
-      this->inner.erase(i);
+      i = this->inner.erase(i);
     else
       i++;
   }
