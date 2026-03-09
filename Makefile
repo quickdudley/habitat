@@ -56,6 +56,7 @@ APP_SRCS = \
 
 LIB_SRCS = \
 	 src/ContactGraph.cpp  \
+	 src/DatePage.cpp \
 	 src/FeedView.cpp  \
 	 src/Invite.cpp  \
 	 src/JSON.cpp  \
