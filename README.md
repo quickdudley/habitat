@@ -4,6 +4,14 @@ A Secure Scuttlebutt client for Haiku.
 
 ![Habitat icon](./Habitat-icon.svg)
 
+## Other (Actively Developed) Clients
+
+| Client | Description |
+|--------|-------------|
+| [Tilde Friends](https://tildefriends.net) | A client in C and JavaScript that runs as a web server |
+| [Poncho Wonky](https://github.com/soapdog/patchwork) | An electron based client forked from the discontinued [Patchwork](https://github.com/ssbc/patchwork) |
+| [Erlbutt](https://github.com/cmoid/erlbutt) | An implementation of the Scuttlebutt protocol in erlang |
+
 ## Installing Dependencies
 
 - Libsodium: `pkgman install devel:libsodium`
