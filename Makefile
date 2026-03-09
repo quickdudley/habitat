@@ -69,6 +69,7 @@ TESTABLE_SRCS = \
 	 src/Base64.cpp  \
 	 src/BJSON.cpp  \
 	 src/Connection.cpp  \
+	 src/DatePage.cpp \
 	 src/EBT.cpp  \
 	 src/Invite.cpp  \
 	 src/JSON.cpp  \
