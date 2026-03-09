@@ -5,7 +5,8 @@
 #include <map>
 
 ContactStore::ContactStore(sqlite3 *database)
-    : database(database) {}
+    :
+    database(database) {}
 
 enum { kContact };
 

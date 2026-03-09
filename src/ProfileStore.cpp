@@ -6,7 +6,8 @@
 #include <set>
 
 ProfileStore::ProfileStore(sqlite3 *database)
-    : database(database) {}
+    :
+    database(database) {}
 
 enum { kProfile };
 

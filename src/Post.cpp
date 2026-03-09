@@ -40,7 +40,8 @@ static inline status_t eitherNumber(int64 *result, const BMessage *source,
 }
 
 QueryBacked::QueryBacked(sqlite3_stmt *query)
-    : query(query) {}
+    :
+    query(query) {}
 
 QueryBacked::~QueryBacked() {
   if (this->query)
@@ -246,10 +247,11 @@ static inline sqlite3_stmt *spec2query(sqlite3 *db, const BMessage &specifier) {
 
 QueryHandler::QueryHandler(sqlite3 *db, BMessenger target,
                            const BMessage &specifier)
-    : QueryBacked(spec2query(db, specifier)),
-      target(target),
-      specifier(specifier),
-      dregs(specifier.GetBool("dregs", false)) {}
+    :
+    QueryBacked(spec2query(db, specifier)),
+    target(target),
+    specifier(specifier),
+    dregs(specifier.GetBool("dregs", false)) {}
 
 void QueryHandler::MessageReceived(BMessage *message) {
   if (!this->target.IsValid())
@@ -462,9 +464,10 @@ void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
 }
 
 SSBDatabase::SSBDatabase(std::function<sqlite3 *()> dbOpen)
-    : BLooper("SSB message database", 8192, 512),
-      database(dbOpen()),
-      dbOpen(std::move(dbOpen)) {
+    :
+    BLooper("SSB message database", 8192, 512),
+    database(dbOpen()),
+    dbOpen(std::move(dbOpen)) {
   if (runningDB == NULL)
     runningDB = this;
   sqlite3_prepare_v2(database,
@@ -768,9 +771,10 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
     }
   } else if (msg->what == B_PULSE && this->pulseRunning) {
     this->pulseRunning = false;
-    for (int i = 0; i < this->CountHandlers(); i++)
+    for (int i = 0; i < this->CountHandlers(); i++) {
       if (auto qh = dynamic_cast<QueryHandler *>(this->HandlerAt(i)))
         BMessenger(qh).SendMessage(msg);
+    }
     sqlite3_exec(this->database, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     if (sqlite3_step(this->backlog) == SQLITE_ROW) {
       BMessage post;
@@ -1387,7 +1391,8 @@ status_t SSBFeed::save(BMessage *message, BMessage *reply) {
 }
 
 OwnFeed::OwnFeed(Ed25519Secret *secret)
-    : SSBFeed(secret->pubkey) {
+    :
+    SSBFeed(secret->pubkey) {
   memcpy(this->seckey, secret->secret, crypto_sign_SECRETKEYBYTES);
 }
 
@@ -1444,8 +1449,9 @@ status_t OwnFeed::create(BMessage *message, BMessage *reply) {
   class SignRoot : public JSON::NodeSink {
   public:
     SignRoot(BMessage *target, unsigned char key[crypto_sign_SECRETKEYBYTES])
-        : target(target),
-          key(key) {}
+        :
+        target(target),
+        key(key) {}
     std::unique_ptr<JSON::NodeSink> addObject(const BString &rawname,
                                               const BString &name) override {
       return std::make_unique<JSON::SignObject>(

@@ -19,8 +19,9 @@ static BRect initialFrame() {
 }
 
 MainWindow::MainWindow(SSBDatabase *db)
-    : BWindow(initialFrame(), "Habitat", B_DOCUMENT_WINDOW,
-              B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
+    :
+    BWindow(initialFrame(), "Habitat", B_DOCUMENT_WINDOW,
+            B_QUIT_ON_WINDOW_CLOSE, B_CURRENT_WORKSPACE) {
   // Set timezone
   {
     BTimeZone defaultTimeZone;

@@ -28,7 +28,8 @@ std::shared_ptr<BBitmap> makePersonIcon() {
 } // namespace
 
 MessageHeader::MessageHeader(const BMessage &message)
-    : BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW) {
+    :
+    BView("", B_SUPPORTS_LAYOUT | B_WILL_DRAW) {
   BString author;
   if (message.FindString("author", &author) != B_OK)
     author = "Error";
@@ -121,8 +122,9 @@ void MessageHeader::MessageReceived(BMessage *message) {
 }
 
 UserPicture::UserPicture(std::shared_ptr<BBitmap> source)
-    : BView("User picture",
-            B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_SUPPORTS_LAYOUT) {
+    :
+    BView("User picture",
+          B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_SUPPORTS_LAYOUT) {
   this->setSource(source);
 }
 

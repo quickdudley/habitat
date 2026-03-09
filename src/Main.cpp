@@ -105,7 +105,8 @@ static property_info habitatProperties[] = {
 
 // TODO: Move most of this into ReadyToRun
 Habitat::Habitat(void)
-    : BApplication("application/x-vnd.habitat") {
+    :
+    BApplication("application/x-vnd.habitat") {
   {
     std::random_device hwrng;
     this->rng.seed(hwrng());
@@ -730,20 +731,23 @@ ServerRecord::ServerRecord() {}
 
 ServerRecord::ServerRecord(const BString &transport, const BString &hostname,
                            const BString &cypherkey)
-    : transport(transport),
-      hostname(hostname),
-      cypherkey(cypherkey) {}
+    :
+    transport(transport),
+    hostname(hostname),
+    cypherkey(cypherkey) {}
 
 ServerRecord::ServerRecord(const BString &hostname, const BString &cypherkey)
-    : transport("net"),
-      hostname(hostname),
-      cypherkey(cypherkey) {}
+    :
+    transport("net"),
+    hostname(hostname),
+    cypherkey(cypherkey) {}
 
 ServerRecord::ServerRecord(BMessage *record)
-    : transport(record->GetString("transport", "net")),
-      hostname(record->GetString("hostname", "")),
-      cypherkey(record->GetString("cypherkey", "")),
-      connected(record->GetBool("connected", false)) {}
+    :
+    transport(record->GetString("transport", "net")),
+    hostname(record->GetString("hostname", "")),
+    cypherkey(record->GetString("cypherkey", "")),
+    connected(record->GetBool("connected", false)) {}
 
 bool ServerRecord::isValid() {
   return this->transport == "net" &&
@@ -829,7 +833,8 @@ void ServerRecord::connect() {
 namespace {
 
 TidyLooper::TidyLooper(const char *name)
-    : BLooper(name) {}
+    :
+    BLooper(name) {}
 
 void TidyLooper::Quit() {
   for (int32 i = this->CountHandlers() - 1; i >= 0; i--) {
