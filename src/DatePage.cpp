@@ -1,5 +1,8 @@
 #include "DatePage.h"
 #include <algorithm>
+#include <unicode/calendar.h>
+#include <unicode/gregocal.h>
+#include <unicode/timezone.h>
 #include <vector>
 
 RangeSet::RangeSet() {}
@@ -71,3 +74,31 @@ bool RangeSet::operator[](int64 index) {
 }
 
 const std::map<int64, int64> &RangeSet::ranges() { return this->inner; }
+
+static std::pair<int64, int64> yearBlock(U_ICU_NAMESPACE::TimeZone *tz,
+                                         int32 year) {
+  UErrorCode status = U_ZERO_ERROR;
+  auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+      U_ICU_NAMESPACE::Calendar::createInstance(tz->clone(), status));
+  cal->set(UCAL_YEAR, year);
+  cal->set(UCAL_DAY_OF_YEAR, 1);
+  cal->set(UCAL_MILLISECONDS_IN_DAY, 0);
+  UDate boy = cal->getTime(status);
+  cal->set(UCAL_YEAR, year + 1);
+  return {(int64)boy, (int64)(cal->getTime(status) - 1)};
+}
+
+static std::pair<int64, int64> tsBlock(U_ICU_NAMESPACE::TimeZone *tz,
+                                       int64 year, int32 timestamp) {
+  UErrorCode status = U_ZERO_ERROR;
+  auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+      U_ICU_NAMESPACE::Calendar::createInstance(tz->clone(), status));
+  cal->setTime((UDate)timestamp, status);
+  bool thisYear = cal->get(UCAL_YEAR) == year;
+  if (!thisYear)
+    cal->set(UCAL_DAY_OF_YEAR, 1);
+  cal->set(UCAL_MILLISECONDS_IN_DAY, 0);
+  UDate bob = cal->getTime(status);
+  cal->add(thisYear ? UCAL_DAY_OF_YEAR : UCAL_YEAR, 1, status);
+  return {(int64)bob, (int64)(cal->getTime(status) - 1)};
+}
