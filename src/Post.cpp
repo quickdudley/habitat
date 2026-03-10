@@ -466,7 +466,7 @@ void SSBDatabase::DispatchMessage(BMessage *message, BHandler *handler) {
 SSBDatabase::SSBDatabase(std::function<sqlite3 *()> dbOpen)
     :
     BLooper("SSB message database", 8192, 512),
-    database(dbOpen()),
+    database(dbOpen()), // TODO: Initialize this in our own thread
     dbOpen(std::move(dbOpen)) {
   if (runningDB == NULL)
     runningDB = this;
@@ -680,7 +680,7 @@ void SSBDatabase::MessageReceived(BMessage *msg) {
         QueryHandler *qh;
         bool live;
         if (BMessenger target; msg->FindMessenger("target", &target) == B_OK) {
-          qh = new QueryHandler(this->dbOpen(), target, specifier);
+          qh = new QueryHandler(this->database, target, specifier);
           live = true;
           qh->includeKey = msg->GetBool("includeKey", false);
         } else {
