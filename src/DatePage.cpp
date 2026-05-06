@@ -94,7 +94,7 @@ static std::pair<int64, int64> tsBlock(U_ICU_NAMESPACE::TimeZone *tz,
   auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
       U_ICU_NAMESPACE::Calendar::createInstance(tz->clone(), status));
   cal->setTime((UDate)timestamp, status);
-  bool thisYear = cal->get(UCAL_YEAR) == year;
+  bool thisYear = cal->get(UCAL_YEAR, status) == year;
   if (!thisYear)
     cal->set(UCAL_DAY_OF_YEAR, 1);
   cal->set(UCAL_MILLISECONDS_IN_DAY, 0);
