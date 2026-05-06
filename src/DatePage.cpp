@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <unicode/calendar.h>
 #include <unicode/gregocal.h>
-#include <unicode/timezone.h>
 #include <vector>
 
 RangeSet::RangeSet() {}
@@ -101,4 +100,34 @@ static std::pair<int64, int64> tsBlock(U_ICU_NAMESPACE::TimeZone *tz,
   UDate bob = cal->getTime(status);
   cal->add(thisYear ? UCAL_DAY_OF_YEAR : UCAL_YEAR, 1, status);
   return {(int64)bob, (int64)(cal->getTime(status) - 1)};
+}
+
+DayPager::DayPager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz,
+                   int32 year)
+    :
+    BView("Day page",
+          B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_NAVIGABLE_JUMP |
+              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT),
+    specifier(specifier),
+    tz(tz) {
+  this->setYear(year);
+}
+
+DayPager::~DayPager() {}
+
+void DayPager::setYear(int32 year) {
+  this->year = year;
+  UErrorCode status = U_ZERO_ERROR;
+  auto a = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+      U_ICU_NAMESPACE::Calendar::createInstance(this->tz->clone(), status));
+  a->set(UCAL_YEAR, year);
+  a->set(UCAL_DAY_OF_YEAR, 1);
+  a->set(UCAL_MILLISECONDS_IN_DAY, 0);
+  auto b = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(a->clone());
+  a->set(UCAL_YEAR, year + 1);
+  b->add(UCAL_MILLISECONDS_IN_DAY, -1, status);
+  auto days = b->get(UCAL_DAY_OF_YEAR, status);
+  // TODO: Customize colour for days with no found messages
+  this->squares.assign(days, {0, 0, 0, 0});
+  // TODO: Finish this method.
 }
