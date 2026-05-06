@@ -1,11 +1,10 @@
 #ifndef DATE_PAGE_H
 #define DATE_PAGE_H
 
+#include <GroupView.h>
 #include <SupportDefs.h>
-#include <View.h>
 #include <map>
 #include <unicode/timezone.h>
-#include <vector>
 
 class RangeSet {
 public:
@@ -19,17 +18,19 @@ private:
   std::map<int64,int64> inner;
 };
 
-class DayPager : public BView {
+class DayPager;
+
+class DatePager : public BGroupView {
 public:
-  DayPager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz, int32 year);
-  ~DayPager() override;
-  void setYear(int32 year);
+  DatePager(const BMessage specifier, U_ICU_NAMESPACE::TimeZone *tz, int32 year);
+  ~DatePager() override;
 
 private:
   BMessage specifier;
-  std::vector<rgb_color> squares;
   U_ICU_NAMESPACE::TimeZone *tz;
   int32 year;
+  RangeSet hasMessages;
+friend class DayPager;
 };
 
 #endif // _H

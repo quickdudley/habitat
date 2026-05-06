@@ -88,7 +88,7 @@ static std::pair<int64, int64> yearBlock(U_ICU_NAMESPACE::TimeZone *tz,
 }
 
 static std::pair<int64, int64> tsBlock(U_ICU_NAMESPACE::TimeZone *tz,
-                                       int64 year, int32 timestamp) {
+                                       int32 year, int64 timestamp) {
   UErrorCode status = U_ZERO_ERROR;
   auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
       U_ICU_NAMESPACE::Calendar::createInstance(tz->clone(), status));
@@ -102,32 +102,33 @@ static std::pair<int64, int64> tsBlock(U_ICU_NAMESPACE::TimeZone *tz,
   return {(int64)bob, (int64)(cal->getTime(status) - 1)};
 }
 
-DayPager::DayPager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz,
-                   int32 year)
+// TODO: error handling
+static int weeksInYear(U_ICU_NAMESPACE::TimeZone *tz, UCalendarDaysOfWeek start,
+                       int32 year) {
+  UErrorCode status = U_ZERO_ERROR;
+  auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+      U_ICU_NAMESPACE::Calendar::createInstance(tz->clone(), status));
+  cal->setFirstDayOfWeek(start);
+  cal->setMinimalDaysInFirstWeek(1);
+  cal->clear();
+  cal->set(UCAL_YEAR, year + 1);
+  cal->set(UCAL_DAY_OF_YEAR, 1);
+  cal->add(UCAL_DAY_OF_YEAR, -1, status);
+  return cal->get(UCAL_WEEK_OF_YEAR, status);
+}
+
+class DayPager : public BView {
+public:
+  DayPager();
+  ~DayPager() override;
+
+private:
+};
+
+DayPager::DayPager()
     :
     BView("Day page",
           B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_NAVIGABLE_JUMP |
-              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT),
-    specifier(specifier),
-    tz(tz) {
-  this->setYear(year);
-}
+              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT) {}
 
 DayPager::~DayPager() {}
-
-void DayPager::setYear(int32 year) {
-  this->year = year;
-  UErrorCode status = U_ZERO_ERROR;
-  auto a = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
-      U_ICU_NAMESPACE::Calendar::createInstance(this->tz->clone(), status));
-  a->set(UCAL_YEAR, year);
-  a->set(UCAL_DAY_OF_YEAR, 1);
-  a->set(UCAL_MILLISECONDS_IN_DAY, 0);
-  auto b = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(a->clone());
-  a->set(UCAL_YEAR, year + 1);
-  b->add(UCAL_MILLISECONDS_IN_DAY, -1, status);
-  auto days = b->get(UCAL_DAY_OF_YEAR, status);
-  // TODO: Customize colour for days with no found messages
-  this->squares.assign(days, {0, 0, 0, 0});
-  // TODO: Finish this method.
-}
