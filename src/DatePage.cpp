@@ -121,6 +121,11 @@ class DayPager : public BView {
 public:
   DayPager();
   ~DayPager() override;
+  bool HasHeightForWidth() override;
+  void GetHeightForWidth(float width, float *min, float *max,
+                         float *preferred) override;
+  void Draw(BRect updateRect) override;
+  void AttachedToWindow() override;
 
 private:
 };
@@ -129,6 +134,59 @@ DayPager::DayPager()
     :
     BView("Day page",
           B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW | B_NAVIGABLE_JUMP |
-              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT) {}
+              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT) {
+  this->SetExplicitMinSize(BSize(B_SIZE_UNSET, B_SIZE_UNSET));
+  this->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  this->SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+}
 
 DayPager::~DayPager() {}
+
+bool DayPager::HasHeightForWidth() { return true; }
+
+// TODO: Make start of week configurable
+void DayPager::GetHeightForWidth(float width, float *min, float *max,
+                                 float *preferred) {
+  if (auto parent = dynamic_cast<DatePager *>(this->Parent())) {
+    auto columns = weeksInYear(parent->tz, UCAL_MONDAY, parent->year);
+    *min = 21; // 7 * 3
+    float unit = width / columns;
+    *max = unit * 7;
+    *preferred = *max;
+  } else {
+    return BView::GetHeightForWidth(width, min, max, preferred);
+  }
+}
+
+void DayPager::AttachedToWindow() {
+  this->AdoptParentColors();
+  this->SetLowColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
+}
+
+void DayPager::Draw(BRect updateRect) {
+  if (auto parent = dynamic_cast<DatePager *>(this->Parent())) {
+    UErrorCode status = U_ZERO_ERROR;
+    auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+        U_ICU_NAMESPACE::Calendar::createInstance(parent->tz->clone(), status));
+    cal->setFirstDayOfWeek(UCAL_MONDAY);
+    cal->setMinimalDaysInFirstWeek(1);
+    cal->clear();
+    cal->set(UCAL_YEAR, parent->year);
+    cal->set(UCAL_DAY_OF_YEAR, 1);
+    auto end = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(cal->clone());
+    end->set(UCAL_YEAR, parent->year + 1);
+    auto bounds = this->Bounds();
+    for (; cal->before(*end, status); cal->add(UCAL_DAY_OF_YEAR, 1, status)) {
+      // TODO: distinguish read and unread messages
+      if (parent->hasMessages[cal->getTime(status)]) {
+        auto x = cal->get(UCAL_WEEK_OF_YEAR, status);
+        auto y = (cal->get(UCAL_DAY_OF_WEEK, status) + 7 - UCAL_MONDAY) % 7;
+        this->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+        auto rect = BRect(bounds.Width() * x, bounds.Height() * y,
+                          bounds.Width() * (x + 1), bounds.Height() * (y + 1));
+        rect.InsetBy(1, 1);
+        this->FillRect(rect, B_SOLID_HIGH);
+      }
+    }
+  }
+}
