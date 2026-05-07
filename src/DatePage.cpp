@@ -190,3 +190,8 @@ void DayPager::Draw(BRect updateRect) {
     }
   }
 }
+
+DatePager::DatePager(const BMessage specifier, U_ICU_NAMESPACE::TimeZone *tz,
+                     int32 year) {}
+
+DatePager::~DatePager() {}
