@@ -258,10 +258,10 @@ MarkdownView::MarkdownView(const BString &raw)
 void MarkdownView::AttachedToWindow() {
   this->AdoptParentColors();
   this->SetLowColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
+  this->SetHighColor(ui_color(B_DOCUMENT_TEXT_COLOR));
 }
 
 void MarkdownView::Draw(BRect updateRect) {
-  this->BeginLayer(0xFF);
   BRect remaining = this->Bounds();
   float interblock;
   {
@@ -273,7 +273,6 @@ void MarkdownView::Draw(BRect updateRect) {
     block->draw(this, remaining);
     remaining.top += interblock;
   }
-  this->EndLayer();
 }
 
 bool MarkdownView::HasHeightForWidth() { return true; }
