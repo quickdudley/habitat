@@ -111,10 +111,9 @@ static int weeksInYear(U_ICU_NAMESPACE::TimeZone *tz, UCalendarDaysOfWeek start,
   cal->setFirstDayOfWeek(start);
   cal->setMinimalDaysInFirstWeek(1);
   cal->clear();
-  cal->set(UCAL_YEAR, year + 1);
+  cal->set(UCAL_YEAR, year);
   cal->set(UCAL_DAY_OF_YEAR, 1);
-  cal->add(UCAL_DAY_OF_YEAR, -1, status);
-  return cal->get(UCAL_WEEK_OF_YEAR, status);
+  return cal->getActualMaximum(UCAL_WEEK_OF_YEAR, status);
 }
 
 class DayPager : public BView {
@@ -149,10 +148,16 @@ void DayPager::GetHeightForWidth(float width, float *min, float *max,
                                  float *preferred) {
   if (auto parent = dynamic_cast<DatePager *>(this->Parent())) {
     auto columns = weeksInYear(parent->tz, UCAL_MONDAY, parent->year);
-    *min = 21; // 7 * 3
+    if (min)
+      *min = 21; // 7 * 3
     float unit = width / columns;
-    *max = unit * 7;
-    *preferred = *max;
+    if (max || preferred) {
+      float v = unit * 7;
+      if (max)
+        *max = v;
+      if (preferred)
+        *preferred = v;
+    }
   } else {
     return BView::GetHeightForWidth(width, min, max, preferred);
   }
@@ -191,7 +196,16 @@ void DayPager::Draw(BRect updateRect) {
   }
 }
 
-DatePager::DatePager(const BMessage specifier, U_ICU_NAMESPACE::TimeZone *tz,
-                     int32 year) {}
+DatePager::DatePager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz,
+                     int32 year)
+    :
+    specifier(specifier),
+    tz(tz),
+    year(year) {}
 
 DatePager::~DatePager() {}
+
+void DatePager::AttachedToWindow() {
+  this->dayPager = new DayPager();
+  this->AddChild(this->dayPager);
+}

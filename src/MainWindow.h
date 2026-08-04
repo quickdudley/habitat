@@ -1,6 +1,7 @@
 #ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
+#include "DatePage.h"
 #include "FeedView.h"
 #include "Post.h"
 #include <MenuBar.h>
@@ -25,6 +26,7 @@ private:
   U_ICU_NAMESPACE::TimeZone *tz;
   U_ICU_NAMESPACE::Calendar *calendar;
   BMenuBar *menuBar;
+  DatePager *pager;
   BStatusBar *statusBar;
   BScrollView *contents;
   FeedView *feed;

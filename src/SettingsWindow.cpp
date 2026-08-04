@@ -26,7 +26,7 @@ namespace {
 class NetworkTab : public BView {
 public:
   NetworkTab(BRect contentFrame);
-  void AttachedToWindow();
+  void AttachedToWindow() override;
   void MessageReceived(BMessage *msg) override;
   void clearDetails();
   void fillDetails(const BString &netAddress, const BString &cypherkey);

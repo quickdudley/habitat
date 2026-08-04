@@ -22,14 +22,16 @@ class DayPager;
 
 class DatePager : public BGroupView {
 public:
-  DatePager(const BMessage specifier, U_ICU_NAMESPACE::TimeZone *tz, int32 year);
+  DatePager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz, int32 year);
   ~DatePager() override;
+  void AttachedToWindow() override;
 
 private:
   BMessage specifier;
   U_ICU_NAMESPACE::TimeZone *tz;
   int32 year;
   RangeSet hasMessages;
+  DayPager *dayPager;
 friend class DayPager;
 };
 
