@@ -113,7 +113,10 @@ static int weeksInYear(U_ICU_NAMESPACE::TimeZone *tz, UCalendarDaysOfWeek start,
   cal->clear();
   cal->set(UCAL_YEAR, year);
   cal->set(UCAL_DAY_OF_YEAR, 1);
-  return cal->getActualMaximum(UCAL_WEEK_OF_YEAR, status);
+  auto count = cal->getActualMaximum(UCAL_WEEK_OF_YEAR, status);
+  cal->set(UCAL_YEAR, year + 1);
+  cal->add(UCAL_DAY_OF_YEAR, -1, status);
+  return cal->get(UCAL_WEEK_OF_YEAR, status) == 1 ? count + 1 : count;
 }
 
 class DayPager : public BView {
