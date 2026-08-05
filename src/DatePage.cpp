@@ -152,16 +152,14 @@ void DayPager::GetHeightForWidth(float width, float *min, float *max,
                                  float *preferred) {
   if (auto parent = dynamic_cast<DatePager *>(this->Parent())) {
     auto columns = weeksInYear(parent->tz, UCAL_MONDAY, parent->year);
-    if (min)
-      *min = 21; // 7 * 3
     float unit = width / columns;
-    if (max || preferred) {
-      float v = unit * 7;
-      if (max)
-        *max = v;
-      if (preferred)
-        *preferred = v;
-    }
+    float v = unit * 7;
+    if (min)
+      *min = v;
+    if (max)
+      *max = v;
+    if (preferred)
+      *preferred = v;
   } else {
     return BView::GetHeightForWidth(width, min, max, preferred);
   }
@@ -191,7 +189,7 @@ void DayPager::Draw(BRect updateRect) {
     for (; cal->before(*end, status); cal->add(UCAL_DAY_OF_YEAR, 1, status)) {
       // TODO: distinguish read and unread messages
       if (parent->hasMessages[cal->getTime(status)]) {
-        auto x = cal->get(UCAL_WEEK_OF_YEAR, status);
+        auto x = cal->get(UCAL_WEEK_OF_YEAR, status) - 1;
         auto y = (cal->get(UCAL_DAY_OF_WEEK, status) + 7 - UCAL_MONDAY) % 7;
         this->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
         auto rect = BRect(bounds.Width() * x, bounds.Height() * y,
