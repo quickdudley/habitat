@@ -64,6 +64,7 @@ MainWindow::MainWindow(SSBDatabase *db)
   this->contents->SetExplicitPreferredSize(
       BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
   this->contents->SetExplicitMinSize(BSize(50.0f, 50.0f));
+  feed->fillSpecifier(spec);
   this->pager =
       new DatePager(spec, this->tz, this->calendar->get(UCAL_YEAR, status));
   mainLayout->AddView(this->pager);
