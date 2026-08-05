@@ -12,6 +12,7 @@ public:
   ~FeedView();
   void AttachedToWindow() override;
   void MessageReceived(BMessage *message) override;
+  status_t fillSpecifier(BMessage &specifier);
   status_t setSpecifier(const BMessage &specifier);
   bool HasHeightForWidth() override;
   void GetHeightForWidth(float width, float *min, float *max,

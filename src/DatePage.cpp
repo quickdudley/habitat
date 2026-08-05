@@ -1,4 +1,5 @@
 #include "DatePage.h"
+#include <Messenger.h>
 #include <algorithm>
 #include <unicode/calendar.h>
 #include <unicode/gregocal.h>
@@ -183,7 +184,10 @@ void DayPager::Draw(BRect updateRect) {
     cal->set(UCAL_DAY_OF_YEAR, 1);
     auto end = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(cal->clone());
     end->set(UCAL_YEAR, parent->year + 1);
-    auto bounds = this->Bounds();
+    auto bounds = this->Bounds().Size();
+    bounds.SetHeight(bounds.Height() / 7);
+    bounds.SetWidth(bounds.Width() /
+                    weeksInYear(parent->tz, UCAL_MONDAY, parent->year));
     for (; cal->before(*end, status); cal->add(UCAL_DAY_OF_YEAR, 1, status)) {
       // TODO: distinguish read and unread messages
       if (parent->hasMessages[cal->getTime(status)]) {
@@ -211,4 +215,36 @@ DatePager::~DatePager() {}
 void DatePager::AttachedToWindow() {
   this->dayPager = new DayPager();
   this->AddChild(this->dayPager);
+  this->populate();
+}
+
+void DatePager::MessageReceived(BMessage *msg) {
+  if (double timestamp; msg->FindDouble("timestamp", &timestamp) == B_OK) {
+    auto [lo, hi] = tsBlock(this->tz, this->year, (int64)timestamp);
+    this->hasMessages.set(lo, hi, true);
+    this->dayPager->Invalidate();
+    this->populate();
+  } else {
+    BGroupView::MessageReceived(msg);
+  }
+}
+
+void DatePager::populate() {
+  BMessage spec = this->specifier;
+  spec.RemoveName("earliest");
+  spec.RemoveName("latest");
+  spec.RemoveName("property");
+  spec.AddString("property", "Post");
+  if (spec.what == 'CPLX') {
+    for (const auto &[lo, hi] : this->hasMessages.ranges()) {
+      spec.AddInt64("latest", (int64)lo - 1);
+      spec.AddInt64("earliest", (int64)hi + 1);
+    }
+  }
+  BMessage rq(B_GET_PROPERTY);
+  rq.AddSpecifier(&spec);
+  rq.AddMessenger("target", BMessenger(this));
+  rq.AddInt32("limit", 1);
+  // TODO: Remember how other subsystems message the database.
+  BMessenger("application/x-vnd.habitat").SendMessage(&rq);
 }

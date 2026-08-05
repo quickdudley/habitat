@@ -25,6 +25,8 @@ public:
   DatePager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz, int32 year);
   ~DatePager() override;
   void AttachedToWindow() override;
+  void MessageReceived(BMessage *msg) override;
+  void populate();
 
 private:
   BMessage specifier;

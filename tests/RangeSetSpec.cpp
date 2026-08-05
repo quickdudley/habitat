@@ -1,7 +1,8 @@
 #include "DatePage.h"
 #include <catch2/catch_all.hpp>
 
-TEST_CASE("RangeSet successfully inserts and queries single range", "[range_set]") {
+TEST_CASE("RangeSet successfully inserts and queries single range",
+          "[range_set]") {
   RangeSet op;
   op.set(1, 2, true);
   REQUIRE(op[0] == false);
@@ -40,7 +41,8 @@ TEST_CASE("RangeSet merges two overlapping ranges", "[range_set]") {
   REQUIRE(i == op.ranges().end());
 }
 
-TEST_CASE("RangeSet merges two overlapping ranges (reverse order)", "[range_set]") {
+TEST_CASE("RangeSet merges two overlapping ranges (reverse order)",
+          "[range_set]") {
   RangeSet op;
   op.set(2, 3, true);
   op.set(1, 2, true);
