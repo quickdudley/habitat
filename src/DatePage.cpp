@@ -1,4 +1,5 @@
 #include "DatePage.h"
+#include <DateFormat.h>
 #include <Messenger.h>
 #include <algorithm>
 #include <unicode/calendar.h>
@@ -127,10 +128,13 @@ public:
   bool HasHeightForWidth() override;
   void GetHeightForWidth(float width, float *min, float *max,
                          float *preferred) override;
+  void MessageReceived(BMessage *msg) override;
   void Draw(BRect updateRect) override;
   void AttachedToWindow() override;
+  void MouseMoved (BPoint where, uint32 code, const BMessage *dragMessage) override;
 
 private:
+  std::unique_ptr<U_ICU_NAMESPACE::Calendar> dateLookup(float x, float y);
 };
 
 DayPager::DayPager()
@@ -163,6 +167,34 @@ void DayPager::GetHeightForWidth(float width, float *min, float *max,
   } else {
     return BView::GetHeightForWidth(width, min, max, preferred);
   }
+}
+
+void DayPager::MouseMoved(BPoint where, uint32 code,
+                          const BMessage *dragMessage) {
+  auto cal = this->dateLookup(where.x, where.y);
+  BDateFormat formatter;
+  UErrorCode status = U_ZERO_ERROR;
+  if (cal == NULL) {
+    this->SetToolTip((char *)NULL);
+    return;
+  }
+  time_t seconds = cal->getTime(status) / 1000;
+  if (BString result;
+      formatter.Format(result, seconds, B_LONG_DATE_FORMAT) == B_OK) {
+    this->SetToolTip(result);
+    this->ShowToolTip();
+  } else {
+    this->SetToolTip((char *)NULL);
+  }
+}
+
+void DayPager::MessageReceived(BMessage *msg) {
+//  if (BPoint where; (msg->what == '_MMV' || msg->what == '_MSI') &&
+//      msg->FindPoint("be:view_where", &where) == B_OK) {
+//  } else {
+//    msg->PrintToStream();
+//  }
+  BView::MessageReceived(msg);
 }
 
 void DayPager::AttachedToWindow() {
@@ -199,6 +231,33 @@ void DayPager::Draw(BRect updateRect) {
       }
     }
   }
+}
+
+std::unique_ptr<U_ICU_NAMESPACE::Calendar> DayPager::dateLookup(float x,
+                                                                float y) {
+  if (auto parent = dynamic_cast<DatePager *>(this->Parent())) {
+    UErrorCode status = U_ZERO_ERROR;
+    auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(
+        U_ICU_NAMESPACE::Calendar::createInstance(parent->tz->clone(), status));
+    auto columns = weeksInYear(parent->tz, UCAL_MONDAY, parent->year);
+    auto bounds = this->Bounds().Size();
+    auto firstDay = cal->getFirstDayOfWeek(status);
+    auto minDays = cal->getMinimalDaysInFirstWeek();
+    cal->setFirstDayOfWeek(UCAL_MONDAY);
+    cal->setMinimalDaysInFirstWeek(1);
+    cal->clear();
+    cal->set(UCAL_YEAR_WOY, parent->year);
+    int32 week = (int32)(x * columns / bounds.Width()) + 1;
+    int32 day = (int32)(y * 7 / bounds.Height()) + UCAL_MONDAY;
+    cal->set(UCAL_WEEK_OF_YEAR, week);
+    cal->set(UCAL_DAY_OF_WEEK, day);
+    if (cal->get(UCAL_YEAR, status) != parent->year || status != U_ZERO_ERROR)
+      return NULL;
+    cal->setFirstDayOfWeek(firstDay);
+    cal->setMinimalDaysInFirstWeek(minDays);
+    return cal;
+  }
+  return NULL;
 }
 
 DatePager::DatePager(const BMessage &specifier, U_ICU_NAMESPACE::TimeZone *tz,
