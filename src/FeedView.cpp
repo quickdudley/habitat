@@ -47,13 +47,10 @@ void FeedView::MessageReceived(BMessage *message) {
   } else if (BMessenger result;
              message->FindMessenger("result", &result) == B_OK) {
     this->doneMessenger = result;
-    int32 i;
-    while (i < this->CountChildren()) {
+    for (int32 i = this->CountChildren(); i >= 0; i--) {
       BView *c = this->ChildAt(i);
       if (c != this && this->RemoveChild(c))
         delete c;
-      else
-        i++;
     }
     this->accepting = true;
   } else if (BMessage content; this->accepting &&

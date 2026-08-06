@@ -51,6 +51,7 @@ MainWindow::~MainWindow() {
 
 enum {
   kTimeZone,
+  kFeedDate,
 };
 
 static property_info properties[] = {
@@ -60,6 +61,12 @@ static property_info properties[] = {
      "The time zone used for date and time operations",
      kTimeZone,
      {B_STRING_TYPE}},
+    {"Date",
+     {B_GET_PROPERTY, B_SET_PROPERTY, 0},
+     {B_DIRECT_SPECIFIER, 0},
+     "A timestampt indicating the date of messages currently displayed",
+     kFeedDate,
+     {B_INT64_TYPE}},
     {0}};
 
 status_t MainWindow::GetSupportedSuites(BMessage *data) {
@@ -118,6 +125,21 @@ void MainWindow::MessageReceived(BMessage *message) {
         tzid.toUTF8String(tzidb);
         reply.AddString("result", tzidb.c_str());
         error = B_OK;
+      }
+      break;
+    case kFeedDate:
+      if (message->what == B_SET_PROPERTY) {
+        int64 timestamp;
+        if (message->FindInt64("data", &timestamp) != B_OK)
+          break;
+        UErrorCode status = U_ZERO_ERROR;
+        this->calendar->setTime(timestamp, status);
+        if (status != U_ZERO_ERROR)
+          break;
+        this->setDate(this->calendar->clone());
+        error = B_OK;
+      } else if (message->what == B_GET_PROPERTY) {
+        // TODO
       }
       break;
     default:

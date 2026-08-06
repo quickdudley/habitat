@@ -1,6 +1,7 @@
 #include "DatePage.h"
 #include <DateFormat.h>
 #include <Messenger.h>
+#include <Window.h>
 #include <algorithm>
 #include <unicode/calendar.h>
 #include <unicode/gregocal.h>
@@ -131,6 +132,7 @@ public:
   void MessageReceived(BMessage *msg) override;
   void Draw(BRect updateRect) override;
   void AttachedToWindow() override;
+  void MouseUp(BPoint where) override;
   void MouseMoved (BPoint where, uint32 code, const BMessage *dragMessage) override;
 
 private:
@@ -188,12 +190,26 @@ void DayPager::MouseMoved(BPoint where, uint32 code,
   }
 }
 
+void DayPager::MouseUp(BPoint where) {
+  UErrorCode status = U_ZERO_ERROR;
+  auto cal = this->dateLookup(where.x, where.y);
+  if (cal == NULL)
+    return;
+  BMessage msg(B_SET_PROPERTY);
+  msg.AddInt64("data", cal->getTime(status));
+  if (status != U_ZERO_ERROR)
+    return;
+  msg.AddSpecifier("Date");
+  // TODO: Don't assume the window is the place to handle this.
+  BMessenger(static_cast<BHandler *>(this->Window())).SendMessage(&msg);
+}
+
 void DayPager::MessageReceived(BMessage *msg) {
-//  if (BPoint where; (msg->what == '_MMV' || msg->what == '_MSI') &&
-//      msg->FindPoint("be:view_where", &where) == B_OK) {
-//  } else {
-//    msg->PrintToStream();
-//  }
+  //  if (BPoint where; (msg->what == '_MMV' || msg->what == '_MSI') &&
+  //      msg->FindPoint("be:view_where", &where) == B_OK) {
+  //  } else {
+  //    msg->PrintToStream();
+  //  }
   BView::MessageReceived(msg);
 }
 
