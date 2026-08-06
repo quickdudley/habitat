@@ -41,36 +41,7 @@ MainWindow::MainWindow(SSBDatabase *db)
   auto mainLayout = new BGroupLayout(B_VERTICAL, 0);
   this->SetLayout(mainLayout);
   mainLayout->AddView(this->menuBar);
-  // TODO: Extract to other method so we can switch date.
-  BMessage spec('CPLX');
-  auto cal =
-      std::unique_ptr<U_ICU_NAMESPACE::Calendar>(this->calendar->clone());
-  cal->set(UCAL_HOUR_OF_DAY, 0);
-  cal->set(UCAL_MINUTE, 0);
-  cal->set(UCAL_SECOND, 0);
-  cal->set(UCAL_MILLISECOND, 0);
-  UDate bod = cal->getTime(status);
-  cal->set(UCAL_HOUR_OF_DAY, 23);
-  cal->set(UCAL_MINUTE, 59);
-  cal->set(UCAL_SECOND, 59);
-  cal->set(UCAL_MILLISECOND, 999);
-  UDate eod = cal->getTime(status);
-  spec.AddInt64("earliest", bod);
-  spec.AddInt64("latest", eod);
-  this->feed = new FeedView(spec);
-  this->contents = new BScrollView(
-      NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false, true);
-  this->contents->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
-  this->contents->SetExplicitPreferredSize(
-      BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
-  this->contents->SetExplicitMinSize(BSize(50.0f, 50.0f));
-  feed->fillSpecifier(spec);
-  this->pager =
-      new DatePager(spec, this->tz, this->calendar->get(UCAL_YEAR, status));
-  mainLayout->AddView(this->pager);
-  mainLayout->AddView(this->contents);
-  this->statusBar = new BStatusBar("");
-  mainLayout->AddView(this->statusBar);
+  this->setDate(this->calendar->clone());
 }
 
 MainWindow::~MainWindow() {
@@ -177,6 +148,45 @@ notProp:
     break;
   default:
     BWindow::MessageReceived(message);
+  }
+}
+
+void MainWindow::setDate(U_ICU_NAMESPACE::Calendar *calendar) {
+  auto cal = std::unique_ptr<U_ICU_NAMESPACE::Calendar>(calendar);
+  UErrorCode status = U_ZERO_ERROR;
+  cal->set(UCAL_HOUR_OF_DAY, 0);
+  cal->set(UCAL_MINUTE, 0);
+  cal->set(UCAL_SECOND, 0);
+  cal->set(UCAL_MILLISECOND, 0);
+  UDate bod = cal->getTime(status);
+  cal->set(UCAL_HOUR_OF_DAY, 23);
+  cal->set(UCAL_MINUTE, 59);
+  cal->set(UCAL_SECOND, 59);
+  cal->set(UCAL_MILLISECOND, 999);
+  UDate eod = cal->getTime(status);
+  BMessage spec('CPLX');
+  spec.AddInt64("earliest", bod);
+  spec.AddInt64("latest", eod);
+  if (!this->feed) {
+    this->feed = new FeedView(spec);
+    this->feed->fillSpecifier(spec);
+    this->contents = new BScrollView(
+        NULL, this->feed, B_WILL_DRAW | B_SUPPORTS_LAYOUT, false, true);
+    this->contents->SetExplicitMaxSize(
+        BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+    this->contents->SetExplicitPreferredSize(
+        BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+    this->contents->SetExplicitMinSize(BSize(50.0f, 50.0f));
+    // TODO: pass calendar instead of just year.
+    this->pager =
+        new DatePager(spec, this->tz, this->calendar->get(UCAL_YEAR, status));
+    auto mainLayout = this->GetLayout();
+    mainLayout->AddView(this->pager);
+    mainLayout->AddView(this->contents);
+    this->statusBar = new BStatusBar("");
+    mainLayout->AddView(this->statusBar);
+  } else {
+    this->feed->setSpecifier(spec);
   }
 }
 

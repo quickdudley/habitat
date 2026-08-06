@@ -23,13 +23,14 @@ public:
   status_t GetSupportedSuites(BMessage *data) override;
 
 private:
+  void setDate(U_ICU_NAMESPACE::Calendar *calendar);
   U_ICU_NAMESPACE::TimeZone *tz;
   U_ICU_NAMESPACE::Calendar *calendar;
   BMenuBar *menuBar;
   DatePager *pager;
   BStatusBar *statusBar;
   BScrollView *contents;
-  FeedView *feed;
+  FeedView *feed = NULL;
 };
 
 #endif
