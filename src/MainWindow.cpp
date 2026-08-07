@@ -115,6 +115,7 @@ void MainWindow::MessageReceived(BMessage *message) {
             this->calendar->setTimeZone(*utz);
             delete this->tz;
             this->tz = utz;
+            this->setDate(this->calendar->clone());
             error = B_OK;
           }
         }
@@ -131,7 +132,7 @@ void MainWindow::MessageReceived(BMessage *message) {
       if (message->what == B_SET_PROPERTY) {
         int64 timestamp;
         if (message->FindInt64("data", &timestamp) != B_OK)
-          break;
+          goto notProp;
         UErrorCode status = U_ZERO_ERROR;
         this->calendar->setTime(timestamp, status);
         if (status != U_ZERO_ERROR)
@@ -139,7 +140,12 @@ void MainWindow::MessageReceived(BMessage *message) {
         this->setDate(this->calendar->clone());
         error = B_OK;
       } else if (message->what == B_GET_PROPERTY) {
-        // TODO
+        UErrorCode status = U_ZERO_ERROR;
+        int64 timestamp = this->calendar->getTime(status);
+        if (status == U_ZERO_ERROR) {
+          reply.AddInt64("result", timestamp);
+          error = B_OK;
+        }
       }
       break;
     default:
@@ -149,6 +155,7 @@ void MainWindow::MessageReceived(BMessage *message) {
     if (error != B_OK)
       reply.AddString("message", strerror(error));
     message->SendReply(&reply);
+    return;
   }
 notProp:
   switch (message->what) {
