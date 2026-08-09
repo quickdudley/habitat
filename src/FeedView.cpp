@@ -77,12 +77,12 @@ void FeedView::MessageReceived(BMessage *message) {
 status_t FeedView::fillSpecifier(BMessage &specifier) {
   if (specifier.what != B_NAME_SPECIFIER && specifier.what != 'CPLX')
     return B_BAD_VALUE;
-  if (BString dummy; this->specifier.what == 'CPLX' &&
-      this->specifier.FindString("type", &dummy) == B_NAME_NOT_FOUND) {
+  if (BString dummy; specifier.what == 'CPLX' &&
+      specifier.FindString("type", &dummy) == B_NAME_NOT_FOUND) {
     for (auto &[typeName, vc] : messageTypes())
-      this->specifier.AddString("type", typeName);
+      specifier.AddString("type", typeName);
   }
-  this->specifier.SetString("property", "Post");
+  specifier.SetString("property", "Post");
   return B_OK;
 }
 
