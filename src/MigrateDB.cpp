@@ -132,6 +132,17 @@ status_t prepareDatabase(sqlite3 *database) {
     std::cerr << error << std::endl;
     return B_ERROR;
   }
+  // Last resync I found that my database had missing messages,
+  // but my database was also corrupted so that might have been the issue.
+  if (sqlite3_exec(database,
+                   "DELETE FROM messages AS m1 WHERE "
+                   "(SELECT count(1) FROM messages AS m2 WHERE m1.author = "
+                   "m2.author AND "
+                   "m2.sequence <= m1.sequence) != m1.sequence",
+                   NULL, NULL, &error) != SQLITE_OK) {
+    std::cerr << error << std::endl;
+    return B_ERROR;
+  }
   return B_OK;
 }
 
